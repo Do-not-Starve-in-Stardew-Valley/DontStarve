@@ -1,21 +1,25 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class Wearing
+/// <summary>
+/// Adjusts sanity based on equipped clothing and accessories.
+/// </summary>
+internal class Wearing : ITimeRelatedBehavior
 {
-    private static Dictionary<string, double> hatSanity = null!;
-    private static Dictionary<string, double> shirtSanity = null!;
-    private static Dictionary<string, double> pantsSanity = null!;
-    private static Dictionary<string, double> bootsSanity = null!;
-    private static Dictionary<string, double> ringSanity = null!;
-    private static Dictionary<string, double> trinketSanity = null!;
-    private static long wait;
+    private const string SAVE_KEY = "DontStarve.Sanity.Wearing";
+    private Dictionary<string, double> hatSanity = null!;
+    private Dictionary<string, double> shirtSanity = null!;
+    private Dictionary<string, double> pantsSanity = null!;
+    private Dictionary<string, double> bootsSanity = null!;
+    private Dictionary<string, double> ringSanity = null!;
+    private Dictionary<string, double> trinketSanity = null!;
+    private long wait;
 
-    internal static void init(IModHelper helper)
+    public void Init(IModHelper helper)
     {
         hatSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/hat.json");
         bootsSanity = helper.ModContent.Load<Dictionary<string, double>>(
@@ -33,7 +37,7 @@ internal static class Wearing
         );
     }
 
-    internal static void update(long _)
+    public void Update(long _)
     {
         if (wait > 0)
         {
@@ -42,6 +46,9 @@ internal static class Wearing
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var sanity = 0.0;
 
         var hat = player.hat.Value;
@@ -79,31 +86,31 @@ internal static class Wearing
             if (trinketSanity.TryGetValue(trinket.ItemId, out var value))
                 sanity += value;
 
-        player.setSanity(player.getSanity() + sanity);
+        player.SetSanity(player.GetSanity() + sanity);
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<WearingData>("DontStarve.Sanity.Wearing");
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<WearingData>(SAVE_KEY);
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.Wearing", new WearingData { wait = wait });
+        helper.Data.WriteSaveData(SAVE_KEY, new WearingData { Wait = wait });
     }
 }
 
 internal class WearingData
 {
-    internal long wait { get; init; }
+    public long Wait { get; init; }
 }

@@ -1,14 +1,19 @@
-﻿using StardewModdingAPI;
+using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Locations;
+using MineShaftLocation = StardewValley.Locations.MineShaft;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class MineShaft
+/// <summary>
+/// Reduces sanity based on the current mine shaft type and danger level.
+/// </summary>
+internal class MineShaft : ITimeRelatedBehavior
 {
-    private static long wait;
+    private const string SAVE_KEY = "DontStarve.Sanity.MineShaft";
+    private long wait;
 
-    internal static void update(long _)
+    public void Update(long _)
     {
         if (wait > 0)
         {
@@ -17,82 +22,68 @@ internal static class MineShaft
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var location = Game1.currentLocation;
         var value = 0.0;
-        if (location is StardewValley.Locations.MineShaft mineShaft)
+
+        if (location is MineShaftLocation mineShaft)
         {
-            // 矿井
             value = 0.0588;
-            // 黑暗层
             if (mineShaft.isDarkArea())
                 value = 0.588;
-
-            // 骷髅矿井
             if (mineShaft.mineLevel > 120)
                 value = 0.1176;
-
-            // 骷髅矿井 880 层以上
             if (mineShaft.mineLevel > 1000)
                 value = 0.2352;
-
-            // 采石场矿井
             if (mineShaft.isQuarryArea)
                 value = 0.1764;
-
-            // 感染层
             if (mineShaft.isSlimeArea)
                 value += 0.1176;
-
-            // 地牢层
             if (mineShaft.isMonsterArea)
                 value += 0.2352;
-
-            // 史前层
             if (mineShaft.isDinoArea)
                 value += 0.2352;
-
-            // 危险矿井
             if (mineShaft.GetAdditionalDifficulty() > 0)
             {
-                // 骷髅矿井
                 if (mineShaft.mineLevel > 120)
                     value += 0.2352;
                 else
                     value += 0.1176;
             }
         }
-        // 火山矿井
         else if (location is VolcanoDungeon)
         {
             value = 0.1176;
         }
 
         if (value > 0)
-            player.setSanity(player.getSanity() - value);
+            player.SetSanity(player.GetSanity() - value);
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<MineShaftData>("DontStarve.Sanity.MineShaft");
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<MineShaftData>(SAVE_KEY);
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.MineShaft", new MineShaftData { wait = wait });
+        helper.Data.WriteSaveData(SAVE_KEY, new MineShaftData { Wait = wait });
     }
 }
 
 internal class MineShaftData
 {
-    internal long wait { get; init; }
+    public long Wait { get; init; }
 }

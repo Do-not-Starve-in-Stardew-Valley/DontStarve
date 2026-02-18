@@ -1,14 +1,17 @@
-using DontStarve.Player.Stats.Sanity;
+using System;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve.Buff.Buffs;
+namespace DontStarve.Player.Stats.Hunger;
 
-internal class SanityRestoreBuff : ITimeRelatedBuff
+/// <summary>
+/// Drains hunger over time and applies HP penalties when hunger reaches zero.
+/// Driven by MinuteTimeHelper ticks.
+/// </summary>
+internal class HungerCycle : ITimeRelatedBehavior
 {
-    private const string SANITY_RESTORE_BUFF_ID = "DS_BUFF_SANITY_RESTORE";
-    private const string SAVE_KEY = "DontStarve.Buff.SanityRestore";
-    private bool lastHasBuff;
+    private const string SAVE_KEY = "DontStarve.Hunger.HungerCycle";
+    private bool lastHasHunger;
     private long lastTime;
     private long wait;
 
@@ -24,24 +27,27 @@ internal class SanityRestoreBuff : ITimeRelatedBuff
         if (player == null)
             return;
 
-        var hasBuff = player.hasBuff(SANITY_RESTORE_BUFF_ID);
-        if (hasBuff && !lastHasBuff)
+        if (player.GetHunger() > 0)
         {
-            lastTime = time;
-            wait = 0;
+            player.SetHunger(player.GetHunger() - 0.052f);
+            lastHasHunger = true;
         }
-
-        if (hasBuff)
+        else
         {
+            if (lastHasHunger)
+                if (player.health > 0)
+                    player.health -= Math.Min(4, player.health);
+
             var delta = time - lastTime;
             if (delta >= 3)
             {
-                player.SetSanity(player.GetSanity() + 1);
+                if (player.health > 0)
+                    player.health -= Math.Min(4, player.health);
                 lastTime = time;
             }
-        }
 
-        lastHasBuff = hasBuff;
+            lastHasHunger = false;
+        }
     }
 
     public void Sync(long time, long delta)
@@ -55,8 +61,8 @@ internal class SanityRestoreBuff : ITimeRelatedBuff
 
     public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<SanityRestoreData>(SAVE_KEY);
-        lastHasBuff = data?.LastHasBuff ?? false;
+        var data = helper.Data.ReadSaveData<HungerCycleData>(SAVE_KEY);
+        lastHasHunger = data?.LastHasHunger ?? false;
         lastTime = data?.LastTime ?? 0;
         wait = data?.Wait ?? 0;
     }
@@ -65,9 +71,9 @@ internal class SanityRestoreBuff : ITimeRelatedBuff
     {
         helper.Data.WriteSaveData(
             SAVE_KEY,
-            new SanityRestoreData
+            new HungerCycleData
             {
-                LastHasBuff = lastHasBuff,
+                LastHasHunger = lastHasHunger,
                 LastTime = lastTime,
                 Wait = wait,
             }
@@ -75,9 +81,9 @@ internal class SanityRestoreBuff : ITimeRelatedBuff
     }
 }
 
-internal class SanityRestoreData
+internal class HungerCycleData
 {
-    public bool LastHasBuff { get; init; }
+    public bool LastHasHunger { get; init; }
     public long LastTime { get; init; }
     public long Wait { get; init; }
 }

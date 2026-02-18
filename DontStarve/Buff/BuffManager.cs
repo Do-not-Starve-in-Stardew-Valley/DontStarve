@@ -38,15 +38,31 @@ internal static class BuffManager
         helper.Events.GameLoop.Saving += (_, _) => Save(helper);
 
         // Non-time-related buffs
-        nonTimeRelatedBuffs.ForEach(b => b.Init(helper));
+        foreach (var b in nonTimeRelatedBuffs)
+            b.Init(helper);
     }
 
-    private static void Update(ulong time) => timeRelatedBuffs.ForEach(b => b.Update((long)time));
+    private static void Update(ulong time)
+    {
+        foreach (var b in timeRelatedBuffs)
+            b.Update((long)time);
+    }
 
-    private static void Sync(ulong time, long delta) =>
-        timeRelatedBuffs.ForEach(b => b.Sync((long)time, delta));
+    private static void Sync(ulong time, long delta)
+    {
+        foreach (var b in timeRelatedBuffs)
+            b.Sync((long)time, delta);
+    }
 
-    private static void Load(IModHelper helper) => timeRelatedBuffs.ForEach(b => b.Load(helper));
+    private static void Load(IModHelper helper)
+    {
+        foreach (var b in timeRelatedBuffs)
+            b.Load(helper);
+    }
 
-    private static void Save(IModHelper helper) => timeRelatedBuffs.ForEach(b => b.Save(helper));
+    private static void Save(IModHelper helper)
+    {
+        foreach (var b in timeRelatedBuffs)
+            b.Save(helper);
+    }
 }

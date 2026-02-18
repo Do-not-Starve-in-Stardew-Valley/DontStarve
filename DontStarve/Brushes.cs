@@ -1,5 +1,5 @@
-﻿using DontStarve.Player.Hunger;
-using DontStarve.Player.Sanity;
+﻿using DontStarve.Player.Stats.Hunger;
+using DontStarve.Player.Stats.Sanity;
 using Microsoft.Xna.Framework;
 using StardewValley;
 
@@ -21,7 +21,7 @@ internal static class Brushes
                 return emptySanityBrush;
             }
 
-            var percent = Game1.player.getSanity() / Game1.player.getMaxSanity();
+            var percent = Game1.player.GetSanity() / Game1.player.GetMaxSanity();
             var lerpR = fullSanityBrush.R - emptySanityBrush.R;
             var lerpG = fullSanityBrush.G - emptySanityBrush.G;
             var lerpB = fullSanityBrush.B - emptySanityBrush.B;
@@ -42,7 +42,7 @@ internal static class Brushes
                 return emptyHungerBrush;
             }
 
-            var percent = Game1.player.getHunger() / Game1.player.getMaxHunger();
+            var percent = Game1.player.GetHunger() / Game1.player.GetMaxHunger();
             var lerpR = fullHungerBrush.R - emptyHungerBrush.R;
             var lerpG = fullHungerBrush.G - emptyHungerBrush.G;
             var lerpB = fullHungerBrush.B - emptyHungerBrush.B;

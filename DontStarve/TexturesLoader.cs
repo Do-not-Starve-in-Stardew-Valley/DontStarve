@@ -14,6 +14,16 @@ internal static class TextureLoader
     public static Texture2D HungerContainer { get; private set; } = null!;
     private static Color? sanityCache;
     private static Color? hungerCache;
+    public const int ContainerScale = 4;
+    public const int FillerWidthMultiplier = 6;
+    public static int HungerContainerScaledWidth => HungerContainer.Width * ContainerScale;
+    public static int HungerContainerScaledHeight => HungerContainer.Height * ContainerScale;
+    public static int SanityContainerScaledWidth => SanityContainer.Width * ContainerScale;
+    public static int SanityContainerScaledHeight => SanityContainer.Height * ContainerScale;
+    public static int HungerFillerScaledWidth =>
+        HungerFiller.Width * FillerWidthMultiplier * Game1.pixelZoom;
+    public static int SanityFillerScaledWidth =>
+        SanityFiller.Width * FillerWidthMultiplier * Game1.pixelZoom;
 
     /// <summary>
     /// Gets the 1x1 sanity filler texture

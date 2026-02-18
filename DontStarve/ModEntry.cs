@@ -1,6 +1,6 @@
 ﻿using DontStarve.Buff;
-using DontStarve.Player.Hunger;
-using DontStarve.Player.Sanity;
+using DontStarve.Display;
+using DontStarve.Player;
 using StardewModdingAPI;
 
 namespace DontStarve;
@@ -14,9 +14,7 @@ internal class ModEntry : Mod
     {
         TextureLoader.Initialize(helper.ModContent);
         BuffManager.Initialize(helper);
-        Sanity.init(helper);
-        Hunger.init(helper);
-
-        helper.Events.Display.RenderingHud += (_, e) => Hud.OnRenderingHud(helper, e);
+        StatManager.Initialize(helper);
+        DisplayManager.Initialize(helper);
     }
 }

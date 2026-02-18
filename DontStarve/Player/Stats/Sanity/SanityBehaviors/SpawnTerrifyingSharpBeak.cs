@@ -1,19 +1,20 @@
-﻿using System;
+using System;
 using DontStarve.Critter;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class SpawnTerrifyingSharpBeak
+internal class SpawnTerrifyingSharpBeak : ITimeRelatedBehavior
 {
-    private static double lastSanity;
-    private static long lastTime;
-    private static long wait;
-    private static readonly Random random = new();
+    private const string SAVE_KEY = "DontStarve.Sanity.SpawnTerrifyingSharpBeak";
+    private double lastSanity;
+    private long lastTime;
+    private long wait;
+    private readonly Random random = new();
 
-    internal static void update(long time)
+    public void Update(long time)
     {
         if (wait > 0)
         {
@@ -22,12 +23,15 @@ internal static class SpawnTerrifyingSharpBeak
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var location = Game1.currentLocation;
 
-        if (player.getSanity() <= player.getMaxSanity() * 0.5)
+        if (player.GetSanity() <= player.GetMaxSanity() * 0.5)
         {
             var delta = time - lastTime;
-            if (delta >= 20 || lastSanity > player.getMaxSanity() * 0.5)
+            if (delta >= 20 || lastSanity > player.GetMaxSanity() * 0.5)
             {
                 var playerPosition = player.Position;
                 var xStart = player.Position.X - 15 * Game1.tileSize;
@@ -52,37 +56,35 @@ internal static class SpawnTerrifyingSharpBeak
             }
         }
 
-        lastSanity = player.getSanity();
+        lastSanity = player.GetSanity();
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<SpawnTerrifyingSharpBeakData>(
-            "DontStarve.Sanity.SpawnTerrifyingSharpBeak"
-        );
-        lastSanity = data?.lastSanity ?? 0;
-        lastTime = data?.lastTime ?? 0;
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<SpawnTerrifyingSharpBeakData>(SAVE_KEY);
+        lastSanity = data?.LastSanity ?? 0;
+        lastTime = data?.LastTime ?? 0;
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
         helper.Data.WriteSaveData(
-            "DontStarve.Sanity.SpawnTerrifyingSharpBeak",
+            SAVE_KEY,
             new SpawnTerrifyingSharpBeakData
             {
-                lastSanity = lastSanity,
-                lastTime = lastTime,
-                wait = wait,
+                LastSanity = lastSanity,
+                LastTime = lastTime,
+                Wait = wait,
             }
         );
     }
@@ -90,7 +92,7 @@ internal static class SpawnTerrifyingSharpBeak
 
 internal class SpawnTerrifyingSharpBeakData
 {
-    internal double lastSanity { get; init; }
-    internal long lastTime { get; init; }
-    internal long wait { get; init; }
+    public double LastSanity { get; init; }
+    public long LastTime { get; init; }
+    public long Wait { get; init; }
 }

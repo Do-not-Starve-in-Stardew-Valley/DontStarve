@@ -1,19 +1,20 @@
-﻿using System;
+using System;
 using DontStarve.Critter;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class SpawnDarkWatcher
+internal class SpawnDarkWatcher : ITimeRelatedBehavior
 {
-    private static double lastSanity;
-    private static long lastTime;
-    private static long wait;
-    private static readonly Random random = new();
+    private const string SAVE_KEY = "DontStarve.Sanity.SpawnDarkWatcher";
+    private double lastSanity;
+    private long lastTime;
+    private long wait;
+    private readonly Random random = new();
 
-    internal static void update(long time)
+    public void Update(long time)
     {
         if (wait > 0)
         {
@@ -22,12 +23,15 @@ internal static class SpawnDarkWatcher
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var location = Game1.currentLocation;
 
-        if (player.getSanity() <= player.getMaxSanity() * 0.65)
+        if (player.GetSanity() <= player.GetMaxSanity() * 0.65)
         {
             var delta = time - lastTime;
-            if (delta >= 20 || lastSanity > player.getMaxSanity() * 0.65)
+            if (delta >= 20 || lastSanity > player.GetMaxSanity() * 0.65)
             {
                 var xStart = Game1.viewport.X;
                 var xEnd = Game1.viewport.Width + Game1.viewport.X;
@@ -47,37 +51,35 @@ internal static class SpawnDarkWatcher
             }
         }
 
-        lastSanity = player.getSanity();
+        lastSanity = player.GetSanity();
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<SpawnDarkWatcherData>(
-            "DontStarve.Sanity.SpawnDarkWatcher"
-        );
-        lastSanity = data?.lastSanity ?? 0;
-        lastTime = data?.lastTime ?? 0;
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<SpawnDarkWatcherData>(SAVE_KEY);
+        lastSanity = data?.LastSanity ?? 0;
+        lastTime = data?.LastTime ?? 0;
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
         helper.Data.WriteSaveData(
-            "DontStarve.Sanity.SpawnDarkWatcher",
+            SAVE_KEY,
             new SpawnDarkWatcherData
             {
-                lastSanity = lastSanity,
-                lastTime = lastTime,
-                wait = wait,
+                LastSanity = lastSanity,
+                LastTime = lastTime,
+                Wait = wait,
             }
         );
     }
@@ -85,7 +87,7 @@ internal static class SpawnDarkWatcher
 
 internal class SpawnDarkWatcherData
 {
-    internal double lastSanity { get; init; }
-    internal long lastTime { get; init; }
-    internal long wait { get; init; }
+    public double LastSanity { get; init; }
+    public long LastTime { get; init; }
+    public long Wait { get; init; }
 }

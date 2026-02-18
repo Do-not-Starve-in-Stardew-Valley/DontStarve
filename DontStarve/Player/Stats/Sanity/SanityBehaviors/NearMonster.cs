@@ -1,24 +1,28 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Monsters;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class NearMonster
+/// <summary>
+/// Reduces sanity based on proximity to monsters. Closer and stronger monsters drain more.
+/// </summary>
+internal class NearMonster : ITimeRelatedBehavior
 {
-    private static Dictionary<string, double> monsterSanity = null!;
-    private static long wait;
+    private const string SAVE_KEY = "DontStarve.Sanity.NearMonster";
+    private Dictionary<string, double> monsterSanity = null!;
+    private long wait;
 
-    internal static void init(IModHelper helper)
+    public void Init(IModHelper helper)
     {
         monsterSanity = helper.ModContent.Load<Dictionary<string, double>>(
             "assets/sanity/monster.json"
         );
     }
 
-    internal static void update(long _)
+    public void Update(long _)
     {
         if (wait > 0)
         {
@@ -27,6 +31,9 @@ internal static class NearMonster
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var location = Game1.currentLocation;
         var playerPosition = player.Tile;
         var value = 0.0;
@@ -40,34 +47,31 @@ internal static class NearMonster
         }
 
         if (value > 0)
-            player.setSanity(player.getSanity() - value);
+            player.SetSanity(player.GetSanity() - value);
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<NearMonsterData>("DontStarve.Sanity.NearMonster");
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<NearMonsterData>(SAVE_KEY);
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData(
-            "DontStarve.Sanity.NearMonster",
-            new NearMonsterData { wait = wait }
-        );
+        helper.Data.WriteSaveData(SAVE_KEY, new NearMonsterData { Wait = wait });
     }
 }
 
 internal class NearMonsterData
 {
-    internal long wait { get; init; }
+    public long Wait { get; init; }
 }

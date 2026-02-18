@@ -1,16 +1,19 @@
-﻿using System;
 using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Characters;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class NearNpc
+/// <summary>
+/// Adjusts sanity based on nearby NPCs, villagers, pets, children, and Junimos.
+/// </summary>
+internal class NearNpc : ITimeRelatedBehavior
 {
-    private static long wait;
+    private const string SAVE_KEY = "DontStarve.Sanity.NearNpc";
+    private long wait;
 
-    internal static void update(long _)
+    public void Update(long _)
     {
         if (wait > 0)
         {
@@ -19,16 +22,17 @@ internal static class NearNpc
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var location = Game1.currentLocation;
-        var playerPosition = player.Position;
+        var playerPosition = player.Tile;
         var value = 0.0;
+
         foreach (var villager in location.characters.Where(npc => npc.IsVillager))
         {
-            var villagerPosition = villager.Position;
-            var distance = Math.Sqrt(
-                Math.Pow(villagerPosition.X - playerPosition.X, 2)
-                    + Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
-            );
+            var villagerPosition = villager.Tile;
+            var distance = Util.distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
             {
@@ -49,11 +53,8 @@ internal static class NearNpc
 
         foreach (var npc in location.characters.Where(npc => npc is Child or Pet))
         {
-            var villagerPosition = npc.Position;
-            var distance = Math.Sqrt(
-                Math.Pow(villagerPosition.X - playerPosition.X, 2)
-                    + Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
-            );
+            var villagerPosition = npc.Tile;
+            var distance = Util.distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
             {
@@ -77,31 +78,31 @@ internal static class NearNpc
         }
 
         if (value > 0)
-            player.setSanity(player.getSanity() + value);
+            player.SetSanity(player.GetSanity() + value);
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<NearNpcData>("DontStarve.Sanity.NearNpc");
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<NearNpcData>(SAVE_KEY);
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.NearNpc", new NearNpcData { wait = wait });
+        helper.Data.WriteSaveData(SAVE_KEY, new NearNpcData { Wait = wait });
     }
 }
 
 internal class NearNpcData
 {
-    internal long wait { get; init; }
+    public long Wait { get; init; }
 }

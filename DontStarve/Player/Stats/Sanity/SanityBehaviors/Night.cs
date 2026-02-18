@@ -1,14 +1,18 @@
-﻿using System;
+using System;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve.Player.Sanity;
+namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
-internal static class Night
+/// <summary>
+/// Adjusts sanity over time based on the in-game time of day (nightfall lowers sanity).
+/// </summary>
+internal class Night : ITimeRelatedBehavior
 {
-    private static long wait;
+    private const string SAVE_KEY = "DontStarve.Sanity.Night";
+    private long wait;
 
-    internal static void update(long time)
+    public void Update(long time)
     {
         if (wait > 0)
         {
@@ -17,6 +21,9 @@ internal static class Night
         }
 
         var player = Game1.player;
+        if (player == null)
+            return;
+
         var timeOfDay = time % (60 * 24);
         var lastTimeOfDay = (time - 1) % (60 * 24);
         var nightfallTime = 0L;
@@ -34,33 +41,33 @@ internal static class Night
 
         const long midnightEnd = 6 * 60;
 
-        // 当前时间是白天
+        // Current time is daytime
         if (timeOfDay < nightfallStart && timeOfDay >= midnightEnd)
         {
-            // 上次时间是凌晨
+            // Previous time was pre-dawn
             if (lastTimeOfDay < midnightEnd)
                 midnightTime = midnightEnd - lastTimeOfDay;
         }
-        // 当前时间是黄昏
+        // Current time is dusk/evening
         else if (timeOfDay >= nightfallStart)
         {
-            // 上次时间是白天
+            // Previous time was daytime
             if (lastTimeOfDay < nightfallStart && lastTimeOfDay >= midnightEnd)
                 nightfallTime = timeOfDay - nightfallStart;
-            // 上次时间是黄昏
+            // Previous time was also evening
             else
                 nightfallTime = timeOfDay - lastTimeOfDay;
         }
-        // 当前时间是凌晨
+        // Current time is pre-dawn
         else
         {
-            // 上次时间是黄昏
+            // Previous time was evening
             if (lastTimeOfDay >= nightfallStart)
             {
                 nightfallTime = 60 * 24 - lastTimeOfDay;
                 midnightTime = timeOfDay;
             }
-            // 上次时间是凌晨
+            // Previous time was also pre-dawn
             else
             {
                 midnightTime = timeOfDay - lastTimeOfDay;
@@ -71,31 +78,31 @@ internal static class Night
         var midnightSanity = midnightTime * (Game1.currentLocation.IsOutdoors ? 0.1176 : 0.0588);
         var value = nightfallSanity + midnightSanity;
         if (value > 0)
-            player.setSanity(player.getSanity() - value);
+            player.SetSanity(player.GetSanity() - value);
     }
 
-    internal static void sync(long time, long delta)
+    public void Sync(long time, long delta)
     {
         if (delta < 0)
             wait += -delta;
         else
             for (var i = 0; i <= delta; i++)
-                update(time);
+                Update(time);
     }
 
-    internal static void load(IModHelper helper)
+    public void Load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<NightData>("DontStarve.Sanity.Night");
-        wait = data?.wait ?? 0;
+        var data = helper.Data.ReadSaveData<NightData>(SAVE_KEY);
+        wait = data?.Wait ?? 0;
     }
 
-    internal static void save(IModHelper helper)
+    public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.Night", new NightData { wait = wait });
+        helper.Data.WriteSaveData(SAVE_KEY, new NightData { Wait = wait });
     }
 }
 
 internal class NightData
 {
-    internal long wait { get; init; }
+    public long Wait { get; init; }
 }

@@ -41,7 +41,11 @@ internal static class SpawnMrSkitts
                         xStart + random.NextSingle() * (xEnd - xStart),
                         yStart + random.NextSingle() * (yEnd - yStart)
                     );
-                } while (Util.distance(playerPosition, spawnPosition) is > 10 * Game1.tileSize or < 5 * Game1.tileSize);
+                } while (
+                    Util.distance(playerPosition, spawnPosition)
+                        is > 10 * Game1.tileSize
+                            or < 5 * Game1.tileSize
+                );
 
                 location.critters?.Add(new MrSkitts(spawnPosition));
                 lastTime = time;
@@ -70,12 +74,15 @@ internal static class SpawnMrSkitts
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.SpawnMrSkitts", new SpawnMrSkittsData
-        {
-            lastSanity = lastSanity,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.SpawnMrSkitts",
+            new SpawnMrSkittsData
+            {
+                lastSanity = lastSanity,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

@@ -39,7 +39,8 @@ internal static class SpawnDarkWatcher
                 );
                 if (spawnPosition.X > spawnPosition.Y)
                     spawnPosition.Y = yStart;
-                else if (spawnPosition.X < spawnPosition.Y) spawnPosition.X = xStart;
+                else if (spawnPosition.X < spawnPosition.Y)
+                    spawnPosition.X = xStart;
 
                 location.critters?.Add(new DarkWatcher(spawnPosition));
                 lastTime = time;
@@ -60,7 +61,9 @@ internal static class SpawnDarkWatcher
 
     internal static void load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<SpawnDarkWatcherData>("DontStarve.Sanity.SpawnDarkWatcher");
+        var data = helper.Data.ReadSaveData<SpawnDarkWatcherData>(
+            "DontStarve.Sanity.SpawnDarkWatcher"
+        );
         lastSanity = data?.lastSanity ?? 0;
         lastTime = data?.lastTime ?? 0;
         wait = data?.wait ?? 0;
@@ -68,12 +71,15 @@ internal static class SpawnDarkWatcher
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.SpawnDarkWatcher", new SpawnDarkWatcherData
-        {
-            lastSanity = lastSanity,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.SpawnDarkWatcher",
+            new SpawnDarkWatcherData
+            {
+                lastSanity = lastSanity,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

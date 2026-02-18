@@ -11,27 +11,29 @@ internal static class Buff
 
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper")!;
-            timeApi.onUpdate.Add(update);
-            timeApi.onSync.Add(sync);
+            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+            if (timeApi == null)
+                return;
+            timeApi.OnUpdate.Add(update);
+            timeApi.OnSync.Add(sync);
         };
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => load(helper);
         helper.Events.GameLoop.Saving += (_, _) => save(helper);
     }
 
-    private static void update(long time)
+    private static void update(ulong time)
     {
-        Health.update(time);
-        Stamina.update(time);
-        Sanity.update(time);
+        Health.update((long)time);
+        Stamina.update((long)time);
+        Sanity.update((long)time);
     }
 
-    private static void sync(long time, long delta)
+    private static void sync(ulong time, long delta)
     {
-        Health.sync(time, delta);
-        Stamina.sync(time, delta);
-        Sanity.sync(time, delta);
+        Health.sync((long)time, delta);
+        Stamina.sync((long)time, delta);
+        Sanity.sync((long)time, delta);
     }
 
     private static void load(IModHelper helper)

@@ -34,7 +34,8 @@ internal static class TimeCycle
             var delta = time - lastTime;
             if (delta >= 3)
             {
-                if (player.health < player.maxHealth) player.health -= Math.Min(4, player.health);
+                if (player.health < player.maxHealth)
+                    player.health -= Math.Min(4, player.health);
 
                 lastTime = time;
             }
@@ -62,12 +63,15 @@ internal static class TimeCycle
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.Night", new TimeCycleData
-        {
-            lastHasHunger = lastHasHunger,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.Night",
+            new TimeCycleData
+            {
+                lastHasHunger = lastHasHunger,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

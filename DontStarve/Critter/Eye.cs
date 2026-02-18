@@ -9,10 +9,7 @@ public class Eye : StardewValley.BellsAndWhistles.Critter
     {
         this.position = position;
         startingPosition = position;
-        sprite = new AnimatedSprite(critterTexture, baseFrame, 32, 32)
-        {
-            loop = true
-        };
+        sprite = new AnimatedSprite(critterTexture, baseFrame, 32, 32) { loop = true };
     }
 
     public override bool update(GameTime time, GameLocation environment)

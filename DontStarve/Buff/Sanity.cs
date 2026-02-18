@@ -60,12 +60,15 @@ internal static class Sanity
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Buff.Stamina", new SanityData
-        {
-            lastHasBuff = lastHasBuff,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Buff.Stamina",
+            new SanityData
+            {
+                lastHasBuff = lastHasBuff,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

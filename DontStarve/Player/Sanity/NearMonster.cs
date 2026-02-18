@@ -13,7 +13,9 @@ internal static class NearMonster
 
     internal static void init(IModHelper helper)
     {
-        monsterSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/monster.json");
+        monsterSanity = helper.ModContent.Load<Dictionary<string, double>>(
+            "assets/sanity/monster.json"
+        );
     }
 
     internal static void update(long _)
@@ -33,10 +35,12 @@ internal static class NearMonster
             var monsterPosition = monster.Tile;
             var distance = Util.distance(playerPosition, monsterPosition);
             var percentage = 1 - distance / 10;
-            if (percentage > 0) value += monsterSanity.GetValueOrDefault(monster.Name, 0) * percentage;
+            if (percentage > 0)
+                value += monsterSanity.GetValueOrDefault(monster.Name, 0) * percentage;
         }
 
-        if (value > 0) player.setSanity(player.getSanity() - value);
+        if (value > 0)
+            player.setSanity(player.getSanity() - value);
     }
 
     internal static void sync(long time, long delta)
@@ -56,10 +60,10 @@ internal static class NearMonster
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.NearMonster", new NearMonsterData
-        {
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.NearMonster",
+            new NearMonsterData { wait = wait }
+        );
     }
 }
 

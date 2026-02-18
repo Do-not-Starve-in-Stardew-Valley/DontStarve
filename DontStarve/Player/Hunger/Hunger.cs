@@ -15,23 +15,25 @@ public static class Hunger
 
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper")!;
-            timeApi.onUpdate.Add(update);
-            timeApi.onSync.Add(sync);
+            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+            if (timeApi == null)
+                return;
+            timeApi.OnUpdate.Add(update);
+            timeApi.OnSync.Add(sync);
         };
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => load(helper);
         helper.Events.GameLoop.Saving += (_, _) => save(helper);
     }
 
-    private static void update(long time)
+    private static void update(ulong time)
     {
-        TimeCycle.update(time);
+        TimeCycle.update((long)time);
     }
 
-    private static void sync(long time, long delta)
+    private static void sync(ulong time, long delta)
     {
-        TimeCycle.sync(time, delta);
+        TimeCycle.sync((long)time, delta);
     }
 
     private static void load(IModHelper helper)
@@ -43,10 +45,7 @@ public static class Hunger
 
     private static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Hunger", new HungerData
-        {
-            hunger = farmerHunger
-        });
+        helper.Data.WriteSaveData("DontStarve.Hunger", new HungerData { hunger = farmerHunger });
         TimeCycle.save(helper);
     }
 

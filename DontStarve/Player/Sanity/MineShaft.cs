@@ -24,25 +24,32 @@ internal static class MineShaft
             // 矿井
             value = 0.0588;
             // 黑暗层
-            if (mineShaft.isDarkArea()) value = 0.588;
+            if (mineShaft.isDarkArea())
+                value = 0.588;
 
             // 骷髅矿井
-            if (mineShaft.mineLevel > 120) value = 0.1176;
+            if (mineShaft.mineLevel > 120)
+                value = 0.1176;
 
             // 骷髅矿井 880 层以上
-            if (mineShaft.mineLevel > 1000) value = 0.2352;
+            if (mineShaft.mineLevel > 1000)
+                value = 0.2352;
 
             // 采石场矿井
-            if (mineShaft.isQuarryArea) value = 0.1764;
+            if (mineShaft.isQuarryArea)
+                value = 0.1764;
 
             // 感染层
-            if (mineShaft.isSlimeArea) value += 0.1176;
+            if (mineShaft.isSlimeArea)
+                value += 0.1176;
 
             // 地牢层
-            if (mineShaft.isMonsterArea) value += 0.2352;
+            if (mineShaft.isMonsterArea)
+                value += 0.2352;
 
             // 史前层
-            if (mineShaft.isDinoArea) value += 0.2352;
+            if (mineShaft.isDinoArea)
+                value += 0.2352;
 
             // 危险矿井
             if (mineShaft.GetAdditionalDifficulty() > 0)
@@ -60,7 +67,8 @@ internal static class MineShaft
             value = 0.1176;
         }
 
-        if (value > 0) player.setSanity(player.getSanity() - value);
+        if (value > 0)
+            player.setSanity(player.getSanity() - value);
     }
 
     internal static void sync(long time, long delta)
@@ -80,10 +88,7 @@ internal static class MineShaft
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.MineShaft", new MineShaftData
-        {
-            wait = wait
-        });
+        helper.Data.WriteSaveData("DontStarve.Sanity.MineShaft", new MineShaftData { wait = wait });
     }
 }
 

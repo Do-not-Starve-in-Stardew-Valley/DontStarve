@@ -22,14 +22,15 @@ internal static class Night
         var nightfallTime = 0L;
         var midnightTime = 0L;
 
-        var nightfallStart = Game1.season switch
-        {
-            Season.Spring => 20,
-            Season.Summer => 20,
-            Season.Fall => 19,
-            Season.Winter => 18,
-            _ => throw new Exception("Unknown Season")
-        } * 60;
+        var nightfallStart =
+            Game1.season switch
+            {
+                Season.Spring => 20,
+                Season.Summer => 20,
+                Season.Fall => 19,
+                Season.Winter => 18,
+                _ => throw new Exception("Unknown Season"),
+            } * 60;
 
         const long midnightEnd = 6 * 60;
 
@@ -37,7 +38,8 @@ internal static class Night
         if (timeOfDay < nightfallStart && timeOfDay >= midnightEnd)
         {
             // 上次时间是凌晨
-            if (lastTimeOfDay < midnightEnd) midnightTime = midnightEnd - lastTimeOfDay;
+            if (lastTimeOfDay < midnightEnd)
+                midnightTime = midnightEnd - lastTimeOfDay;
         }
         // 当前时间是黄昏
         else if (timeOfDay >= nightfallStart)
@@ -68,7 +70,8 @@ internal static class Night
         var nightfallSanity = nightfallTime * 0.0588;
         var midnightSanity = midnightTime * (Game1.currentLocation.IsOutdoors ? 0.1176 : 0.0588);
         var value = nightfallSanity + midnightSanity;
-        if (value > 0) player.setSanity(player.getSanity() - value);
+        if (value > 0)
+            player.setSanity(player.getSanity() - value);
     }
 
     internal static void sync(long time, long delta)
@@ -88,10 +91,7 @@ internal static class Night
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.Night", new NightData
-        {
-            wait = wait
-        });
+        helper.Data.WriteSaveData("DontStarve.Sanity.Night", new NightData { wait = wait });
     }
 }
 

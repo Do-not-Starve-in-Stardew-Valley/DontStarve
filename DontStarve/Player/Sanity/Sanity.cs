@@ -18,9 +18,11 @@ public static class Sanity
 
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper")!;
-            timeApi.onUpdate.Add(update);
-            timeApi.onSync.Add(sync);
+            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+            if (timeApi == null)
+                return;
+            timeApi.OnUpdate.Add(update);
+            timeApi.OnSync.Add(sync);
         };
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => load(helper);
@@ -29,34 +31,34 @@ public static class Sanity
         helper.Events.GameLoop.DayEnding += (_, _) => dayEnding();
     }
 
-    private static void update(long time)
+    private static void update(ulong time)
     {
-        NearMonster.update(time);
-        Night.update(time);
-        Wearing.update(time);
-        NearNpc.update(time);
-        MineShaft.update(time);
-        SpawnMrSkitts.update(time);
-        SpawnDarkHand.update(time);
-        SpawnDarkWatcher.update(time);
-        SpawnEye.update(time);
-        SpawnCreeperFear.update(time);
-        SpawnTerrifyingSharpBeak.update(time);
+        NearMonster.update((long)time);
+        Night.update((long)time);
+        Wearing.update((long)time);
+        NearNpc.update((long)time);
+        MineShaft.update((long)time);
+        SpawnMrSkitts.update((long)time);
+        SpawnDarkHand.update((long)time);
+        SpawnDarkWatcher.update((long)time);
+        SpawnEye.update((long)time);
+        SpawnCreeperFear.update((long)time);
+        SpawnTerrifyingSharpBeak.update((long)time);
     }
 
-    private static void sync(long time, long delta)
+    private static void sync(ulong time, long delta)
     {
-        NearMonster.sync(time, delta);
-        Night.sync(time, delta);
-        Wearing.sync(time, delta);
-        NearNpc.sync(time, delta);
-        MineShaft.sync(time, delta);
-        SpawnMrSkitts.sync(time, delta);
-        SpawnDarkHand.sync(time, delta);
-        SpawnDarkWatcher.sync(time, delta);
-        SpawnEye.sync(time, delta);
-        SpawnCreeperFear.sync(time, delta);
-        SpawnTerrifyingSharpBeak.sync(time, delta);
+        NearMonster.sync((long)time, delta);
+        Night.sync((long)time, delta);
+        Wearing.sync((long)time, delta);
+        NearNpc.sync((long)time, delta);
+        MineShaft.sync((long)time, delta);
+        SpawnMrSkitts.sync((long)time, delta);
+        SpawnDarkHand.sync((long)time, delta);
+        SpawnDarkWatcher.sync((long)time, delta);
+        SpawnEye.sync((long)time, delta);
+        SpawnCreeperFear.sync((long)time, delta);
+        SpawnTerrifyingSharpBeak.sync((long)time, delta);
     }
 
     private static void load(IModHelper helper)
@@ -78,10 +80,7 @@ public static class Sanity
 
     private static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity", new SanityData
-        {
-            sanity = farmerSanity
-        });
+        helper.Data.WriteSaveData("DontStarve.Sanity", new SanityData { sanity = farmerSanity });
         NearMonster.save(helper);
         Night.save(helper);
         Wearing.save(helper);

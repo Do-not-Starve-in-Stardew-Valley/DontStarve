@@ -25,7 +25,8 @@ internal static class Hud
 
     internal static void OnRenderingHud(IModHelper helper, RenderingHudEventArgs e)
     {
-        if (!Context.IsWorldReady || Game1.CurrentEvent != null) return;
+        if (!Context.IsWorldReady || Game1.CurrentEvent != null)
+            return;
         OnRenderingHunger(e);
         OnRenderingSanity(e);
         OnRenderingTooltip(helper, e);
@@ -38,26 +39,26 @@ internal static class Hud
         var maxHunger = player.getMaxHunger();
 
         e.SpriteBatch.Draw(
-            Textures.hungerContainer,
+            TextureLoader.HungerContainer,
             new Rectangle(
                 (int)barPosition.X - 60,
                 (int)barPosition.Y - 240,
-                Textures.hungerContainer.Width * 4,
-                Textures.hungerContainer.Height * 4
+                TextureLoader.HungerContainer.Width * 4,
+                TextureLoader.HungerContainer.Height * 4
             ),
             Color.White
         );
 
         e.SpriteBatch.Draw(
-            Textures.sanityFiller,
+            TextureLoader.HungerFiller,
             new Vector2(barPosition.X - 24, barPosition.Y - 25),
             new Rectangle(
                 0,
                 0,
-                Textures.sanityFiller.Width * 6 * Game1.pixelZoom,
+                TextureLoader.HungerFiller.Width * 6 * Game1.pixelZoom,
                 (int)(hunger / maxHunger * 168)
             ),
-            BarsInformation.hungerColor,
+            Brushes.HungerBrush,
             3.138997f,
             new Vector2(0.5f, 0.5f),
             1f,
@@ -65,17 +66,22 @@ internal static class Hud
             1f
         );
 
-        var mousePosition = new Vector2(Game1.getMousePosition(true).X, Game1.getMousePosition(true).Y);
+        var mousePosition = new Vector2(
+            Game1.getMousePosition(true).X,
+            Game1.getMousePosition(true).Y
+        );
         var checkXGreater = mousePosition.X >= barPosition.X - 60;
-        var checkXLess = mousePosition.X <= barPosition.X - 60 + Textures.sanityContainer.Width * 4;
+        var checkXLess =
+            mousePosition.X <= barPosition.X - 60 + TextureLoader.SanityContainer.Width * 4;
         var checkYGreater = mousePosition.Y >= barPosition.Y - 240;
-        var checkYLess = mousePosition.Y <= barPosition.Y - 240 + Textures.sanityContainer.Height * 4;
+        var checkYLess =
+            mousePosition.Y <= barPosition.Y - 240 + TextureLoader.SanityContainer.Height * 4;
         var checkX = checkXGreater && checkXLess;
         var checkY = checkYGreater && checkYLess;
 
         if (checkX && checkY)
         {
-            var information = $"{Math.Round(hunger)}/{Math.Round(maxHunger)}";
+            var information = $"Hunger: {Math.Round(hunger)}/{Math.Round(maxHunger)}";
             var textSize = Game1.dialogueFont.MeasureString(information);
             var textPosition = new Vector2(-12, textSize.X);
 
@@ -84,7 +90,7 @@ internal static class Hud
                 information,
                 new Vector2(
                     barPosition.X - 60 + textPosition.X,
-                    barPosition.Y - 240 + Textures.sanityContainer.Height + 8
+                    barPosition.Y - 240 + TextureLoader.SanityContainer.Height + 8
                 ),
                 new Color(255, 255, 255),
                 0f,
@@ -103,26 +109,26 @@ internal static class Hud
         var maxSanity = player.getMaxSanity();
 
         e.SpriteBatch.Draw(
-            Textures.sanityContainer,
+            TextureLoader.SanityContainer,
             new Rectangle(
                 (int)barPosition.X,
                 (int)barPosition.Y - 240,
-                Textures.sanityContainer.Width * 4,
-                Textures.sanityContainer.Height * 4
+                TextureLoader.SanityContainer.Width * 4,
+                TextureLoader.SanityContainer.Height * 4
             ),
             Color.White
         );
 
         e.SpriteBatch.Draw(
-            Textures.sanityFiller,
+            TextureLoader.SanityFiller,
             new Vector2(barPosition.X + 36, barPosition.Y - 25),
             new Rectangle(
                 0,
                 0,
-                Textures.sanityFiller.Width * 6 * Game1.pixelZoom,
+                TextureLoader.SanityFiller.Width * 6 * Game1.pixelZoom,
                 (int)(sanity / maxSanity * 168)
             ),
-            BarsInformation.sanityColor,
+            Brushes.SanityBrush,
             3.138997f,
             new Vector2(0.5f, 0.5f),
             1f,
@@ -130,17 +136,21 @@ internal static class Hud
             1f
         );
 
-        var mousePosition = new Vector2(Game1.getMousePosition(true).X, Game1.getMousePosition(true).Y);
+        var mousePosition = new Vector2(
+            Game1.getMousePosition(true).X,
+            Game1.getMousePosition(true).Y
+        );
         var checkXGreater = mousePosition.X >= barPosition.X;
-        var checkXLess = mousePosition.X <= barPosition.X + Textures.sanityContainer.Width * 4;
+        var checkXLess = mousePosition.X <= barPosition.X + TextureLoader.SanityContainer.Width * 4;
         var checkYGreater = mousePosition.Y >= barPosition.Y - 240;
-        var checkYLess = mousePosition.Y <= barPosition.Y - 240 + Textures.sanityContainer.Height * 4;
+        var checkYLess =
+            mousePosition.Y <= barPosition.Y - 240 + TextureLoader.SanityContainer.Height * 4;
         var checkX = checkXGreater && checkXLess;
         var checkY = checkYGreater && checkYLess;
 
         if (checkX && checkY)
         {
-            var information = $"{Math.Round(sanity)}/{Math.Round(maxSanity)}";
+            var information = $"Sanity: {Math.Round(sanity)}/{Math.Round(maxSanity)}";
             var textSize = Game1.dialogueFont.MeasureString(information);
             var textPosition = new Vector2(-12, textSize.X);
 
@@ -149,7 +159,7 @@ internal static class Hud
                 information,
                 new Vector2(
                     barPosition.X + textPosition.X,
-                    barPosition.Y - 240 + Textures.sanityContainer.Height + 8
+                    barPosition.Y - 240 + TextureLoader.SanityContainer.Height + 8
                 ),
                 new Color(255, 255, 255),
                 0f,
@@ -168,10 +178,16 @@ internal static class Hud
         var activeObject = player.ActiveObject;
         if (activeObject != null)
         {
-            double? foodHunger = EatFood.foodHunger.TryGetValue(activeObject.ItemId, out var hungerSanity)
+            double? foodHunger = EatFood.foodHunger.TryGetValue(
+                activeObject.ItemId,
+                out var hungerSanity
+            )
                 ? hungerSanity
                 : null;
-            double? foodSanity = Player.Sanity.EatFood.foodSanity.TryGetValue(activeObject.ItemId, out var sanityValue)
+            double? foodSanity = Player.Sanity.EatFood.foodSanity.TryGetValue(
+                activeObject.ItemId,
+                out var sanityValue
+            )
                 ? sanityValue
                 : null;
             if (foodSanity != null || foodHunger != null)
@@ -179,12 +195,17 @@ internal static class Hud
                 var sizeUi = new Vector2(Game1.uiViewport.Width, Game1.uiViewport.Height);
                 var text = new StringBuilder();
                 if (foodHunger != null)
-                    text.Append(helper.Translation.Get("hunger-tooltip", new { value = foodHunger }));
+                    text.Append(
+                        helper.Translation.Get("hunger-tooltip", new { value = foodHunger })
+                    );
 
-                if (foodHunger != null && foodSanity != null) text.AppendLine();
+                if (foodHunger != null && foodSanity != null)
+                    text.AppendLine();
 
                 if (foodSanity != null)
-                    text.Append(helper.Translation.Get("sanity-tooltip", new { value = foodSanity }));
+                    text.Append(
+                        helper.Translation.Get("sanity-tooltip", new { value = foodSanity })
+                    );
 
                 var textSize = Game1.smallFont.MeasureString(text);
                 var spriteBatch = e.SpriteBatch;

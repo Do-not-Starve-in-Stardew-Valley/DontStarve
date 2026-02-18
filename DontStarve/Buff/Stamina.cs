@@ -62,12 +62,15 @@ internal static class Stamina
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Buff.Stamina", new StaminaData
-        {
-            lastHasBuff = lastHasBuff,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Buff.Stamina",
+            new StaminaData
+            {
+                lastHasBuff = lastHasBuff,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

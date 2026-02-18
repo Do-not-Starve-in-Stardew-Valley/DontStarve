@@ -26,8 +26,8 @@ internal static class NearNpc
         {
             var villagerPosition = villager.Position;
             var distance = Math.Sqrt(
-                Math.Pow(villagerPosition.X - playerPosition.X, 2) +
-                Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
+                Math.Pow(villagerPosition.X - playerPosition.X, 2)
+                    + Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
             );
             var percentage = 1 - distance / 10;
             if (percentage > 0)
@@ -41,7 +41,8 @@ internal static class NearNpc
                     var level = player.getFriendshipHeartLevelForNPC(villager.Name);
                     if (level >= 8)
                         value += 0.588 * percentage;
-                    else if (level >= 5) value += 0.294 * percentage;
+                    else if (level >= 5)
+                        value += 0.294 * percentage;
                 }
             }
         }
@@ -50,8 +51,8 @@ internal static class NearNpc
         {
             var villagerPosition = npc.Position;
             var distance = Math.Sqrt(
-                Math.Pow(villagerPosition.X - playerPosition.X, 2) +
-                Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
+                Math.Pow(villagerPosition.X - playerPosition.X, 2)
+                    + Math.Pow(villagerPosition.Y - playerPosition.Y, 2)
             );
             var percentage = 1 - distance / 10;
             if (percentage > 0)
@@ -71,10 +72,12 @@ internal static class NearNpc
             var villagerPosition = npc.Position;
             var distance = Util.distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
-            if (percentage > 0) value += 0.294;
+            if (percentage > 0)
+                value += 0.294;
         }
 
-        if (value > 0) player.setSanity(player.getSanity() + value);
+        if (value > 0)
+            player.setSanity(player.getSanity() + value);
     }
 
     internal static void sync(long time, long delta)
@@ -94,10 +97,7 @@ internal static class NearNpc
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.NearNpc", new NearNpcData
-        {
-            wait = wait
-        });
+        helper.Data.WriteSaveData("DontStarve.Sanity.NearNpc", new NearNpcData { wait = wait });
     }
 }
 

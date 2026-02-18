@@ -41,7 +41,11 @@ internal static class SpawnEye
                         xStart + random.NextSingle() * (xEnd - xStart),
                         yStart + random.NextSingle() * (yEnd - yStart)
                     );
-                } while (Util.distance(playerPosition, spawnPosition) is > 15 * Game1.tileSize or < 5 * Game1.tileSize);
+                } while (
+                    Util.distance(playerPosition, spawnPosition)
+                        is > 15 * Game1.tileSize
+                            or < 5 * Game1.tileSize
+                );
 
                 location.critters?.Add(new Eye(spawnPosition));
                 lastTime = time;
@@ -70,12 +74,15 @@ internal static class SpawnEye
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.SpawnEye", new SpawnEyeData
-        {
-            lastSanity = lastSanity,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.SpawnEye",
+            new SpawnEyeData
+            {
+                lastSanity = lastSanity,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

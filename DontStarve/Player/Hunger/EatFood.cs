@@ -7,7 +7,7 @@ namespace DontStarve.Player.Hunger;
 internal static class EatFood
 {
     public static Dictionary<string, float> foodHunger { get; private set; } = null!;
-    private static Item? lastFood;
+    private static Item lastFood;
     private static bool lastEating;
 
     internal static void init(IModHelper helper)

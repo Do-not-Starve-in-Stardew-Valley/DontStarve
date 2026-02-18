@@ -41,7 +41,11 @@ internal static class SpawnTerrifyingSharpBeak
                         xStart + random.NextSingle() * (xEnd - xStart),
                         yStart + random.NextSingle() * (yEnd - yStart)
                     );
-                } while (Util.distance(playerPosition, spawnPosition) is > 15 * Game1.tileSize or < 5 * Game1.tileSize);
+                } while (
+                    Util.distance(playerPosition, spawnPosition)
+                        is > 15 * Game1.tileSize
+                            or < 5 * Game1.tileSize
+                );
 
                 location.critters?.Add(new TerrifyingSharpBeak(spawnPosition));
                 lastTime = time;
@@ -62,7 +66,9 @@ internal static class SpawnTerrifyingSharpBeak
 
     internal static void load(IModHelper helper)
     {
-        var data = helper.Data.ReadSaveData<SpawnTerrifyingSharpBeakData>("DontStarve.Sanity.SpawnTerrifyingSharpBeak");
+        var data = helper.Data.ReadSaveData<SpawnTerrifyingSharpBeakData>(
+            "DontStarve.Sanity.SpawnTerrifyingSharpBeak"
+        );
         lastSanity = data?.lastSanity ?? 0;
         lastTime = data?.lastTime ?? 0;
         wait = data?.wait ?? 0;
@@ -70,12 +76,15 @@ internal static class SpawnTerrifyingSharpBeak
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.SpawnTerrifyingSharpBeak", new SpawnTerrifyingSharpBeakData
-        {
-            lastSanity = lastSanity,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Sanity.SpawnTerrifyingSharpBeak",
+            new SpawnTerrifyingSharpBeakData
+            {
+                lastSanity = lastSanity,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

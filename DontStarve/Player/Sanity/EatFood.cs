@@ -8,7 +8,7 @@ namespace DontStarve.Player.Sanity;
 internal static class EatFood
 {
     public static Dictionary<string, double> foodSanity { get; private set; } = null!;
-    private static Item? lastFood;
+    private static Item lastFood;
     private static bool lastEating;
 
     internal static void init(IModHelper helper)
@@ -17,7 +17,7 @@ internal static class EatFood
         helper.Events.GameLoop.UpdateTicking += update;
     }
 
-    private static void update(object? sender, UpdateTickingEventArgs e)
+    private static void update(object sender, UpdateTickingEventArgs e)
     {
         var player = Game1.player;
         var isEating = player.isEating;

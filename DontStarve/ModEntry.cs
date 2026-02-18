@@ -4,12 +4,14 @@ using StardewModdingAPI;
 
 namespace DontStarve;
 
-// ReSharper disable once UnusedType.Global
 internal class ModEntry : Mod
 {
+    /// <summary>
+    /// SMAPI entry point.
+    /// </summary>
     public override void Entry(IModHelper helper)
     {
-        Textures.loadTextures(helper.ModContent);
+        TextureLoader.Initialize(helper.ModContent);
         Buff.Buff.init(helper);
         Sanity.init(helper);
         Hunger.init(helper);

@@ -33,7 +33,8 @@ internal static class Health
             var delta = time - lastTime;
             if (delta >= 3)
             {
-                if (player.health < player.maxHealth) player.health += Math.Min(2, player.maxHealth - player.health);
+                if (player.health < player.maxHealth)
+                    player.health += Math.Min(2, player.maxHealth - player.health);
 
                 lastTime = time;
             }
@@ -61,12 +62,15 @@ internal static class Health
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Buff.Health", new HealthData
-        {
-            lastHasBuff = lastHasBuff,
-            lastTime = lastTime,
-            wait = wait
-        });
+        helper.Data.WriteSaveData(
+            "DontStarve.Buff.Health",
+            new HealthData
+            {
+                lastHasBuff = lastHasBuff,
+                lastTime = lastTime,
+                wait = wait,
+            }
+        );
     }
 }
 

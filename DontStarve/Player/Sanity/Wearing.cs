@@ -18,11 +18,19 @@ internal static class Wearing
     internal static void init(IModHelper helper)
     {
         hatSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/hat.json");
-        bootsSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/boots.json");
+        bootsSanity = helper.ModContent.Load<Dictionary<string, double>>(
+            "assets/sanity/boots.json"
+        );
         ringSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/ring.json");
-        shirtSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/shirt.json");
-        pantsSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/pants.json");
-        trinketSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/trinket.json");
+        shirtSanity = helper.ModContent.Load<Dictionary<string, double>>(
+            "assets/sanity/shirt.json"
+        );
+        pantsSanity = helper.ModContent.Load<Dictionary<string, double>>(
+            "assets/sanity/pants.json"
+        );
+        trinketSanity = helper.ModContent.Load<Dictionary<string, double>>(
+            "assets/sanity/trinket.json"
+        );
     }
 
     internal static void update(long _)
@@ -91,10 +99,7 @@ internal static class Wearing
 
     internal static void save(IModHelper helper)
     {
-        helper.Data.WriteSaveData("DontStarve.Sanity.Wearing", new WearingData
-        {
-            wait = wait
-        });
+        helper.Data.WriteSaveData("DontStarve.Sanity.Wearing", new WearingData { wait = wait });
     }
 }
 

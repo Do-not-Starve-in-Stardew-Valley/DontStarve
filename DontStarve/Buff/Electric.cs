@@ -29,7 +29,9 @@ internal static class Electric
                 player.buffs.GetValues().AttackMultiplier.Set(player.buffs.AttackMultiplier - 0.5F);
                 if (lastHasWeatherAddition)
                 {
-                    player.buffs.GetValues().AttackMultiplier.Set(player.buffs.AttackMultiplier - 1F);
+                    player
+                        .buffs.GetValues()
+                        .AttackMultiplier.Set(player.buffs.AttackMultiplier - 1F);
                     lastHasWeatherAddition = false;
                 }
             }
@@ -37,13 +39,18 @@ internal static class Electric
 
         if (hasBuff)
         {
-            var hasWeatherBuff = Game1.isRaining || Game1.isGreenRain || Game1.isLightning || Game1.isSnowing;
+            var hasWeatherBuff =
+                Game1.isRaining || Game1.isGreenRain || Game1.isLightning || Game1.isSnowing;
             if (hasWeatherBuff != lastHasWeatherAddition)
             {
                 if (hasWeatherBuff)
-                    player.buffs.GetValues().AttackMultiplier.Set(player.buffs.AttackMultiplier + 1F);
+                    player
+                        .buffs.GetValues()
+                        .AttackMultiplier.Set(player.buffs.AttackMultiplier + 1F);
                 else
-                    player.buffs.GetValues().AttackMultiplier.Set(player.buffs.AttackMultiplier - 1F);
+                    player
+                        .buffs.GetValues()
+                        .AttackMultiplier.Set(player.buffs.AttackMultiplier - 1F);
             }
 
             lastHasWeatherAddition = hasWeatherBuff;

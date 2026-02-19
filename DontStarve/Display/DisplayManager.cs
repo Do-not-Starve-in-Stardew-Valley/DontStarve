@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using DontStarve.Display.UIElements;
-using DontStarve.Integration;
+using DontStarve.Interface;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -36,7 +36,7 @@ internal static class DisplayManager
         {
             helper.Events.GameLoop.GameLaunched += (_, _) =>
             {
-                var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+                var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
                 if (timeApi == null)
                     return;
                 timeApi.OnUpdate.Add(Update);

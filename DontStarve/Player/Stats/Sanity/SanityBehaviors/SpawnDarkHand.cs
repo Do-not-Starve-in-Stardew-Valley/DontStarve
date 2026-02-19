@@ -46,7 +46,7 @@ internal class SpawnDarkHand : ITimeRelatedBehavior
                         yStart + random.NextSingle() * (yEnd - yStart)
                     );
                 } while (
-                    Util.distance(playerPosition, spawnPosition)
+                    Util.Distance(playerPosition, spawnPosition)
                         is > 20 * Game1.tileSize
                             or < 15 * Game1.tileSize
                 );

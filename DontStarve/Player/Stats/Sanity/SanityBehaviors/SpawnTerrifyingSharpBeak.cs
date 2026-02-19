@@ -46,7 +46,7 @@ internal class SpawnTerrifyingSharpBeak : ITimeRelatedBehavior
                         yStart + random.NextSingle() * (yEnd - yStart)
                     );
                 } while (
-                    Util.distance(playerPosition, spawnPosition)
+                    Util.Distance(playerPosition, spawnPosition)
                         is > 15 * Game1.tileSize
                             or < 5 * Game1.tileSize
                 );

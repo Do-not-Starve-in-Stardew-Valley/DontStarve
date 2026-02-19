@@ -18,7 +18,7 @@ internal class NearMonster : ITimeRelatedBehavior
     public void Init(IModHelper helper)
     {
         monsterSanity = helper.ModContent.Load<Dictionary<string, double>>(
-            "assets/sanity/monster.json"
+            "Asset/Sanity/monster.json"
         );
     }
 
@@ -40,7 +40,7 @@ internal class NearMonster : ITimeRelatedBehavior
         foreach (var monster in location.characters.Where(npc => npc is Monster))
         {
             var monsterPosition = monster.Tile;
-            var distance = Util.distance(playerPosition, monsterPosition);
+            var distance = Util.Distance(playerPosition, monsterPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
                 value += monsterSanity.GetValueOrDefault(monster.Name, 0) * percentage;

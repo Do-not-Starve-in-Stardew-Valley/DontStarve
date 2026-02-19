@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace DontStarve.Integration;
+namespace DontStarve.Interface;
 
-public interface TimeApi
+public interface ITimeAPI
 {
     public ulong Time { get; }
     public List<Action<ulong>> OnLoad { get; }

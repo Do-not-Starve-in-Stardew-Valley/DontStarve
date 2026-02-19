@@ -21,19 +21,13 @@ internal class Wearing : ITimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
-        hatSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/hat.json");
-        bootsSanity = helper.ModContent.Load<Dictionary<string, double>>(
-            "assets/sanity/boots.json"
-        );
-        ringSanity = helper.ModContent.Load<Dictionary<string, double>>("assets/sanity/ring.json");
-        shirtSanity = helper.ModContent.Load<Dictionary<string, double>>(
-            "assets/sanity/shirt.json"
-        );
-        pantsSanity = helper.ModContent.Load<Dictionary<string, double>>(
-            "assets/sanity/pants.json"
-        );
+        hatSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/hat.json");
+        bootsSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/boots.json");
+        ringSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/ring.json");
+        shirtSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/shirt.json");
+        pantsSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/pants.json");
         trinketSanity = helper.ModContent.Load<Dictionary<string, double>>(
-            "assets/sanity/trinket.json"
+            "Asset/Sanity/trinket.json"
         );
     }
 

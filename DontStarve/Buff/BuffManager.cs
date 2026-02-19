@@ -1,7 +1,6 @@
-using System;
 using System.Collections.Generic;
 using DontStarve.Buff.Buffs;
-using DontStarve.Integration;
+using DontStarve.Interface;
 using StardewModdingAPI;
 
 namespace DontStarve.Buff;
@@ -28,7 +27,7 @@ internal static class BuffManager
         // Time-related buffs
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+            var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
             if (timeApi == null)
                 return;
             timeApi.OnUpdate.Add(Update);

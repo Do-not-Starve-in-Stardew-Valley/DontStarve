@@ -32,7 +32,7 @@ internal class NearNpc : ITimeRelatedBehavior
         foreach (var villager in location.characters.Where(npc => npc.IsVillager))
         {
             var villagerPosition = villager.Tile;
-            var distance = Util.distance(playerPosition, villagerPosition);
+            var distance = Util.Distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
             {
@@ -54,7 +54,7 @@ internal class NearNpc : ITimeRelatedBehavior
         foreach (var npc in location.characters.Where(npc => npc is Child or Pet))
         {
             var villagerPosition = npc.Tile;
-            var distance = Util.distance(playerPosition, villagerPosition);
+            var distance = Util.Distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
             {
@@ -71,7 +71,7 @@ internal class NearNpc : ITimeRelatedBehavior
         foreach (var npc in location.characters.Where(npc => npc is Junimo or JunimoHarvester))
         {
             var villagerPosition = npc.Position;
-            var distance = Util.distance(playerPosition, villagerPosition);
+            var distance = Util.Distance(playerPosition, villagerPosition);
             var percentage = 1 - distance / 10;
             if (percentage > 0)
                 value += 0.294;

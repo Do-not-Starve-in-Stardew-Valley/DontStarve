@@ -16,7 +16,7 @@ internal class EatFood : INonTimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
-        FoodHunger = helper.ModContent.Load<Dictionary<string, float>>("assets/hunger/food.json");
+        FoodHunger = helper.ModContent.Load<Dictionary<string, float>>("Asset/Hunger/food.json");
         helper.Events.GameLoop.UpdateTicking += (_, _) => Update();
     }
 

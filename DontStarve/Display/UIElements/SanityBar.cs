@@ -1,5 +1,6 @@
 using System;
 using DontStarve.Player.Stats.Sanity;
+using DontStarve.Resource;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
@@ -88,16 +89,17 @@ internal class SanityBar : INonTimeRelatedUIElement
         {
             var information = $"Sanity: {Math.Round(sanity)}/{Math.Round(maxSanity)}";
             var textSize = Game1.dialogueFont.MeasureString(information);
-            var textPosition = new Vector2(-12, textSize.X);
+            var posX = hudAnchor.X;
+            var posY = containerY - textSize.Y + 116;
 
             Game1.spriteBatch.DrawString(
                 Game1.dialogueFont,
                 information,
-                new Vector2(hudAnchor.X + textPosition.X, containerY + containerH + 8),
-                new Color(255, 255, 255),
+                new Vector2(posX, posY),
+                Color.White,
                 0f,
-                new Vector2(textPosition.Y, 0),
-                1,
+                new Vector2(textSize.X, 0f),
+                1f,
                 SpriteEffects.None,
                 0f
             );

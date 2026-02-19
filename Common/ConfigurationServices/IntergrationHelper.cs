@@ -12,8 +12,13 @@ public static class IntegrationHelper
     /// <param name="modRegistry">An API for fetching metadata about loaded mods.</param>
     /// <param name="monitor"></param>
     /// <returns>Returns the mod's API interface if valid, else null.</returns>
-    private static TInterface GetValidatedApi<TInterface>(string label, string modId, string minVersion,
-        IModRegistry modRegistry, IMonitor monitor)
+    private static TInterface GetValidatedApi<TInterface>(
+        string label,
+        string modId,
+        string minVersion,
+        IModRegistry modRegistry,
+        IMonitor monitor
+    )
         where TInterface : class
     {
         // check mod installed
@@ -26,16 +31,20 @@ public static class IntegrationHelper
         {
             monitor.Log(
                 $"Detected {label} {mod.Version}, but need {minVersion} or later. Disabled integration with that mod.",
-                LogLevel.Warn);
+                LogLevel.Warn
+            );
             return null;
         }
 
         // get API
         var api = modRegistry.GetApi<TInterface>(modId);
-        if (api != null) return api;
+        if (api != null)
+            return api;
 
-        monitor.Log($"Detected {label}, but couldn't fetch its API. Disabled integration with that mod.",
-            LogLevel.Warn);
+        monitor.Log(
+            $"Detected {label}, but couldn't fetch its API. Disabled integration with that mod.",
+            LogLevel.Warn
+        );
         return null;
     }
 
@@ -43,13 +52,17 @@ public static class IntegrationHelper
     /// <param name="modRegistry">An API for fetching metadata about loaded mods.</param>
     /// <param name="monitor"></param>
     /// <returns>Returns the API interface if valid, else null.</returns>
-    public static IGenericModConfigMenuApi GetGenericModConfigMenu(IModRegistry modRegistry, IMonitor monitor)
+    public static IGenericModConfigMenuApi GetGenericModConfigMenu(
+        IModRegistry modRegistry,
+        IMonitor monitor
+    )
     {
         return GetValidatedApi<IGenericModConfigMenuApi>(
             "Generic Mod Config Menu",
             "spacechase0.GenericModConfigMenu",
             "1.6.0",
-            modRegistry, monitor
+            modRegistry,
+            monitor
         );
     }
 }

@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using DontStarve.Integration;
+using DontStarve.Interface;
 using DontStarve.Player.Stats.Hunger.HungerBehaviors;
 using StardewModdingAPI;
 using StardewValley;
@@ -24,7 +24,7 @@ internal class Hunger : IStat
 
         helper.Events.GameLoop.GameLaunched += (_, _) =>
         {
-            var timeApi = helper.ModRegistry.GetApi<TimeApi>("Yurin.MinuteTimeHelper");
+            var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
             if (timeApi == null)
                 return;
             timeApi.OnUpdate.Add(Update);

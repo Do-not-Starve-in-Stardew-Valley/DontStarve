@@ -4,7 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace DontStarve;
+namespace DontStarve.Resource;
 
 internal static class TextureLoader
 {
@@ -64,13 +64,13 @@ internal static class TextureLoader
     /// <summary>
     /// Initialize textures and reset color caches
     /// </summary>
-    internal static void Initialize(IModContentHelper modContent)
+    internal static void Initialize(IModHelper helper)
     {
         sanityCache = null;
         hungerCache = null;
 
-        SanityContainer = modContent.Load<Texture2D>("assets/sanity/container.png");
-        HungerContainer = modContent.Load<Texture2D>("assets/hunger/container.png");
+        SanityContainer = helper.ModContent.Load<Texture2D>("Asset/Sanity/container.png");
+        HungerContainer = helper.ModContent.Load<Texture2D>("Asset/Hunger/container.png");
 
         _sanityFiller = new Texture2D(Game1.graphics.GraphicsDevice, 1, 1);
         _hungerFiller = new Texture2D(Game1.graphics.GraphicsDevice, 1, 1);

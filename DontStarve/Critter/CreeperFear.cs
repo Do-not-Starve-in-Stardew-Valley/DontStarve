@@ -9,16 +9,13 @@ public class CreeperFear : StardewValley.BellsAndWhistles.Critter
     {
         this.position = position;
         startingPosition = position;
-        sprite = new AnimatedSprite(critterTexture, baseFrame, 32, 32)
-        {
-            loop = true
-        };
+        sprite = new AnimatedSprite(critterTexture, baseFrame, 32, 32) { loop = true };
     }
 
     public override bool update(GameTime time, GameLocation environment)
     {
         foreach (var farmer in environment.farmers)
-            if (Util.distance(farmer.Position / Game1.tileSize, position / Game1.tileSize) <= 1)
+            if (Util.Distance(farmer.Position / Game1.tileSize, position / Game1.tileSize) <= 1)
                 return true;
 
         return false;

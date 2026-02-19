@@ -1,19 +1,21 @@
-﻿using DontStarve.Player.Hunger;
-using DontStarve.Player.Sanity;
+﻿using DontStarve.Buff;
+using DontStarve.Display;
+using DontStarve.Player;
+using DontStarve.Resource;
 using StardewModdingAPI;
 
 namespace DontStarve;
 
-// ReSharper disable once UnusedType.Global
 internal class ModEntry : Mod
 {
+    /// <summary>
+    /// Main
+    /// </summary>
     public override void Entry(IModHelper helper)
     {
-        Textures.loadTextures(helper.ModContent);
-        Buff.Buff.init(helper);
-        Sanity.init(helper);
-        Hunger.init(helper);
-
-        helper.Events.Display.RenderingHud += (_, e) => Hud.OnRenderingHud(helper, e);
+        TextureLoader.Initialize(helper);
+        BuffManager.Initialize(helper);
+        StatManager.Initialize(helper);
+        DisplayManager.Initialize(helper);
     }
 }

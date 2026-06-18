@@ -5,8 +5,8 @@ namespace DontStarve.Interface;
 
 public interface ITimeAPI
 {
-    public ulong Time { get; }
-    public List<Action<ulong>> OnLoad { get; }
-    public List<Action<ulong>> OnUpdate { get; }
-    public List<Action<ulong, long>> OnSync { get; }
+    public long Time { get; }
+    public List<Action<long>> OnLoad { get; }
+    public List<Action<long>> OnUpdate { get; }
+    public List<Action<long, long>> OnSync { get; }
 }

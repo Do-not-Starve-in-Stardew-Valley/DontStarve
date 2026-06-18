@@ -35,16 +35,16 @@ internal class Hunger : IStat
         helper.Events.GameLoop.Saving += (_, _) => Save(helper);
     }
 
-    private static void Update(ulong time)
+    private static void Update(long time)
     {
         foreach (var b in timeRelatedBehaviors)
-            b.Update((long)time);
+            b.Update(time);
     }
 
-    private static void Sync(ulong time, long delta)
+    private static void Sync(long time, long delta)
     {
         foreach (var b in timeRelatedBehaviors)
-            b.Sync((long)time, delta);
+            b.Sync(time, delta);
     }
 
     private static void Load(IModHelper helper)

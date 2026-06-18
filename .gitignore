@@ -332,3 +332,8 @@ ASALocalRun/
 
 # Photoshop files
 *.psd
+
+# Local agent/project reference files
+AGENTS.md
+references/
+文档/

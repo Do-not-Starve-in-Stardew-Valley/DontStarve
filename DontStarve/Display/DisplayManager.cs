@@ -48,16 +48,16 @@ internal static class DisplayManager
         }
     }
 
-    private static void Update(ulong time)
+    private static void Update(long time)
     {
         foreach (var e in timeRelatedUIElements)
-            e.Update((long)time);
+            e.Update(time);
     }
 
-    private static void Sync(ulong time, long delta)
+    private static void Sync(long time, long delta)
     {
         foreach (var e in timeRelatedUIElements)
-            e.Sync((long)time, delta);
+            e.Sync(time, delta);
     }
 
     private static void Load(IModHelper helper)

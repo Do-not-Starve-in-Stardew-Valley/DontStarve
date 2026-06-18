@@ -41,16 +41,16 @@ internal static class BuffManager
             b.Init(helper);
     }
 
-    private static void Update(ulong time)
+    private static void Update(long time)
     {
         foreach (var b in timeRelatedBuffs)
-            b.Update((long)time);
+            b.Update(time);
     }
 
-    private static void Sync(ulong time, long delta)
+    private static void Sync(long time, long delta)
     {
         foreach (var b in timeRelatedBuffs)
-            b.Sync((long)time, delta);
+            b.Sync(time, delta);
     }
 
     private static void Load(IModHelper helper)

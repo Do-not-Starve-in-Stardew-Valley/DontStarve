@@ -6,7 +6,7 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Adjusts sanity based on equipped clothing and accessories.
+/// 根据当前装备表每分钟调整理智，正值恢复、负值扣减。
 /// </summary>
 internal class Wearing : ITimeRelatedBehavior
 {
@@ -21,6 +21,7 @@ internal class Wearing : ITimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
+        // 装备表全部用 ItemId 匹配；新增装备优先扩 JSON，不要把单件装备写死到这里。
         hatSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/hat.json");
         bootsSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/boots.json");
         ringSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/ring.json");
@@ -45,6 +46,7 @@ internal class Wearing : ITimeRelatedBehavior
 
         var sanity = 0.0;
 
+        // 每分钟重新读取当前穿戴状态，不缓存装备对象，避免换装后继续沿用旧效果。
         var hat = player.hat.Value;
         if (hat != null)
             if (hatSanity.TryGetValue(hat.ItemId, out var value))

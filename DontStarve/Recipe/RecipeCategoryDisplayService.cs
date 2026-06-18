@@ -7,10 +7,14 @@ using Object = StardewValley.Object;
 
 namespace DontStarve.Recipe;
 
+/// <summary>
+/// 修正原版配方菜单里负数分类材料的名称和图标显示；不改变配方材料匹配逻辑。
+/// </summary>
 internal static class RecipeCategoryDisplayService
 {
     private const string IconIndexPath = "Asset/RecipeCategoryIcons/index.json";
 
+    // 这里只维护原版 Object.GetCategoryDisplayName 不能稳定覆盖的负数分类。
     private static readonly Dictionary<int, string> CategoryTranslationKeys = new()
     {
         [-9] = "recipe-category.big-craftable",
@@ -49,6 +53,7 @@ internal static class RecipeCategoryDisplayService
     {
         try
         {
+            // 图标索引用字符串 key 保存负数分类 id，和 CraftingRecipe 原始 item_id 形态保持一致。
             return helper.ModContent.Load<Dictionary<string, string>>(IconIndexPath) ?? new Dictionary<string, string>();
         }
         catch (Exception ex)
@@ -60,6 +65,7 @@ internal static class RecipeCategoryDisplayService
 
     private static void RegisterHarmonyPatches(Harmony harmony)
     {
+        // 两个 postfix 只在原版已经决定显示结果后做兜底修正，尽量减少与其它配方 mod 的冲突面。
         PatchMethod(
             harmony,
             AccessTools.Method(typeof(CraftingRecipe), nameof(CraftingRecipe.getSpriteIndexFromRawIndex)),
@@ -92,6 +98,7 @@ internal static class RecipeCategoryDisplayService
 
     private static void PatchGetSpriteIndexFromRawIndex(ref string __result, string item_id)
     {
+        // 正数 item id 走原版物品图标；只有负数分类材料才查 DS 自带的分类图标索引。
         if (string.IsNullOrWhiteSpace(item_id) || item_id[0] != '-')
             return;
 
@@ -101,6 +108,7 @@ internal static class RecipeCategoryDisplayService
 
     private static void PatchGetNameFromIndex(ref string __result, string item_id)
     {
+        // 只接管原版显示为 ??? 的负数分类，已有正常名称的结果不覆盖。
         if (__result != "???" || !int.TryParse(item_id, out var categoryId) || categoryId >= 0)
             return;
 

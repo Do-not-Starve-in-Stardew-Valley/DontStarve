@@ -6,7 +6,7 @@ using StardewValley.Characters;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Adjusts sanity based on nearby NPCs, villagers, pets, children, and Junimos.
+/// 根据附近友方角色恢复理智；配偶、好友、孩子、宠物和祝尼魔使用不同权重。
 /// </summary>
 internal class NearNpc : ITimeRelatedBehavior
 {
@@ -29,6 +29,7 @@ internal class NearNpc : ITimeRelatedBehavior
         var playerPosition = player.Tile;
         var value = 0.0;
 
+        // 只按当前地点角色计算 10 格内影响，避免离屏 NPC 也持续给理智加成。
         foreach (var villager in location.characters.Where(npc => npc.IsVillager))
         {
             var villagerPosition = villager.Tile;

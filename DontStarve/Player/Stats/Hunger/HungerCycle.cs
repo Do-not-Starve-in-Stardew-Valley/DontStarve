@@ -5,14 +5,16 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Hunger;
 
 /// <summary>
-/// Drains hunger over time and applies HP penalties when hunger reaches zero.
-/// Driven by MinuteTimeHelper ticks.
+/// 按内部分钟 tick 消耗饥饿；饥饿归零后按节奏扣生命。
 /// </summary>
 internal class HungerCycle : ITimeRelatedBehavior
 {
+    // 只保存循环内部节奏，不保存主饥饿值；主值由 DontStarve.Hunger 单独持久化。
     private const string SAVE_KEY = "DontStarve.Hunger.HungerCycle";
     private bool lastHasHunger;
     private long lastTime;
+
+    // 时间被同步回退时用 wait 抵消未来 tick，避免同一段游戏时间重复扣饥饿或扣血。
     private long wait;
 
     public void Update(long time)
@@ -52,6 +54,7 @@ internal class HungerCycle : ITimeRelatedBehavior
 
     public void Sync(long time, long delta)
     {
+        // TimeChanged 可能一次跳过多个内部分钟；正向 delta 需要补跑，负向 delta 只延迟后续 Update。
         if (delta < 0)
             wait += -delta;
         else

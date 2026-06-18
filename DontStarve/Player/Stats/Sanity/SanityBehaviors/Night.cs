@@ -5,7 +5,7 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Adjusts sanity over time based on the in-game time of day (nightfall lowers sanity).
+/// 按季节日落时间计算夜间理智损耗；午夜到清晨户外损耗更高。
 /// </summary>
 internal class Night : ITimeRelatedBehavior
 {
@@ -29,6 +29,7 @@ internal class Night : ITimeRelatedBehavior
         var nightfallTime = 0L;
         var midnightTime = 0L;
 
+        // Stardew 不同季节天黑时间不同；这里按 1 分钟粒度拆分“日落后”和“午夜后”两段损耗。
         var nightfallStart =
             Game1.season switch
             {
@@ -41,33 +42,33 @@ internal class Night : ITimeRelatedBehavior
 
         const long midnightEnd = 6 * 60;
 
-        // Current time is daytime
+        // 当前是白天。
         if (timeOfDay < nightfallStart && timeOfDay >= midnightEnd)
         {
-            // Previous time was pre-dawn
+            // 上一分钟还在清晨前，补足跨过 6:00 的午夜段。
             if (lastTimeOfDay < midnightEnd)
                 midnightTime = midnightEnd - lastTimeOfDay;
         }
-        // Current time is dusk/evening
+        // 当前是日落后。
         else if (timeOfDay >= nightfallStart)
         {
-            // Previous time was daytime
+            // 上一分钟还是白天，只计算跨过日落线后的部分。
             if (lastTimeOfDay < nightfallStart && lastTimeOfDay >= midnightEnd)
                 nightfallTime = timeOfDay - nightfallStart;
-            // Previous time was also evening
+            // 上一分钟也在日落后。
             else
                 nightfallTime = timeOfDay - lastTimeOfDay;
         }
-        // Current time is pre-dawn
+        // 当前是午夜到清晨前。
         else
         {
-            // Previous time was evening
+            // 从前一天日落后跨到清晨前，要同时结算日落段和午夜段。
             if (lastTimeOfDay >= nightfallStart)
             {
                 nightfallTime = 60 * 24 - lastTimeOfDay;
                 midnightTime = timeOfDay;
             }
-            // Previous time was also pre-dawn
+            // 上一分钟也在清晨前。
             else
             {
                 midnightTime = timeOfDay - lastTimeOfDay;

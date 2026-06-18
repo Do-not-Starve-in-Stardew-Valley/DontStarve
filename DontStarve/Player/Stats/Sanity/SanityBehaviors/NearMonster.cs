@@ -7,7 +7,7 @@ using StardewValley.Monsters;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Reduces sanity based on proximity to monsters. Closer and stronger monsters drain more.
+/// 根据附近怪物降低理智：资源表给基础值，10 格内按距离线性衰减。
 /// </summary>
 internal class NearMonster : ITimeRelatedBehavior
 {
@@ -17,6 +17,7 @@ internal class NearMonster : ITimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
+        // key 使用 Stardew 怪物 Name；扩表前要先确认游戏内实际名称。
         monsterSanity = helper.ModContent.Load<Dictionary<string, double>>(
             "Asset/Sanity/monster.json"
         );
@@ -37,6 +38,8 @@ internal class NearMonster : ITimeRelatedBehavior
         var location = Game1.currentLocation;
         var playerPosition = player.Tile;
         var value = 0.0;
+
+        // 每分钟只扫当前地点 characters，避免跨地点或全局 NPC 扫描进入高频路径。
         foreach (var monster in location.characters.Where(npc => npc is Monster))
         {
             var monsterPosition = monster.Tile;

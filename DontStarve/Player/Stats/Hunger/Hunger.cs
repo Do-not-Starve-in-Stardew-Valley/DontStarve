@@ -8,6 +8,7 @@ namespace DontStarve.Player.Stats.Hunger;
 
 internal class Hunger : IStat
 {
+    // 主饥饿值的存档 key，历史存档依赖它；改名前必须做兼容迁移。
     private const string SAVE_KEY = "DontStarve.Hunger";
     private static readonly List<INonTimeRelatedBehavior> nonTimeRelatedBehaviors =
         new List<INonTimeRelatedBehavior> { new EatFood() };
@@ -44,6 +45,7 @@ internal class Hunger : IStat
     private static void Load(IModHelper helper)
     {
         var data = helper.Data.ReadSaveData<HungerData>(SAVE_KEY);
+        // 缺失旧字段时回到满值，避免因为旧存档或首次安装直接进入饥饿惩罚。
         HungerExtensions.farmerHunger = data?.Hunger ?? HungerExtensions.DefaultMaxHunger;
         foreach (var b in timeRelatedBehaviors)
             b.Load(helper);
@@ -69,6 +71,8 @@ public static class HungerExtensions
 {
     internal const float DefaultMaxHunger = 150;
     private const float FARMER_MAX_HUNGER = DefaultMaxHunger;
+
+    // 当前实现是全局静态状态，不是按 Farmer 实例隔离；多人和切换存档改造时必须先拆这里。
     internal static float farmerHunger;
 
     public static float GetMaxHunger(this Farmer _) => FARMER_MAX_HUNGER;

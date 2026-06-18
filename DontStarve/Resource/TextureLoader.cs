@@ -8,6 +8,7 @@ namespace DontStarve.Resource;
 
 internal static class TextureLoader
 {
+    // filler 是 1x1 纹理，每次颜色变化时 SetData 后拉伸绘制；不要在 HUD 绘制中反复 new Texture2D。
     private static Texture2D _sanityFiller;
     private static Texture2D _hungerFiller;
     public static Texture2D SanityContainer { get; private set; } = null!;
@@ -26,7 +27,7 @@ internal static class TextureLoader
         SanityFiller.Width * FillerWidthMultiplier * Game1.pixelZoom;
 
     /// <summary>
-    /// Gets the 1x1 sanity filler texture
+    /// 获取理智条 1x1 填充纹理；颜色随当前理智值变化但按颜色缓存。
     /// </summary>
     internal static Texture2D SanityFiller
     {
@@ -44,7 +45,7 @@ internal static class TextureLoader
     }
 
     /// <summary>
-    /// Gets the 1x1 hunger filler texture
+    /// 获取饥饿条 1x1 填充纹理；颜色随当前饥饿值变化但按颜色缓存。
     /// </summary>
     internal static Texture2D HungerFiller
     {
@@ -62,7 +63,7 @@ internal static class TextureLoader
     }
 
     /// <summary>
-    /// Initialize textures and reset color caches
+    /// 初始化 HUD 贴图并重置颜色缓存。
     /// </summary>
     internal static void Initialize(IModHelper helper)
     {

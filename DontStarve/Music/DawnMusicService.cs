@@ -8,6 +8,9 @@ using StardewValley.Locations;
 
 namespace DontStarve.Music;
 
+/// <summary>
+/// 早晨 6:00 播放 DS 晨曲，并在普通地区临时拦截原版 morning song。
+/// </summary>
 internal static class DawnMusicService
 {
     private static IMonitor _monitor;
@@ -20,7 +23,7 @@ internal static class DawnMusicService
     private static bool _isIslandArea;
     private static bool _isInDungeon;
 
-    internal static void Initialize(IModHelper helper, IMonitor monitor, string manifestId)
+    internal static void Enable(IModHelper helper, IMonitor monitor, string manifestId)
     {
         if (_initialized)
             return;
@@ -31,11 +34,37 @@ internal static class DawnMusicService
         _dawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "dawn.wav");
         _islandDawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "sw_dawn.wav");
 
+        // Dawn 需要同时响应时间、地点和日终：进洞要停止，日终要恢复原版音乐系统。
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.TimeChanged += OnTimeChanged;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
         helper.Events.Player.Warped += OnWarped;
+    }
+
+    internal static void Disable(IModHelper helper)
+    {
+        if (!_initialized)
+            return;
+
+        StopDawnMusic(forceRestore: true);
+
+        helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
+        helper.Events.GameLoop.TimeChanged -= OnTimeChanged;
+        helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
+        helper.Events.GameLoop.DayEnding -= OnDayEnding;
+        helper.Events.Player.Warped -= OnWarped;
+
+        _dawnSound?.Dispose();
+        _islandDawnSound?.Dispose();
+        _dawnSound = null;
+        _islandDawnSound = null;
+        _harmony = null;
+        _hasMorningSongPatched = false;
+        _initialized = false;
+        _isDawnTime = false;
+        _isIslandArea = false;
+        _isInDungeon = false;
     }
 
     private static void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
@@ -60,6 +89,7 @@ internal static class DawnMusicService
             case 600 when !_isInDungeon:
                 StartDawnMusic();
                 break;
+            // 岛屿晨曲稍长，普通地区 6:20 恢复，岛屿 6:30 恢复。
             case 620 when !_isIslandArea:
             case 630 when _isIslandArea:
                 StopDawnMusic();
@@ -131,6 +161,7 @@ internal static class DawnMusicService
         if (originalMethod == null || _harmony == null)
             return;
 
+        // 只在 DS 晨曲播放期间 patch，结束时立即 unpatch，避免长期改变原版早晨音乐流程。
         if (enable && !_hasMorningSongPatched)
         {
             _harmony.Patch(
@@ -154,10 +185,14 @@ internal static class DawnMusicService
     {
         try
         {
+            if (!Context.IsWorldReady)
+                return;
+
             Game1.updateMusic();
             if (Game1.currentLocation == null)
                 return;
 
+            // SMAPI / Stardew 版本间 ambient 刷新方法名不同，用反射做窄范围兼容。
             var methodName = Constants.ApiVersion.IsNewerThan("3.14.0")
                 ? "forceUpdateLocalAmbient"
                 : "updateLocalAmbient";

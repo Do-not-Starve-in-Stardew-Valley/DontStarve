@@ -6,6 +6,9 @@ using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
+/// <summary>
+/// 低理智幻觉：理智低于 50% 时触发，之后每 20 个内部分钟最多生成一次。
+/// </summary>
 internal class SpawnTerrifyingSharpBeak : ITimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.SpawnTerrifyingSharpBeak";
@@ -41,6 +44,7 @@ internal class SpawnTerrifyingSharpBeak : ITimeRelatedBehavior
                 Vector2 spawnPosition;
                 do
                 {
+                    // 保持在玩家 5-15 格环形范围内，避免贴脸生成或生成到太远处看不见。
                     spawnPosition = new Vector2(
                         xStart + random.NextSingle() * (xEnd - xStart),
                         yStart + random.NextSingle() * (yEnd - yStart)

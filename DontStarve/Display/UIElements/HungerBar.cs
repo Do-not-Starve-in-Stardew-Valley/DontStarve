@@ -10,7 +10,7 @@ using StardewValley;
 namespace DontStarve.Display.UIElements;
 
 /// <summary>
-/// Renders the hunger bar and its hover label on the HUD.
+/// 绘制饥饿条和悬停数值；状态读取来自 HungerExtensions。
 /// </summary>
 internal class HungerBar : INonTimeRelatedUIElement
 {
@@ -21,6 +21,8 @@ internal class HungerBar : INonTimeRelatedUIElement
         var player = Game1.player;
         var hunger = player.GetHunger();
         var maxHunger = player.GetMaxHunger();
+
+        // 右下角锚点已在 UIRenderContext 中根据原版生命 HUD 让位。
         var hudAnchor = uiContext.ViewportBottomRightAnchor;
         var spriteBatch = e.SpriteBatch;
 

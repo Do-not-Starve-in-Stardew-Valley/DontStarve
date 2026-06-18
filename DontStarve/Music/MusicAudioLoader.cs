@@ -7,6 +7,7 @@ namespace DontStarve.Music;
 
 internal static class MusicAudioLoader
 {
+    // WAV 由本 mod 自带资源目录加载；失败只记录日志并返回 null，调用方负责跳过播放。
     internal static SoundEffectInstance LoadInstance(
         IModHelper helper,
         IMonitor monitor,

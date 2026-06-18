@@ -7,6 +7,9 @@ using StardewValley.Locations;
 
 namespace DontStarve.Music;
 
+/// <summary>
+/// 按季节日落线播放 DS 黄昏音乐；跨过触发时间的一次 TimeChanged 才播放。
+/// </summary>
 internal static class DuskMusicService
 {
     private static SoundEffectInstance _duskSound;
@@ -15,7 +18,7 @@ internal static class DuskMusicService
     private static bool _initialized;
     private static int _previousTime;
 
-    internal static void Initialize(IModHelper helper, IMonitor monitor)
+    internal static void Enable(IModHelper helper, IMonitor monitor)
     {
         if (_initialized)
             return;
@@ -33,6 +36,24 @@ internal static class DuskMusicService
         helper.Events.GameLoop.TimeChanged += OnTimeChanged;
     }
 
+    internal static void Disable(IModHelper helper)
+    {
+        if (!_initialized)
+            return;
+
+        helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
+        helper.Events.GameLoop.TimeChanged -= OnTimeChanged;
+
+        _duskSound?.Stop();
+        _islandDuskSound?.Stop();
+        _duskSound?.Dispose();
+        _islandDuskSound?.Dispose();
+        _duskSound = null;
+        _islandDuskSound = null;
+        _initialized = false;
+        _previousTime = 0;
+    }
+
     private static void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
     {
         _previousTime = Game1.timeOfDay;
@@ -46,6 +67,7 @@ internal static class DuskMusicService
             var newTime = e.NewTime;
             var triggerTime = GetSeasonTriggerTime();
 
+            // 用 old < trigger <= new 判断跨越，避免 20:00 之后读档或重复 TimeChanged 多次播放。
             if (oldTime < triggerTime && newTime >= triggerTime && !IsInDungeon())
                 PlayDuskMusic(IsIslandArea());
 
@@ -79,6 +101,7 @@ internal static class DuskMusicService
 
     private static int GetSeasonTriggerTime()
     {
+        // 与夜晚理智损耗使用同一季节边界：秋 19:00，冬 18:00，其余 20:00。
         return Game1.currentSeason switch
         {
             "fall" => 1900,

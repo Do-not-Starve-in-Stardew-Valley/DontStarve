@@ -1,6 +1,22 @@
 {
     "sanity-tooltip": "+ {{value}} 理智",
     "hunger-tooltip": "+ {{value}} 饥饿",
+    "food-buff-tooltip.line": "{{label}} {{value}}",
+    "food-buff-tooltip.percent-line": "{{label}} {{value}}%",
+    "food-buff-tooltip.combat-level": "战斗等级",
+    "food-buff-tooltip.attack": "攻击",
+    "food-buff-tooltip.defense": "防御",
+    "food-buff-tooltip.immunity": "免疫",
+    "food-buff-tooltip.attack-multiplier": "攻击伤害",
+    "food-buff-tooltip.knockback-multiplier": "武器击退",
+    "food-buff-tooltip.weapon-speed-multiplier": "武器速度",
+    "food-buff-tooltip.critical-chance-multiplier": "暴击率",
+    "food-buff-tooltip.critical-power-multiplier": "暴击伤害",
+    "food-buff-tooltip.weapon-precision-multiplier": "武器命中",
+
+    "config.music.section": "音乐与音效",
+    "config.enable-dawn-dusk-music.name": "启用晨昏音乐",
+    "config.enable-dawn-dusk-music.tooltip": "在游戏时间变化到清晨或黄昏时播放饥荒风格音乐。",
 
     "recipe-category.any": "（任意）",
     "recipe-category.basic-resource": "基础资源",

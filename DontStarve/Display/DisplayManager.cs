@@ -8,6 +8,7 @@ namespace DontStarve.Display;
 
 internal static class DisplayManager
 {
+    // HUD 元素只负责读状态和绘制，不在 RenderingHud 里修改 Hunger/Sanity 或写存档。
     private static readonly List<INonTimeRelatedUIElement> nonTimeRelatedUIElements =
         new List<INonTimeRelatedUIElement> { new HungerBar(), new SanityBar(), new FoodTooltip() };
 
@@ -25,6 +26,8 @@ internal static class DisplayManager
         {
             if (!Context.IsWorldReady || Game1.CurrentEvent != null)
                 return;
+
+            // RenderingHud 使用 UI viewport 坐标；不要混用世界坐标或 Game1.viewport。
             var uiContext = new UIRenderContext(helper, e);
             foreach (var el in nonTimeRelatedUIElements)
                 el.Render(e, uiContext);

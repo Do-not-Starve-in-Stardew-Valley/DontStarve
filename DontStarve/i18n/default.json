@@ -1,0 +1,18 @@
+{
+    "sanity-tooltip": "+ {{value}} Sanity",
+    "hunger-tooltip": "+ {{value}} Hunger",
+
+    "recipe-category.any": " (Any)",
+    "recipe-category.basic-resource": "Basic Resource",
+    "recipe-category.big-craftable": "Big Craftable",
+    "recipe-category.geode-mineral": "Geode Mineral",
+    "recipe-category.hat": "Hat",
+    "recipe-category.meat": "Meat",
+    "recipe-category.metal-resource": "Metal Ore",
+    "recipe-category.rare-product": "Rare Product",
+    "recipe-category.other-aquatic-products": "Other Aquatic Product",
+    "recipe-category.other-cooking": "Other Cooking",
+    "recipe-category.syrup": "Syrup",
+    "recipe-category.trinket": "Trinket",
+    "recipe-category.weapon": "Weapon"
+}

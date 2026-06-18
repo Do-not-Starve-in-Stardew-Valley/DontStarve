@@ -1,0 +1,18 @@
+{
+    "sanity-tooltip": "+ {{value}} 理智",
+    "hunger-tooltip": "+ {{value}} 饥饿",
+
+    "recipe-category.any": "（任意）",
+    "recipe-category.basic-resource": "基础资源",
+    "recipe-category.big-craftable": "大型制造品",
+    "recipe-category.geode-mineral": "晶球矿物",
+    "recipe-category.hat": "帽子",
+    "recipe-category.meat": "肉类",
+    "recipe-category.metal-resource": "金属矿石",
+    "recipe-category.rare-product": "稀有产品",
+    "recipe-category.other-aquatic-products": "其他水产",
+    "recipe-category.other-cooking": "其他料理",
+    "recipe-category.syrup": "树脂产品",
+    "recipe-category.trinket": "饰品",
+    "recipe-category.weapon": "武器"
+}

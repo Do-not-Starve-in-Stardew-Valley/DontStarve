@@ -2,6 +2,7 @@
 using DontStarve.Display;
 using DontStarve.Music;
 using DontStarve.Player;
+using DontStarve.Recipe;
 using DontStarve.Resource;
 using DontStarve.Time;
 using StardewModdingAPI;
@@ -20,6 +21,7 @@ internal class ModEntry : Mod
         _timeApi.Initialize(helper);
         TextureLoader.Initialize(helper);
         MusicManager.Initialize(helper, Monitor, ModManifest.UniqueID);
+        RecipeCategoryDisplayService.Initialize(helper, Monitor, ModManifest.UniqueID);
         BuffManager.Initialize(helper, _timeApi);
         StatManager.Initialize(helper, _timeApi);
         DisplayManager.Initialize(helper, _timeApi);

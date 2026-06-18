@@ -14,7 +14,7 @@ internal static class DisplayManager
     private static readonly List<ITimeRelatedUIElement> timeRelatedUIElements =
         new List<ITimeRelatedUIElement>();
 
-    internal static void Initialize(IModHelper helper)
+    internal static void Initialize(IModHelper helper, ITimeAPI timeApi)
     {
         foreach (var e in nonTimeRelatedUIElements)
             e.Init(helper);
@@ -34,14 +34,8 @@ internal static class DisplayManager
 
         if (timeRelatedUIElements.Count > 0)
         {
-            helper.Events.GameLoop.GameLaunched += (_, _) =>
-            {
-                var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
-                if (timeApi == null)
-                    return;
-                timeApi.OnUpdate.Add(Update);
-                timeApi.OnSync.Add(Sync);
-            };
+            timeApi.OnUpdate.Add(Update);
+            timeApi.OnSync.Add(Sync);
 
             helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
             helper.Events.GameLoop.Saving += (_, _) => Save(helper);

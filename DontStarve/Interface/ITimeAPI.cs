@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 namespace DontStarve.Interface;
 
+/// <summary>
+/// Internal minute-time service contract.
+/// </summary>
 public interface ITimeAPI
 {
     public long Time { get; }

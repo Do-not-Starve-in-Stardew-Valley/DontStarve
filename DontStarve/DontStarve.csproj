@@ -23,6 +23,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" />
+    <PackageReference Include="Lib.Harmony" />
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" />
   </ItemGroup>
   <ItemGroup>

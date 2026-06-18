@@ -29,21 +29,15 @@ internal class Sanity : IStat
             new SpawnTerrifyingSharpBeak(),
         };
 
-    public void Init(IModHelper helper)
+    public void Init(IModHelper helper, ITimeAPI timeApi)
     {
         foreach (var b in nonTimeRelatedBehaviors)
             b.Init(helper);
         foreach (var b in timeRelatedBehaviors)
             b.Init(helper);
 
-        helper.Events.GameLoop.GameLaunched += (_, _) =>
-        {
-            var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
-            if (timeApi == null)
-                return;
-            timeApi.OnUpdate.Add(Update);
-            timeApi.OnSync.Add(Sync);
-        };
+        timeApi.OnUpdate.Add(Update);
+        timeApi.OnSync.Add(Sync);
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
         helper.Events.GameLoop.Saving += (_, _) => Save(helper);

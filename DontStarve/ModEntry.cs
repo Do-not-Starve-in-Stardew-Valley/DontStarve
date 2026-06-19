@@ -8,6 +8,7 @@ using DontStarve.Recipe;
 using DontStarve.Resource;
 using DontStarve.Time;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 
 namespace DontStarve;
 
@@ -31,17 +32,23 @@ internal class ModEntry : Mod
         _timeApi.Initialize(helper);
         TextureLoader.Initialize(helper);
         MusicManager.Initialize(helper, Monitor, ModManifest.UniqueID, _config.EnableDawnDuskMusic);
-        ModConfigMenuRegistrar.Register(
-            helper,
-            Monitor,
-            ModManifest,
-            _config,
-            saveConfig: () => SaveModConfig(helper),
-            applyConfig: () => MusicManager.SetEnabled(_config.EnableDawnDuskMusic));
+        // SMAPI 只允许在所有 mod 初始化完成后获取其它 mod API，GMCM 注册必须延后到 GameLaunched。
+        helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         RecipeCategoryDisplayService.Initialize(helper, Monitor, ModManifest.UniqueID);
         BuffManager.Initialize(helper, _timeApi);
         StatManager.Initialize(helper, _timeApi);
         DisplayManager.Initialize(helper, _timeApi);
+    }
+
+    private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
+    {
+        ModConfigMenuRegistrar.Register(
+            Helper,
+            Monitor,
+            ModManifest,
+            _config,
+            saveConfig: () => SaveModConfig(Helper),
+            applyConfig: () => MusicManager.SetEnabled(_config.EnableDawnDuskMusic));
     }
 
     private ModConfig ReadModConfig(IModHelper helper)

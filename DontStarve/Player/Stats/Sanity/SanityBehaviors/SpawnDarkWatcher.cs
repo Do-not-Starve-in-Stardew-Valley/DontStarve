@@ -6,6 +6,9 @@ using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
+/// <summary>
+/// 低理智幻觉：理智低于 65% 时触发，之后每 20 个内部分钟最多生成一次。
+/// </summary>
 internal class SpawnDarkWatcher : ITimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.SpawnDarkWatcher";
@@ -41,6 +44,7 @@ internal class SpawnDarkWatcher : ITimeRelatedBehavior
                     xStart + random.NextSingle() * (xEnd - xStart),
                     yStart + random.NextSingle() * (yEnd - yStart)
                 );
+                // 贴到视口上边或左边，让 watcher 像从屏幕边缘出现，而不是刷在玩家周围。
                 if (spawnPosition.X > spawnPosition.Y)
                     spawnPosition.Y = yStart;
                 else if (spawnPosition.X < spawnPosition.Y)

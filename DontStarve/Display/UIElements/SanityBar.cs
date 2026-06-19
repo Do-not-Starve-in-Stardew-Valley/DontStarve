@@ -10,7 +10,7 @@ using StardewValley;
 namespace DontStarve.Display.UIElements;
 
 /// <summary>
-/// Renders the sanity bar and its hover label on the HUD.
+/// 绘制理智条和悬停数值；状态读取来自 SanityExtensions。
 /// </summary>
 internal class SanityBar : INonTimeRelatedUIElement
 {
@@ -21,6 +21,8 @@ internal class SanityBar : INonTimeRelatedUIElement
         var player = Game1.player;
         var sanity = player.GetSanity();
         var maxSanity = player.GetMaxSanity();
+
+        // 右下角锚点已在 UIRenderContext 中根据原版生命 HUD 让位。
         var hudAnchor = uiContext.ViewportBottomRightAnchor;
 
         e.SpriteBatch.Draw(

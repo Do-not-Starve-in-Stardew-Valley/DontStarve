@@ -7,36 +7,32 @@ namespace DontStarve.Buff;
 
 internal static class BuffManager
 {
-    // Non-time-related buffs collection
+    // 非 TimeApi 驱动的 Buff 仍可能自己注册 SMAPI 事件，例如每秒恢复或监听存档读写。
     private static readonly List<INonTimeRelatedBuff> nonTimeRelatedBuffs =
-        new List<INonTimeRelatedBuff> { new ElectricityAppendBuff() };
+        new List<INonTimeRelatedBuff>
+        {
+            new ElectricityAppendBuff(),
+            new HealthRestoreBuff(),
+            new StaminaRestoreBuff(),
+            new SanityRestoreBuff(),
+        };
 
-    // Time-related buffs collection
-    private static readonly List<ITimeRelatedBuff> timeRelatedBuffs = new List<ITimeRelatedBuff>
-    {
-        new HealthRestoreBuff(),
-        new StaminaRestoreBuff(),
-        new SanityRestoreBuff(),
-    };
+    // 只有确实依赖内部分钟 tick 的 Buff 才放这里，避免恢复类 Buff 被游戏内时间速度影响总量。
+    private static readonly List<ITimeRelatedBuff> timeRelatedBuffs = new();
 
     /// <summary>
-    /// Initializes all buffs
+    /// 初始化 Buff 模块，并按 TimeApi 驱动和自管事件两类分开注册。
     /// </summary>
-    internal static void Initialize(IModHelper helper)
+    internal static void Initialize(IModHelper helper, ITimeAPI timeApi)
     {
-        // Time-related buffs
-        helper.Events.GameLoop.GameLaunched += (_, _) =>
+        if (timeRelatedBuffs.Count > 0)
         {
-            var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
-            if (timeApi == null)
-                return;
             timeApi.OnUpdate.Add(Update);
             timeApi.OnSync.Add(Sync);
-        };
-        helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
-        helper.Events.GameLoop.Saving += (_, _) => Save(helper);
+            helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
+            helper.Events.GameLoop.Saving += (_, _) => Save(helper);
+        }
 
-        // Non-time-related buffs
         foreach (var b in nonTimeRelatedBuffs)
             b.Init(helper);
     }

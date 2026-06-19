@@ -8,6 +8,7 @@ namespace DontStarve.Player.Stats.Sanity;
 
 internal class Sanity : IStat
 {
+    // 主理智值的存档 key，历史存档依赖它；改名前必须做兼容迁移。
     private const string SAVE_KEY = "DontStarve.Sanity";
 
     private static readonly List<INonTimeRelatedBehavior> nonTimeRelatedBehaviors =
@@ -29,21 +30,15 @@ internal class Sanity : IStat
             new SpawnTerrifyingSharpBeak(),
         };
 
-    public void Init(IModHelper helper)
+    public void Init(IModHelper helper, ITimeAPI timeApi)
     {
         foreach (var b in nonTimeRelatedBehaviors)
             b.Init(helper);
         foreach (var b in timeRelatedBehaviors)
             b.Init(helper);
 
-        helper.Events.GameLoop.GameLaunched += (_, _) =>
-        {
-            var timeApi = helper.ModRegistry.GetApi<ITimeAPI>("Yurin.MinuteTimeHelper");
-            if (timeApi == null)
-                return;
-            timeApi.OnUpdate.Add(Update);
-            timeApi.OnSync.Add(Sync);
-        };
+        timeApi.OnUpdate.Add(Update);
+        timeApi.OnSync.Add(Sync);
 
         helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
         helper.Events.GameLoop.Saving += (_, _) => Save(helper);
@@ -64,6 +59,7 @@ internal class Sanity : IStat
     private static void Load(IModHelper helper)
     {
         var data = helper.Data.ReadSaveData<SanityData>(SAVE_KEY);
+        // 缺失旧字段时回到满值，避免因为旧存档或首次安装直接进入低理智逻辑。
         SanityExtensions.farmerSanity = data?.Sanity ?? SanityExtensions.DefaultMaxSanity;
         foreach (var b in timeRelatedBehaviors)
             b.Load(helper);
@@ -89,6 +85,8 @@ public static class SanityExtensions
 {
     internal const double DefaultMaxSanity = 150;
     private const double FARMER_MAX_SANITY = DefaultMaxSanity;
+
+    // 当前实现是全局静态状态，不是按 Farmer 实例隔离；多人和切换存档改造时必须先拆这里。
     internal static double farmerSanity;
 
     public static double GetMaxSanity(this Farmer _) => FARMER_MAX_SANITY;

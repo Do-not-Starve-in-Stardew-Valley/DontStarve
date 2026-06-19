@@ -3,6 +3,9 @@ using StardewValley;
 
 namespace DontStarve.Critter;
 
+/// <summary>
+/// 低理智幻觉 critter；玩家靠近到 1 格内时通过 update 返回 true 让原版移除它。
+/// </summary>
 public class MrSkitts : StardewValley.BellsAndWhistles.Critter
 {
     public MrSkitts(Vector2 position)

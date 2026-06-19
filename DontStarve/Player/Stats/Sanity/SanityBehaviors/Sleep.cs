@@ -5,8 +5,7 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Applies a sanity bonus or penalty at the end of each day based on sleep time.
-/// Registers its own SMAPI events in Init.
+/// 按当天最后记录到的时间结算睡眠理智；睡太晚会扣理智，早睡按剩余时间恢复。
 /// </summary>
 internal class Sleep : INonTimeRelatedBehavior
 {
@@ -30,6 +29,7 @@ internal class Sleep : INonTimeRelatedBehavior
             return;
 
         var timescale = lastTime % 100 / 10 + lastTime / 100 * 6;
+        // Stardew 最晚按 2:00 结束一天，换算成 10 分钟格是 26 * 6 = 156。
         if (timescale == 156)
         {
             player.SetSanity(player.GetSanity() - 20);

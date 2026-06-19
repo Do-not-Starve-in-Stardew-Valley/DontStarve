@@ -6,6 +6,9 @@ using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
+/// <summary>
+/// 低理智幻觉：理智低于 75% 时触发，之后每 20 个内部分钟最多生成一次。
+/// </summary>
 internal class SpawnDarkHand : ITimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.SpawnDarkHand";
@@ -41,6 +44,7 @@ internal class SpawnDarkHand : ITimeRelatedBehavior
                 Vector2 spawnPosition;
                 do
                 {
+                    // DarkHand 需要从较远处靠近玩家，所以保持在 15-20 格环形范围内。
                     spawnPosition = new Vector2(
                         xStart + random.NextSingle() * (xEnd - xStart),
                         yStart + random.NextSingle() * (yEnd - yStart)

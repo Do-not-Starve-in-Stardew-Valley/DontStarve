@@ -6,7 +6,7 @@ using MineShaftLocation = StardewValley.Locations.MineShaft;
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// Reduces sanity based on the current mine shaft type and danger level.
+/// 根据矿洞、火山和危险层级降低理智；只影响当前所在地点。
 /// </summary>
 internal class MineShaft : ITimeRelatedBehavior
 {
@@ -30,6 +30,7 @@ internal class MineShaft : ITimeRelatedBehavior
 
         if (location is MineShaftLocation mineShaft)
         {
+            // 基础层级先给一个底值，再叠加黑暗、特殊层和危险矿井修正。
             value = 0.0588;
             if (mineShaft.isDarkArea())
                 value = 0.588;

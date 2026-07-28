@@ -1,0 +1,118 @@
+{
+  "SchemaVersion": 1,
+  "Options": [
+    {
+      "Key": "EnableSanitySystem",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-sanity-system.name",
+      "TooltipI18n": "config.enable-sanity-system.tooltip",
+      "Order": 10
+    },
+    {
+      "Key": "SanityMonsterIntensity",
+      "Type": "Enum",
+      "Default": "Default",
+      "AllowedValues": [
+        "None",
+        "Less",
+        "Default",
+        "More",
+        "Many",
+        "Insane"
+      ],
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.sanity-monster-intensity.name",
+      "TooltipI18n": "config.sanity-monster-intensity.tooltip",
+      "Order": 20
+    },
+    {
+      "Key": "DarkHandMode",
+      "Type": "Enum",
+      "Default": "FireThief",
+      "AllowedValues": [
+        "Off",
+        "FireThief",
+        "Harassment",
+        "Thief"
+      ],
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.dark-hand-mode.name",
+      "TooltipI18n": "config.dark-hand-mode.tooltip",
+      "Order": 25
+    },
+    {
+      "Key": "EnableSanityVisualEffects",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": false,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-sanity-visual-effects.name",
+      "TooltipI18n": "config.enable-sanity-visual-effects.tooltip",
+      "Order": 30
+    },
+    {
+      "Key": "DarknessDamageMode",
+      "Type": "Enum",
+      "Default": "Default",
+      "AllowedValues": [
+        "Off",
+        "NonLethal",
+        "Default"
+      ],
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.darkness-damage-mode.name",
+      "TooltipI18n": "config.darkness-damage-mode.tooltip",
+      "Order": 40
+    },
+    {
+      "Key": "MonsterDifficultyProfile",
+      "Type": "Enum",
+      "Default": "Compatible",
+      "AllowedValues": [
+        "Stardew",
+        "Compatible",
+        "DontStarve",
+        "Fusion"
+      ],
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.monster-difficulty-profile.name",
+      "TooltipI18n": "config.monster-difficulty-profile.tooltip",
+      "Order": 50
+    },
+    {
+      "Key": "EnableJunimoBlessing",
+      "Type": "Boolean",
+      "Default": false,
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-junimo-blessing.name",
+      "TooltipI18n": "config.enable-junimo-blessing.tooltip",
+      "Order": 60
+    },
+    {
+      "Key": "EnableDawnDuskMusic",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "SectionI18n": "config.music.section",
+      "NameI18n": "config.enable-dawn-dusk-music.name",
+      "TooltipI18n": "config.enable-dawn-dusk-music.tooltip",
+      "Order": 90
+    }
+  ]
+}

@@ -1,0 +1,320 @@
+{
+  "SchemaVersion": 1,
+  "TemplateVersion": "sanity-harmless-visuals-v1",
+  "Command": "python -X utf8 scripts/sanity-assets/build_harmless_visuals.py",
+  "Toolchain": {
+    "Python": "3.14.0",
+    "Pillow": "12.3.0"
+  },
+  "Parameters": {
+    "SourceScale": "1/4",
+    "Resampling": "Pillow.Image.Resampling.BOX",
+    "StateCrop": "four-frame-alpha-union",
+    "StateAlignment": "provisional-bottom-center",
+    "CellPaddingPx": 4,
+    "CellAlignmentPx": 8,
+    "PngCompressLevel": 9,
+    "PngOptimize": false
+  },
+  "SourceGroups": [
+    {
+      "Actor": "mr-skitts",
+      "SourceRoot": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct",
+      "PngCount": 8,
+      "TreeSha256": "0129C44C617059C59E6EB8E7DB77421D83D4B8B99A455A77B446B9152B1BBF9E"
+    },
+    {
+      "Actor": "dark-hand",
+      "SourceRoot": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct",
+      "PngCount": 20,
+      "TreeSha256": "48B0068C6F9F452364C19EC97AD2526CF71ED8B25E504EA74AC256DA87473983"
+    },
+    {
+      "Actor": "dark-watcher",
+      "SourceRoot": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct",
+      "PngCount": 12,
+      "TreeSha256": "6D490EA3ECDA31C741F0E322A8B66BF5363B966AF921F2A633EBAFB16C513012"
+    }
+  ],
+  "InputFiles": [
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/消失_000.png",
+      "Sha256": "2B43491BA22438C7DB1A8F6AACD6DD7F6DE4FC69BCE4266C06CFEEB7563C8C85"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/消失_001.png",
+      "Sha256": "AD1985C76B192EE871C9536F6E6D8C315C2ADCFDF4D56DF8AFED72116ABC99E4"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/消失_002.png",
+      "Sha256": "68BA5D2EC01CAB1E2352D593832D2A3408474AD6640E3C7DEBDC9FC55A00CBC8"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/消失_003.png",
+      "Sha256": "C79C26B19F60499444FB183D95F79E5B56BCD69931F7012D1348EBC468EA46D2"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/静息_000.png",
+      "Sha256": "8ADC04240C005879867A8417AEBC3D61D6A4920C0FA065D7C9C231FDC0F56C92"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/静息_001.png",
+      "Sha256": "F6ACAF7628E6B6C2B5674E59374328FE2F1A710BA48C86F99FCBB879D72B1084"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/静息_002.png",
+      "Sha256": "3327D1E223440817DD161F0F9E2F27434B03F6793175681442E35E001BC18E13"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/01-MrSkitts-83.5pct/PNG原帧/静息_003.png",
+      "Sha256": "DCDE51304DCDB3024AEE07FCED2693E90DBC4345EACFBB55CC317ED2503EEEDC"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手出现_000.png",
+      "Sha256": "CC2C0C638DDB25F4AA580BE67DE6B6DD59E1F83EE8D34A505E6A7A9F522722CD"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手出现_001.png",
+      "Sha256": "9750601523020C7AB991F4114695F20EE0DDD099BF0FEDF41C8634D49C2231D9"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手出现_002.png",
+      "Sha256": "CAE3E4B775C4A00B226F573D6292066A7655CFB3A8B698B66E71B243A759A860"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手出现_003.png",
+      "Sha256": "CE3810EE5B1162C426C9F2641B9631A46167BC1717ECA43ABD108E44424A3EC2"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手后退_000.png",
+      "Sha256": "BC1B1530414B6F39F660C0F6E7DD114176279B2FBCA15D36114CEFC8D3A4157D"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手后退_001.png",
+      "Sha256": "88D5229FFAB1A9F3B1F74B1561A8792C39BA3864383C0C86EDDF054A84BCF81F"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手后退_002.png",
+      "Sha256": "A1B9981F482B9856CC5CEB5278AEF93CD813C246B410986021359D11A72F33FC"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手后退_003.png",
+      "Sha256": "443D699A80EB12DB64CF24328A54A87BD5416DE0FFA38DAFF0A66E0BE174487A"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手操作_000.png",
+      "Sha256": "C2DB09CF8431FACBDC24A5E484FAAC62007DB3C3296F5A6336A8B1694FC7CE12"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手操作_001.png",
+      "Sha256": "BB836A1E24B49B20DB9B407CC0D75117FA5CCE1506379BAD2755AE0F3EEA9EFF"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手操作_002.png",
+      "Sha256": "91C47228C1844B3C8FCF8A88050E731927FFB4D195DD78AEAC6E8A0243EDC754"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手操作_003.png",
+      "Sha256": "F412236D07C072E1BB7B311B393CEAC1F07EC8D5FCED0CCEFA10830F64D668D1"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手消失_000.png",
+      "Sha256": "988CBFCD72143F7140CDBB2F31D96EBCFE24433F1D4914EBCD002BC478E4B6DC"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手消失_001.png",
+      "Sha256": "5B20D634E9E19B55638002903D2F3E553B8DFF68A1C15CE67AE3CA00664A2140"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手消失_002.png",
+      "Sha256": "1A37E075F0472DEEC2F609E271E8ABCDC8B70B9A67D136E6B9A2C601F6378CE7"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手消失_003.png",
+      "Sha256": "59D0FF535BD86A3163BE5C60171A4EA312446B2C43E071DE39E429AB468C6C52"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手行走_000.png",
+      "Sha256": "EFB71CF54A14D8F7486B9D00C0979603C8BA01F791E78409F97A9084BA8CEA0B"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手行走_001.png",
+      "Sha256": "CCE36C82CED81517F00754E5D1399AAE88B7A0083849AA94865FB6B8319E7C8D"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手行走_002.png",
+      "Sha256": "4F69D98130D362D88D93538C830F480C89F9097ADF547F0294A60ACEFA570441"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/02-暗影之手-75pct/PNG原帧/手行走_003.png",
+      "Sha256": "B41C36B60C090AEC91C1C893A1E64FFE3E282B1E9C2FEB474675B0E3EB93DBC6"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者出现_000.png",
+      "Sha256": "ED5696E20CCBA555FFC0190D1842273C3E9FF761FF9DE304A601EF6F8F612F67"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者出现_001.png",
+      "Sha256": "1C4AEEB1032DF3E079358502D836DE066E0AA532EA2C5E693E14984FF2A99784"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者出现_002.png",
+      "Sha256": "59546C306BF64C15CAEC1B6EC11317255239C0EB118283897C60ADA8F1C688B3"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者出现_003.png",
+      "Sha256": "55562017C709DB5C2F10856C97A1E490A96E11EE708297E06BEF335C7909C016"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者消失_000.png",
+      "Sha256": "332F35E735CDF200C94BF83A9A9B2DEBCF878563FDC0D8B502CD3506A2E8F1A3"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者消失_001.png",
+      "Sha256": "7A388FD43C6779960FFB449BC6595AFDD7600F0ED658B2DDC6FD048275A80408"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者消失_002.png",
+      "Sha256": "A5D2EC1D2C8536C8C228278674479B37803E9D008012C2EB1331591BE843DD0E"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者消失_003.png",
+      "Sha256": "E2F68A86036B50680B90FFDF73BDF5B5B630FE9CF5DBC4F20AD869C884F83865"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者静息_000.png",
+      "Sha256": "E52D101DF7486684D290572902CC1CBCE2E61F115C86EE2E39192128BB8C84D8"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者静息_001.png",
+      "Sha256": "7485EC16FF83C29A84D612278C4513AE30DD6069AF0A104FF401E36E527618E9"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者静息_002.png",
+      "Sha256": "68AB1E76DCE54BB7807E203C0CC45D8678799AE1DF74D67962BAE9DA7B329A63"
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/03-暗影观察者-65pct/PNG原帧/暗影观察者静息_003.png",
+      "Sha256": "C9FD5C89D6590CC39448E0A58A1618981B4D283F96A25804B617BE3A6625D5EA"
+    }
+  ],
+  "RuntimeOutputs": [
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Illusions/mr-skitts.png",
+      "Bytes": 30595,
+      "Sha256": "F07AF2D5FDEDCCB0735411B01007A3E502487B3631A866F04AC9C1F317F16648"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Illusions/dark-hand.png",
+      "Bytes": 102895,
+      "Sha256": "98662B6FCD662853EB1028C2740160575891B48924128D95FFF7C52BF1CB4DD7"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Illusions/dark-watcher.png",
+      "Bytes": 132242,
+      "Sha256": "331DB198D7AEBCF051E5860862AB681112D1CF7B96828474234EF0AAAFEA50DD"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Illusions/eyes.png",
+      "Bytes": 417,
+      "Sha256": "93FB541663FA6B977BA6ED29E9863145D2715D82702F32A5ECCA19E3123F5CAB"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Overlays/danger-border.png",
+      "Bytes": 279,
+      "Sha256": "78F7B021D5DD72BAF67E24824769D8A318BEDC105B33F8AFB828C4F79649F8AB"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/World/beard-rabbit.png",
+      "Bytes": 416,
+      "Sha256": "72288A9235F92799842FFD9E3A7E544FB2410947F0C4B82F9BA53FF245909C56"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Items/beard.png",
+      "Bytes": 143,
+      "Sha256": "D74E59E70BB15349EB5927A7D16568BDA1BAC408D3E06EC99D17AD5018E38D08"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Data/animations.json",
+      "Bytes": 10550,
+      "Sha256": "AFF0A331083BADB3F52259F7EF3AB161D726D2BEBA9E6BCCCB2B29FED02436FC"
+    }
+  ],
+  "SupportOutputs": [
+    {
+      "Path": "scripts/sanity-assets/previews/beard-preview.png",
+      "Bytes": 210,
+      "Sha256": "C8264D39213BCA58BE45F18CDD8A681D1F7C060D2A432E3B85A55CAABAE93DE3"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/beard-rabbit-preview.png",
+      "Bytes": 559,
+      "Sha256": "14E73E2A63BFF897712DA7171581F2A1CBCCD5BA3077C6082231AC0BF472A95C"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/danger-border-preview.png",
+      "Bytes": 323,
+      "Sha256": "1BC6622F41FC140DEF55E9F2149C32013B691FFD063031BBA1F2DECFEB16EA53"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/dark-hand-preview.png",
+      "Bytes": 173693,
+      "Sha256": "725D0AA0D9C809908CC3800389D7C19229F2287ECA7444487D1E914FF4EA0F34"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/dark-watcher-preview.png",
+      "Bytes": 26416,
+      "Sha256": "DE26CEFBEE454A3D4E0A407CF075A74AF17C34071E2FF5D6E41FB37418C53C7B"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/eyes-preview.png",
+      "Bytes": 772,
+      "Sha256": "EB0687AFA098A3FF0998A769ADFE3808BE04C60D4910428C9940A2A1C432EF98"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/mr-skitts-preview.png",
+      "Bytes": 50538,
+      "Sha256": "1F48E7ED198BD0AACD60855C20EFB030963EA5827EA7089C3DD3701352C51EEE"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/artist-template-spec.json",
+      "Bytes": 5017,
+      "Sha256": "1CE55B850DF7BBEA23DA0F57BF6888AA670CCE929AAC706C0A39E4B21C3CFEE0"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/danger-border-nine-slice-grid.png",
+      "Bytes": 224,
+      "Sha256": "175AA0AACF7E77F6EC39B4681E536CF45AEB153936E0E1D72A98A5BBAB0EEC36"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/dark-hand-grid.png",
+      "Bytes": 4350,
+      "Sha256": "A9D8766BC89FC2E5DF6C5335063BD09662D0D8FB3892FB55D0DFD8CBD4C00215"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/dark-watcher-grid.png",
+      "Bytes": 6491,
+      "Sha256": "191B6FD48E3A0515C41493BE5D0D2DB545039A2AAE98D56B888768763E874CE0"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/eyes-grid.png",
+      "Bytes": 232,
+      "Sha256": "51D4C38EFD415622E3647475AEF0B82EA4F638D5DADF3EEF909646470AD02E55"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/mr-skitts-grid.png",
+      "Bytes": 1214,
+      "Sha256": "2886F030D7C0D052EF6D5D31B4060633D35DC768F484D4726C5B8E10A15579C1"
+    }
+  ],
+  "ScriptSha256": "5E410AB3EECACA25B9E93F96F87045D60CFD28CA46C330E034B5472F36F3D00F",
+  "Boundary": {
+    "ReferencesAreReadOnly": true,
+    "RuntimeReadsReferences": false,
+    "TestsReadReferences": false,
+    "BuildReadsReferences": false,
+    "EnemyVisualsProcessed": false,
+    "AudioProcessed": false,
+    "RuntimeLoaderImplemented": false
+  }
+}

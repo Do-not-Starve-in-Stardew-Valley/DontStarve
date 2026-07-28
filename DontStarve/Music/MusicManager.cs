@@ -10,6 +10,7 @@ internal static class MusicManager
     private static string _manifestId;
     private static bool _initialized;
     private static bool _enabled;
+    private static bool _sanityMusicSuppressed;
 
     internal static void Initialize(
         IModHelper helper,
@@ -36,10 +37,29 @@ internal static class MusicManager
         {
             DawnMusicService.Enable(_helper, _monitor, _manifestId);
             DuskMusicService.Enable(_helper, _monitor);
+            DawnMusicService.SetSuppressed(_sanityMusicSuppressed);
+            DuskMusicService.SetSuppressed(_sanityMusicSuppressed);
             return;
         }
 
         DawnMusicService.Disable(_helper);
         DuskMusicService.Disable(_helper);
+    }
+
+    /// <summary>
+    /// Joins the independent dawn/dusk SoundEffect instances to the same process ownership as
+    /// game-channel music. Releasing suppression never resumes an interrupted cue.
+    /// </summary>
+    internal static void SetSanityMusicSuppressed(bool suppressed)
+    {
+        if (_sanityMusicSuppressed == suppressed)
+            return;
+
+        _sanityMusicSuppressed = suppressed;
+        if (!_initialized || !_enabled)
+            return;
+
+        DawnMusicService.SetSuppressed(suppressed);
+        DuskMusicService.SetSuppressed(suppressed);
     }
 }

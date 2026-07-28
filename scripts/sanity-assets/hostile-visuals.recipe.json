@@ -1,0 +1,279 @@
+{
+  "SchemaVersion": 1,
+  "ContractVersion": 1,
+  "TemplateVersion": "sanity-hostile-visuals-v1",
+  "Command": "python -X utf8 scripts/sanity-assets/build_hostile_visuals.py",
+  "Toolchain": {
+    "Python": "3.14.0",
+    "Pillow": "12.3.0"
+  },
+  "Parameters": {
+    "CreeperFrameSize": {
+      "Width": 64,
+      "Height": 64
+    },
+    "TerrorbeakFrameSize": {
+      "Width": 48,
+      "Height": 64
+    },
+    "Columns": 4,
+    "Rows": 12,
+    "CreeperResampling": "Pillow.Image.Resampling.LANCZOS",
+    "CreeperAlignment": "per-state-alpha-crop-bottom-center-with-2px-margin",
+    "TerrorbeakProcessing": "byte-for-byte-copy-after-RGBA-grid-validation",
+    "PngCompressLevel": 9,
+    "PngOptimize": false
+  },
+  "SourceProofs": [
+    {
+      "SourceRoot": "references/san值系统设计稿重整/素材/待加工原始素材/视觉/05-爬行恐惧-50pct及以下/PNG原帧",
+      "FileCount": 40,
+      "TreeSha256": "0CAE760C0D5C54E30B4FDD333E6DFAE2ED6BEA7460390DFC6CA570F35671D575"
+    },
+    {
+      "SourceRoot": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧",
+      "FileCount": 10,
+      "TreeSha256": "D72BBBACD6EA08CEEC046F8E90FDBE18DF41185815F9698E2420F43BDE17325E"
+    },
+    {
+      "SourceRoot": "references/san值系统设计稿重整/素材/说明图/碰撞箱",
+      "FileCount": 6,
+      "TreeSha256": "BC4B091128BE1709E581FBCEC832E3ECB21C1CB811A8FD72813368CD707528A2"
+    },
+    {
+      "SourceRoot": "references/san值系统设计稿重整/素材/可直接集成候选/视觉/敌对影怪/恐怖尖喙/恐怖尖喙-4x12-48x64候选精灵表.png",
+      "FileCount": 1,
+      "TreeSha256": "E1D8805044ED3E8C692D46530A9AAEE94E9C968DB03D9D4770A7F3D6ADB3E3CF"
+    }
+  ],
+  "GifTimingEvidence": [
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/appear.gif",
+      "Sha256": "74900EEF10EACF4C7374356D36E1A2F80DE956FC45E40617B2C85399D9872425",
+      "FrameCount": 6,
+      "FrameDurationsMs": [
+        60
+      ],
+      "TotalDurationMs": 360
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/atk down.gif",
+      "Sha256": "EB07985C1C56435F2C0439E4377F496E665A83E43CDD6A7B80AF03D003C47F82",
+      "FrameCount": 11,
+      "FrameDurationsMs": [
+        40
+      ],
+      "TotalDurationMs": 440
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/atk side.gif",
+      "Sha256": "E1B70D2BE5022911D0E852552B10FAE059C6CDA7DBD417457A21221C3EB2DB67",
+      "FrameCount": 14,
+      "FrameDurationsMs": [
+        40
+      ],
+      "TotalDurationMs": 560
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/atk up.gif",
+      "Sha256": "6069318DDC6F08975F23082686ADED97AB3428309D01A825EEDC1D5A8DD9CC62",
+      "FrameCount": 11,
+      "FrameDurationsMs": [
+        40
+      ],
+      "TotalDurationMs": 440
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/disappear.gif",
+      "Sha256": "FF8EB3EC8B21C1DB9B2246A45F8BA78B656FA1E2CF3F1DDB1EAF744BB3E762BD",
+      "FrameCount": 10,
+      "FrameDurationsMs": [
+        40
+      ],
+      "TotalDurationMs": 400
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/idle.gif",
+      "Sha256": "FF8A27D97114474BE70533952518B051FA13CA5FF3B668367A71229352A046AF",
+      "FrameCount": 12,
+      "FrameDurationsMs": [
+        130
+      ],
+      "TotalDurationMs": 1560
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/taunt.gif",
+      "Sha256": "1457C73D00B67D3C7883DF55E0C3AF8C41EE0697A29E0AF5E9436F6E68EC4CCD",
+      "FrameCount": 15,
+      "FrameDurationsMs": [
+        130
+      ],
+      "TotalDurationMs": 1950
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/walk down.gif",
+      "Sha256": "67952621EB973C727A5A41DE2775A30A6FC092FBD4FC169BC43A332B40BD9976",
+      "FrameCount": 10,
+      "FrameDurationsMs": [
+        60
+      ],
+      "TotalDurationMs": 600
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/walk side.gif",
+      "Sha256": "3A13A4E6E8DB36FF7F03918C6959EF85BDA71748DB62C8CC4207A4001E422439",
+      "FrameCount": 10,
+      "FrameDurationsMs": [
+        60
+      ],
+      "TotalDurationMs": 600
+    },
+    {
+      "Path": "references/san值系统设计稿重整/素材/仅供预览/GIF/05-爬行恐惧/walk up.gif",
+      "Sha256": "2B43246A815B297628D5D6B44863EEE01B1CEBE20F7B5C842BE025CCE1EB015B",
+      "FrameCount": 10,
+      "FrameDurationsMs": [
+        60
+      ],
+      "TotalDurationMs": 600
+    }
+  ],
+  "CreeperStateProcessing": [
+    {
+      "SourcePrefix": "侧向攻击",
+      "SourceFrames": 4,
+      "StateScale": "0.076142131980",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "侧向行走",
+      "SourceFrames": 4,
+      "StateScale": "0.085348506401",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "出现",
+      "SourceFrames": 4,
+      "StateScale": "0.055504162812",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "向上攻击",
+      "SourceFrames": 4,
+      "StateScale": "0.082079343365",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "向上行走",
+      "SourceFrames": 4,
+      "StateScale": "0.093750000000",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "向下攻击",
+      "SourceFrames": 4,
+      "StateScale": "0.069204152249",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "向下行走",
+      "SourceFrames": 4,
+      "StateScale": "0.083682008368",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "恐吓",
+      "SourceFrames": 4,
+      "StateScale": "0.072551390568",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "死亡",
+      "SourceFrames": 4,
+      "StateScale": "0.055710306407",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    },
+    {
+      "SourcePrefix": "静息",
+      "SourceFrames": 4,
+      "StateScale": "0.084151472651",
+      "Alignment": "alpha-crop-bottom-center-with-2px-margin"
+    }
+  ],
+  "RuntimeOutputs": [
+    {
+      "Path": "DontStarve/Asset/Sanity/Data/animations.json",
+      "Bytes": 22400,
+      "Sha256": "DC1C4D819C15CA6AE55495DC9BFCDF8A0D62853FC44CCADD51BD969BA40F3985"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Data/resource-bindings.json",
+      "Bytes": 1061,
+      "Sha256": "792C044BDEBCE43D229AFE7ED8D3ECB651BF1A89C57AEC23E9555A39C3388ACA"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Data/sanity-assets.json",
+      "Bytes": 16370,
+      "Sha256": "0A4DDA7B3BC26DBE2EC244F13C95A5D9DED849D65D2F5E1AE20B1822C2F5F434"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Monsters/creeper-fear.png",
+      "Bytes": 40194,
+      "Sha256": "0AD10E4A35C51310939F843E39CC540D2523D14A4B047999CED698DC5D95CDC0"
+    },
+    {
+      "Path": "DontStarve/Asset/Sanity/Sprites/Monsters/terrorbeak.png",
+      "Bytes": 18859,
+      "Sha256": "E1D8805044ED3E8C692D46530A9AAEE94E9C968DB03D9D4770A7F3D6ADB3E3CF"
+    }
+  ],
+  "SupportOutputs": [
+    {
+      "Path": "scripts/sanity-assets/previews/hostile/creeper-fear-collision.png",
+      "Bytes": 6189,
+      "Sha256": "1A35C5ED0021B859DB102DD2833C4551F46DCC023868C0B6AF15A4220E62A461"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/hostile/creeper-fear-sheet.png",
+      "Bytes": 108980,
+      "Sha256": "2D4A4152A2D39D5429AC2499B1E8C102E205FEA8203BBC868A42EC91703AAF1B"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/hostile/terrorbeak-collision.png",
+      "Bytes": 2685,
+      "Sha256": "1A0BFC2344B2DE5B83F4D13007FB72A34E79B66CC0EE1809C40AF081E1D712C0"
+    },
+    {
+      "Path": "scripts/sanity-assets/previews/hostile/terrorbeak-sheet.png",
+      "Bytes": 22509,
+      "Sha256": "C0A946C42C56D166F8323A958935B1BF8BBEA14F5009C83AF4C5B1DA7D7763F3"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/hostile/creeper-fear-grid.png",
+      "Bytes": 2515,
+      "Sha256": "68170965867FAAB8E983C2113BE627E5ACC38EA787E9342F2BDE5BCC49026E9A"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/hostile/hostile-artist-template-spec.json",
+      "Bytes": 5385,
+      "Sha256": "9230AC67B314F8CF392DCBCC41C60D98081FBCC42CD6802A683504508D889F21"
+    },
+    {
+      "Path": "scripts/sanity-assets/templates/hostile/terrorbeak-grid.png",
+      "Bytes": 2201,
+      "Sha256": "A55106B9BB2E1E399FE0834C0BDA45BB741A19BB3E7DB28FB05CD24A2D2AB00A"
+    }
+  ],
+  "ScriptSha256": "B72D070B27DC5F6556F25ECB2433547B7892DA800833121E03C59462AB289C77",
+  "Boundary": {
+    "ReferencesAreReadOnly": true,
+    "RuntimeReadsReferences": false,
+    "TestsReadReferences": false,
+    "BuildReadsReferences": false,
+    "GameplayProfilesCreated": false,
+    "AudioProcessed": false,
+    "AudioCueMetadataCreated": false,
+    "RuntimeLoaderImplemented": false,
+    "DamageOrAiImplemented": false
+  }
+}

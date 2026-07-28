@@ -1,0 +1,369 @@
+{
+  "SchemaVersion": 2,
+  "Rules": [
+    {
+      "Id": "vanilla.farm",
+      "Priority": 700,
+      "Match": {
+        "RuntimeType": "StardewValley.Farm",
+        "IsOutdoors": true,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "OpaqueWhiteBase",
+      "TwoAmSpecialDeathSafe": false,
+      "DarknessAttackSafe": true,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": true
+    },
+    {
+      "Id": "vanilla.farm-house",
+      "Priority": 690,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.FarmHouse",
+        "ContextId": "Default",
+        "InternalName": "FarmHouse",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "OpaqueWhiteBase",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": true
+    },
+    {
+      "Id": "vanilla.cabin",
+      "Priority": 689,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.Cabin",
+        "ContextId": "Default",
+        "ParentBuildingType": "Cabin",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.cabin.log",
+      "Priority": 688,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.Cabin",
+        "ContextId": "Default",
+        "ParentBuildingType": "Log Cabin",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.cabin.plank",
+      "Priority": 687,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.Cabin",
+        "ContextId": "Default",
+        "ParentBuildingType": "Plank Cabin",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.cabin.stone",
+      "Priority": 686,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.Cabin",
+        "ContextId": "Default",
+        "ParentBuildingType": "Stone Cabin",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.island-farm-house",
+      "Priority": 680,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.IslandFarmHouse",
+        "ContextId": "Island",
+        "InternalName": "IslandFarmHouse",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "OpaqueWhiteBase",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": true
+    },
+    {
+      "Id": "vanilla.cellar",
+      "Priority": 670,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.Cellar",
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "OpaqueWhiteBase",
+      "TwoAmSpecialDeathSafe": false,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.community-center",
+      "Priority": 660,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.CommunityCenter",
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "OpaqueWhiteBase",
+      "TwoAmSpecialDeathSafe": false,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": true
+    },
+    {
+      "Id": "vanilla.mine-shaft",
+      "Priority": 650,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.MineShaft",
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": false,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.volcano-dungeon",
+      "Priority": 640,
+      "Match": {
+        "RuntimeType": "StardewValley.Locations.VolcanoDungeon",
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": false,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.shed",
+      "Priority": 630,
+      "Match": {
+        "RuntimeType": "StardewValley.Shed",
+        "ContextId": "Default",
+        "ParentBuildingType": "Shed",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.big-shed",
+      "Priority": 629,
+      "Match": {
+        "RuntimeType": "StardewValley.Shed",
+        "ContextId": "Default",
+        "ParentBuildingType": "Big Shed",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.coop",
+      "Priority": 620,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Coop",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.big-coop",
+      "Priority": 619,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Big Coop",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.deluxe-coop",
+      "Priority": 618,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Deluxe Coop",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.barn",
+      "Priority": 617,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Barn",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.big-barn",
+      "Priority": 616,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Big Barn",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.deluxe-barn",
+      "Priority": 615,
+      "Match": {
+        "RuntimeType": "StardewValley.AnimalHouse",
+        "ContextId": "Default",
+        "ParentBuildingType": "Deluxe Barn",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.slime-hutch",
+      "Priority": 610,
+      "Match": {
+        "RuntimeType": "StardewValley.SlimeHutch",
+        "ContextId": "Default",
+        "ParentBuildingType": "Slime Hutch",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    },
+    {
+      "Id": "vanilla.greenhouse",
+      "Priority": 600,
+      "Match": {
+        "RuntimeType": "StardewValley.GameLocation",
+        "ContextId": "Default",
+        "InternalName": "Greenhouse",
+        "IsOutdoors": false,
+        "IsTemporary": false,
+        "EventActive": false,
+        "FestivalActive": false
+      },
+      "LightProfile": "FallbackOnly",
+      "TwoAmSpecialDeathSafe": true,
+      "DarknessAttackSafe": false,
+      "HostileShadowSafe": false,
+      "JunimoBlessingEligible": false
+    }
+  ]
+}

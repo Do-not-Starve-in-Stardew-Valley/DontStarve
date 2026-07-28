@@ -1,43 +1,122 @@
+#nullable enable
+
+using System;
+using DontStarve.Player.Stats.Sanity.PassOut;
 using StardewModdingAPI;
-using StardewModdingAPI.Events;
 using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
-/// 按当天最后记录到的时间结算睡眠理智；睡太晚会扣理智，早睡按剩余时间恢复。
+/// 只消费引擎入口已经提交的结束原因；DayEnding 本身没有权限猜睡眠、劳累或死亡。
 /// </summary>
 internal class Sleep : INonTimeRelatedBehavior
 {
-    private int lastTime;
+    private readonly PassOutReasonLedger ledger;
+    private readonly SanitySystemLifecycleCoordinator lifecycle;
+    private readonly Action<string>? diagnostic;
+    private string reportedReason = string.Empty;
+
+    internal Sleep(
+        PassOutReasonLedger ledger,
+        SanitySystemLifecycleCoordinator lifecycle,
+        Action<string>? diagnostic = null
+    )
+    {
+        this.ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
+        this.lifecycle = lifecycle
+            ?? throw new ArgumentNullException(nameof(lifecycle));
+        this.diagnostic = diagnostic;
+    }
 
     public void Init(IModHelper helper)
     {
-        helper.Events.GameLoop.TimeChanged += (_, e) => TimeChange(e);
-        helper.Events.GameLoop.DayEnding += (_, _) => DayEnding();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => BeginSession();
+        helper.Events.GameLoop.DayStarted += (_, _) => BeginDay();
+        helper.Events.GameLoop.DayEnding += (_, _) => SettleDayEnding();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => ClearSession();
     }
 
-    private void TimeChange(TimeChangedEventArgs e)
+    private void BeginSession()
     {
-        lastTime = e.NewTime;
+        ledger.Clear();
+        reportedReason = string.Empty;
     }
 
-    private void DayEnding()
+    private void BeginDay()
     {
-        var player = Game1.player;
-        if (player == null)
+        reportedReason = string.Empty;
+        if (SanityProtocol.IsValidSessionId(lifecycle.SessionId))
+            ledger.PruneBeforeDay(lifecycle.SessionId, Math.Max(0, Game1.Date.TotalDays));
+    }
+
+    private void SettleDayEnding()
+    {
+        if (
+            !Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || !lifecycle.IsEnabled
+            || lifecycle.AuthorityRole != SanityAuthorityRole.Host
+            || !SanityProtocol.IsValidSessionId(lifecycle.SessionId)
+        )
+        {
             return;
+        }
 
-        var timescale = lastTime % 100 / 10 + lastTime / 100 * 6;
-        // Stardew 最晚按 2:00 结束一天，换算成 10 分钟格是 26 * 6 = 156。
-        if (timescale == 156)
+        foreach (var farmer in Game1.getOnlineFarmers())
         {
-            player.SetSanity(player.GetSanity() - 20);
+            var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+                farmer.UniqueMultiplayerID
+            );
+            if (
+                !ledger.TryConsumeDayEnding(
+                    lifecycle.SessionId,
+                    playerKey,
+                    Math.Max(0, Game1.Date.TotalDays),
+                    out var evidence,
+                    out var reason
+                )
+            )
+            {
+                ReportOnce(reason);
+                continue;
+            }
+
+            var decision = PassOutReasonPolicy.ResolveDayEnding(evidence);
+            // DayEnding owns the terminal reason settlement. Remove the consumed receipt now so
+            // a repeated callback cannot retain session evidence into save/day boundaries.
+            ledger.ForgetPlayer(playerKey);
+            if (decision.Action != PassOutPolicyAction.ApplyDelta)
+            {
+                if (decision.Action == PassOutPolicyAction.None)
+                    ReportOnce(decision.StableReason);
+                continue;
+            }
+
+            var result = farmer.ChangeSanity(decision.Delta, decision.Source);
+            if (result.Status == SanityChangeStatus.Rejected)
+                ReportOnce(result.Reason);
         }
-        else
+    }
+
+    private void ClearSession()
+    {
+        ledger.Clear();
+        reportedReason = string.Empty;
+    }
+
+    private void ReportOnce(string reason)
+    {
+        if (
+            diagnostic is null
+            || string.IsNullOrWhiteSpace(reason)
+            || string.Equals(reportedReason, reason, StringComparison.Ordinal)
+        )
         {
-            var passTimescale = 156 - timescale;
-            player.SetSanity(player.GetSanity() + passTimescale * 3);
+            return;
         }
+
+        reportedReason = reason;
+        diagnostic(reason);
     }
 }

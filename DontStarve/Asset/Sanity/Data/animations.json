@@ -1,0 +1,710 @@
+{
+  "SchemaVersion": 1,
+  "ContractVersion": 1,
+  "TemplateVersion": "sanity-harmless-visuals-v1",
+  "AnimationProfiles": [
+    {
+      "AnimationProfileId": "sanity.animation.mr-skitts.profile",
+      "TextureSlotId": "sanity.asset.mr-skitts.sprite",
+      "FrameWidth": 184,
+      "FrameHeight": 112,
+      "DirectionMode": "None",
+      "OwnerLocalOnly": true,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "ART-01",
+      "States": [
+        {
+          "AnimationId": "sanity.animation.mr-skitts.idle",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 420,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 92,
+            "Y": 108
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-01 GIF total 1680ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.mr-skitts.disappear",
+          "Row": 1,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 92,
+            "Y": 108
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-01 GIF total 400ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        }
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.dark-hand.profile",
+      "TextureSlotId": "sanity.asset.dark-hand.sprite",
+      "FrameWidth": 192,
+      "FrameHeight": 176,
+      "DirectionMode": "None",
+      "OwnerLocalOnly": true,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "ART-02",
+      "States": [
+        {
+          "AnimationId": "sanity.animation.dark-hand.appear",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 275,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 96,
+            "Y": 172
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [
+            0
+          ],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-02 GIF total 1100ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.move",
+          "Row": 1,
+          "FrameCount": 4,
+          "FrameDurationMs": 300,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 96,
+            "Y": 172
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-02 loop GIF total 1200ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.interact",
+          "Row": 2,
+          "FrameCount": 4,
+          "FrameDurationMs": 175,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 96,
+            "Y": 172
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-02 catch GIF total 700ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.retreat",
+          "Row": 3,
+          "FrameCount": 4,
+          "FrameDurationMs": 275,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 96,
+            "Y": 172
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "No dedicated GIF exists; uses the appear total only as an explicit provisional rhythm proxy. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.disappear",
+          "Row": 4,
+          "FrameCount": 4,
+          "FrameDurationMs": 90,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 96,
+            "Y": 172
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-02 die GIF total 360ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        }
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.dark-watcher.profile",
+      "TextureSlotId": "sanity.asset.dark-watcher.sprite",
+      "FrameWidth": 904,
+      "FrameHeight": 128,
+      "DirectionMode": "None",
+      "OwnerLocalOnly": true,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "ART-03",
+      "States": [
+        {
+          "AnimationId": "sanity.animation.dark-watcher.appear",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 510,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 452,
+            "Y": 124
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-03 pre GIF total 2040ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-watcher.idle",
+          "Row": 1,
+          "FrameCount": 4,
+          "FrameDurationMs": 510,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 452,
+            "Y": 124
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-03 loop GIF total 2040ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.dark-watcher.disappear",
+          "Row": 2,
+          "FrameCount": 4,
+          "FrameDurationMs": 150,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 452,
+            "Y": 124
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "World",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-03 pst GIF total 600ms divided across four selected PNG frames; provisional until game preview. Bottom-center pivot, draw scale, and sort layer remain subject to game preview."
+        }
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.eyes.profile",
+      "TextureSlotId": "sanity.asset.eyes.sprite",
+      "FrameWidth": 64,
+      "FrameHeight": 32,
+      "DirectionMode": "None",
+      "OwnerLocalOnly": true,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "DEV-PLACEHOLDER",
+      "States": [
+        {
+          "AnimationId": "sanity.animation.eyes.blink",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 200,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 16
+          },
+          "DrawScale": 1.0,
+          "Mirror": "None",
+          "SortLayer": "Screen",
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "Four-frame DEV placeholder proves the sheet contract only; final art, blink cadence, anchor, and scale are pending."
+        }
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.creeper-fear.profile",
+      "TextureSlotId": "sanity.asset.creeper-fear.sprite",
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "SheetRows": 12,
+      "DirectionMode": "FourWayRows",
+      "OwnerLocalOnly": false,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "TemplateVersion": "sanity-hostile-visuals-v1",
+      "CreditGroup": "ART-05",
+      "ActorOriginSourcePx": {
+        "X": 0,
+        "Y": 0
+      },
+      "Collision": {
+        "CoordinateSpace": "ActorOriginRelativeSourcePx",
+        "HurtBoxSourcePx": {
+          "X": 4,
+          "Y": 48,
+          "Width": 56,
+          "Height": 48
+        },
+        "AttackBoxSourcePx": {
+          "X": -8,
+          "Y": 56,
+          "Width": 80,
+          "Height": 80
+        },
+        "AttackActiveFrames": [
+          3,
+          4
+        ],
+        "IsProvisional": true,
+        "ProvisionalReason": "ART-05 collision guides and the D11 source-pixel baseline still require debug-rectangle game calibration."
+      },
+      "States": [
+        {
+          "AnimationId": "sanity.animation.creeper-fear.move",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 150,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "BakedFourWayRows",
+          "SortLayer": "Actor",
+          "DirectionRows": [
+            {
+              "Direction": "Down",
+              "Row": 0,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Right",
+              "Row": 1,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Up",
+              "Row": 2,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 3,
+              "Mirror": "Baked"
+            }
+          ],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "The 600 ms movement preview total is normalized across four runtime keys; game cadence remains provisional."
+        },
+        {
+          "AnimationId": "sanity.animation.creeper-fear.attack",
+          "Row": 4,
+          "FrameCount": 4,
+          "FrameDurationMs": 125,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "BakedFourWayRows",
+          "SortLayer": "Actor",
+          "DirectionRows": [
+            {
+              "Direction": "Down",
+              "Row": 4,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Right",
+              "Row": 5,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Up",
+              "Row": 6,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 7,
+              "Mirror": "Baked"
+            }
+          ],
+          "HitFrames": [
+            3,
+            4
+          ],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "The 440-560 ms directional preview totals are normalized to a 500 ms four-key midpoint; game cadence remains provisional."
+        },
+        {
+          "AnimationId": "sanity.animation.creeper-fear.death",
+          "Row": 8,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "No death-specific GIF exists; 100 ms is an explicit four-key hostile-transition fallback pending game preview."
+        },
+        {
+          "AnimationId": "sanity.animation.creeper-fear.spawn",
+          "Row": 9,
+          "FrameCount": 4,
+          "FrameDurationMs": 90,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "The 360 ms appear preview total is normalized across four runtime keys; game cadence remains provisional."
+        },
+        {
+          "AnimationId": "sanity.animation.creeper-fear.idle",
+          "Row": 10,
+          "FrameCount": 4,
+          "FrameDurationMs": 390,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "The 1560 ms idle preview total is normalized across four runtime keys; game cadence remains provisional."
+        },
+        {
+          "AnimationId": "sanity.animation.creeper-fear.taunt",
+          "Row": 11,
+          "FrameCount": 4,
+          "FrameDurationMs": 488,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 32,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "The 1950 ms taunt preview total is rounded to 1952 ms across four runtime keys; game cadence remains provisional."
+        }
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.terrorbeak.profile",
+      "TextureSlotId": "sanity.asset.terrorbeak.sprite",
+      "FrameWidth": 48,
+      "FrameHeight": 64,
+      "SheetRows": 12,
+      "DirectionMode": "FourWayRows",
+      "OwnerLocalOnly": false,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "TemplateVersion": "sanity-hostile-visuals-v1",
+      "CreditGroup": "ART-06",
+      "ActorOriginSourcePx": {
+        "X": 0,
+        "Y": 0
+      },
+      "Collision": {
+        "CoordinateSpace": "ActorOriginRelativeSourcePx",
+        "HurtBoxSourcePx": {
+          "X": 8,
+          "Y": 32,
+          "Width": 32,
+          "Height": 32
+        },
+        "AttackBoxSourcePx": {
+          "X": -16,
+          "Y": 8,
+          "Width": 80,
+          "Height": 80
+        },
+        "AttackActiveFrames": [
+          3,
+          4
+        ],
+        "IsProvisional": true,
+        "ProvisionalReason": "ART-06 collision guides and the D11 source-pixel baseline still require debug-rectangle game calibration."
+      },
+      "States": [
+        {
+          "AnimationId": "sanity.animation.terrorbeak.move",
+          "Row": 0,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "BakedFourWayRows",
+          "SortLayer": "Actor",
+          "DirectionRows": [
+            {
+              "Direction": "Down",
+              "Row": 0,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Right",
+              "Row": 1,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Up",
+              "Row": 2,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 3,
+              "Mirror": "Baked"
+            }
+          ],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        },
+        {
+          "AnimationId": "sanity.animation.terrorbeak.attack",
+          "Row": 4,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "BakedFourWayRows",
+          "SortLayer": "Actor",
+          "DirectionRows": [
+            {
+              "Direction": "Down",
+              "Row": 4,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Right",
+              "Row": 5,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Up",
+              "Row": 6,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 7,
+              "Mirror": "Baked"
+            }
+          ],
+          "HitFrames": [
+            3,
+            4
+          ],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        },
+        {
+          "AnimationId": "sanity.animation.terrorbeak.death",
+          "Row": 8,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        },
+        {
+          "AnimationId": "sanity.animation.terrorbeak.spawn",
+          "Row": 9,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        },
+        {
+          "AnimationId": "sanity.animation.terrorbeak.idle",
+          "Row": 10,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": true,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        },
+        {
+          "AnimationId": "sanity.animation.terrorbeak.taunt",
+          "Row": 11,
+          "FrameCount": 4,
+          "FrameDurationMs": 100,
+          "Loop": false,
+          "PivotSourcePx": {
+            "X": 24,
+            "Y": 48
+          },
+          "DrawScale": 4.0,
+          "Mirror": "None",
+          "SortLayer": "Actor",
+          "DirectionRows": [],
+          "HitFrames": [],
+          "AllowedEmptyFrames": [],
+          "IsProvisional": true,
+          "ProvisionalReason": "ART-06 has no GIF timing evidence; 100 ms is an explicit development fallback, not an accepted cadence."
+        }
+      ]
+    }
+  ],
+  "OverlayProfiles": [
+    {
+      "OverlayProfileId": "sanity.overlay.danger-border.profile",
+      "TextureSlotId": "sanity.asset.danger-border.overlay",
+      "Width": 64,
+      "Height": 64,
+      "StretchMode": "NineSlice",
+      "SliceSourcePx": {
+        "Left": 16,
+        "Top": 16,
+        "Right": 16,
+        "Bottom": 16
+      },
+      "ViewportSafe": true,
+      "UiScaleSafe": true,
+      "OwnerLocalOnly": true,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "DEV-PLACEHOLDER",
+      "IsProvisional": true,
+      "ProvisionalReason": "DEV checker border proves nine-slice and viewport contracts only; final curled red border art is pending."
+    }
+  ],
+  "StaticSpriteProfiles": [
+    {
+      "StaticSpriteProfileId": "sanity.static.beard-rabbit.profile",
+      "TextureSlotId": "sanity.asset.beard-rabbit.sprite",
+      "Width": 64,
+      "Height": 64,
+      "PivotSourcePx": {
+        "X": 32,
+        "Y": 60
+      },
+      "DrawScale": 1.0,
+      "SortLayer": "World",
+      "OwnerLocalOnly": true,
+      "SharedObjectIdMutation": false,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "DEV-PLACEHOLDER",
+      "IsProvisional": true,
+      "ProvisionalReason": "DEV silhouette proves owner-local projection dimensions only; final rabbit art and anchor are pending."
+    },
+    {
+      "StaticSpriteProfileId": "sanity.static.beard-item.profile",
+      "TextureSlotId": "sanity.asset.beard-item.icon",
+      "Width": 16,
+      "Height": 16,
+      "PivotSourcePx": {
+        "X": 8,
+        "Y": 8
+      },
+      "DrawScale": 1.0,
+      "SortLayer": "Ui",
+      "OwnerLocalOnly": true,
+      "SharedObjectIdMutation": false,
+      "IsPlaceholder": true,
+      "ContractVersion": 1,
+      "CreditGroup": "DEV-PLACEHOLDER",
+      "IsProvisional": true,
+      "ProvisionalReason": "DEV icon proves the 16x16 replacement slot only; final item art is pending."
+    }
+  ],
+  "HostileTemplateVersion": "sanity-hostile-visuals-v1"
+}

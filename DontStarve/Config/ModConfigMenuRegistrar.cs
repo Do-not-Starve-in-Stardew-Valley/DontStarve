@@ -1,4 +1,7 @@
+#nullable enable
+
 using System;
+using System.Collections.Generic;
 using Common.ConfigurationServices;
 using StardewModdingAPI;
 
@@ -6,49 +9,158 @@ namespace DontStarve.Config;
 
 internal static class ModConfigMenuRegistrar
 {
+    private const string GenericModConfigMenuId = "spacechase0.GenericModConfigMenu";
+    private const string MinimumGenericModConfigMenuVersion = "1.16.0";
+
     internal static void Register(
         IModHelper helper,
         IMonitor monitor,
         IManifest manifest,
-        ModConfig config,
-        Action saveConfig,
-        Action applyConfig)
+        ConfigurationRuntime? runtime,
+        Action<FlatConfigSaveResult> saveCompleted
+    )
     {
-        var configMenu = IntegrationHelper.GetGenericModConfigMenu(helper.ModRegistry, monitor);
-        if (configMenu == null)
-            return;
+        var reportedReasons = new HashSet<string>(StringComparer.Ordinal);
 
-        try
+        void ReportOnce(string reason)
         {
-            // GMCM 是可选集成：存在时即时应用音乐开关，不存在时 config.json 仍然生效。
-            configMenu.Register(
-                manifest,
-                reset: () =>
-                {
-                    config.EnableDawnDuskMusic = true;
-                    applyConfig();
-                },
-                save: saveConfig);
+            if (!reportedReasons.Add(reason))
+                return;
 
-            configMenu.AddSectionTitle(
-                manifest,
-                text: () => helper.Translation.Get("config.music.section").ToString());
-
-            configMenu.AddBoolOption(
-                manifest,
-                getValue: () => config.EnableDawnDuskMusic,
-                setValue: value =>
-                {
-                    config.EnableDawnDuskMusic = value;
-                    applyConfig();
-                },
-                name: () => helper.Translation.Get("config.enable-dawn-dusk-music.name").ToString(),
-                tooltip: () => helper.Translation.Get("config.enable-dawn-dusk-music.tooltip").ToString(),
-                fieldId: "EnableDawnDuskMusic");
+            var level = string.Equals(
+                reason,
+                "gmcm.not-installed",
+                StringComparison.Ordinal
+            )
+                ? LogLevel.Debug
+                : LogLevel.Warn;
+            monitor.Log($"[DontStarve][GMCM] {reason}", level);
         }
-        catch (Exception ex)
+
+        if (runtime is null)
         {
-            monitor.Log($"Failed to register Generic Mod Config Menu options: {ex.Message}", LogLevel.Warn);
+            ReportOnce("gmcm.config-unavailable");
+            return;
+        }
+
+        var installedManifest = helper.ModRegistry.Get(GenericModConfigMenuId)?.Manifest;
+        if (installedManifest is null)
+        {
+            ReportOnce("gmcm.not-installed");
+            return;
+        }
+
+        // Stage 03 only mirrors the locally verified 1.16.0 surface; older APIs fail closed.
+        if (installedManifest.Version.IsOlderThan(MinimumGenericModConfigMenuVersion))
+        {
+            ReportOnce("gmcm.version-too-old");
+            return;
+        }
+
+        var configMenu = helper.ModRegistry.GetApi<IGenericModConfigMenuApi>(
+            GenericModConfigMenuId
+        );
+        if (configMenu is null)
+        {
+            ReportOnce("gmcm.api-mismatch");
+            return;
+        }
+
+        SchemaDrivenConfigMenuRegistrar.Register(
+            runtime,
+            new SmapiConfigMenuRegistrationApi(configMenu, manifest),
+            new SmapiConfigMenuTranslationProvider(helper.Translation),
+            ReportOnce,
+            saveCompleted
+        );
+    }
+
+    private sealed class SmapiConfigMenuRegistrationApi : IConfigMenuRegistrationApi
+    {
+        private readonly IGenericModConfigMenuApi api;
+        private readonly IManifest manifest;
+
+        internal SmapiConfigMenuRegistrationApi(
+            IGenericModConfigMenuApi api,
+            IManifest manifest
+        )
+        {
+            this.api = api;
+            this.manifest = manifest;
+        }
+
+        public void Register(Action reset, Action save)
+        {
+            api.Register(manifest, reset, save);
+        }
+
+        public void AddSection(string sectionId, string text)
+        {
+            api.AddSectionTitle(manifest, () => text);
+        }
+
+        public void AddBoolean(
+            string fieldId,
+            Func<bool> getValue,
+            Action<bool> setValue,
+            string name,
+            string tooltip
+        )
+        {
+            api.AddBoolOption(
+                manifest,
+                getValue,
+                setValue,
+                () => name,
+                () => tooltip,
+                fieldId
+            );
+        }
+
+        public void AddEnum(
+            string fieldId,
+            Func<string> getValue,
+            Action<string> setValue,
+            string name,
+            string tooltip,
+            string[] allowedValues,
+            Func<string, string> formatAllowedValue
+        )
+        {
+            api.AddTextOption(
+                manifest,
+                getValue,
+                setValue,
+                () => name,
+                () => tooltip,
+                allowedValues,
+                formatAllowedValue,
+                fieldId
+            );
+        }
+    }
+
+    private sealed class SmapiConfigMenuTranslationProvider
+        : IConfigMenuTranslationProvider
+    {
+        private readonly ITranslationHelper translations;
+
+        internal SmapiConfigMenuTranslationProvider(ITranslationHelper translations)
+        {
+            this.translations = translations;
+        }
+
+        public bool TryGet(string key, out string value)
+        {
+            var translation = translations.Get(key);
+            if (!translation.HasValue())
+            {
+                value = string.Empty;
+                return false;
+            }
+
+            value = translation.ToString();
+            return !string.IsNullOrWhiteSpace(value);
         }
     }
 }

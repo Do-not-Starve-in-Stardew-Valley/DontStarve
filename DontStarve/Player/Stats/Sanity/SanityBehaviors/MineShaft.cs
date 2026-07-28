@@ -25,51 +25,54 @@ internal class MineShaft : ITimeRelatedBehavior
         if (player == null)
             return;
 
-        var location = Game1.currentLocation;
-        var value = 0.0;
+        var location = player.currentLocation;
+        if (location == null)
+            return;
 
+        double value;
         if (location is MineShaftLocation mineShaft)
         {
-            // 基础层级先给一个底值，再叠加黑暗、特殊层和危险矿井修正。
-            value = 0.0588;
-            if (mineShaft.isDarkArea())
-                value = 0.588;
-            if (mineShaft.mineLevel > 120)
-                value = 0.1176;
-            if (mineShaft.mineLevel > 1000)
-                value = 0.2352;
-            if (mineShaft.isQuarryArea)
-                value = 0.1764;
-            if (mineShaft.isSlimeArea)
-                value += 0.1176;
-            if (mineShaft.isMonsterArea)
-                value += 0.2352;
-            if (mineShaft.isDinoArea)
-                value += 0.2352;
-            if (mineShaft.GetAdditionalDifficulty() > 0)
-            {
-                if (mineShaft.mineLevel > 120)
-                    value += 0.2352;
-                else
-                    value += 0.1176;
-            }
+            value = SanityBehaviorRules.CalculateMineLoss(
+                new MineSanityContext(
+                    MineSanityLocationKind.MineShaft,
+                    mineShaft.mineLevel,
+                    mineShaft.isDarkArea(),
+                    mineShaft.isQuarryArea,
+                    mineShaft.isSlimeArea,
+                    mineShaft.isMonsterArea,
+                    mineShaft.isDinoArea,
+                    mineShaft.GetAdditionalDifficulty()
+                )
+            );
         }
         else if (location is VolcanoDungeon)
         {
-            value = 0.1176;
+            value = SanityBehaviorRules.CalculateMineLoss(
+                new MineSanityContext(
+                    MineSanityLocationKind.VolcanoDungeon,
+                    0,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    0
+                )
+            );
+        }
+        else
+        {
+            value = 0;
         }
 
         if (value > 0)
-            player.SetSanity(player.GetSanity() - value);
+            player.ChangeSanity(-value, SanityChangeSource.Mine);
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

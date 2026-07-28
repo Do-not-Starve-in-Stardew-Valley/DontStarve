@@ -46,6 +46,26 @@ public interface IGenericModConfigMenuApi
         string fieldId = null
     );
 
+    /// <summary>Add a text option at the current position in the form.</summary>
+    /// <param name="manifest">The mod's manifest.</param>
+    /// <param name="getValue">Get the current raw config value.</param>
+    /// <param name="setValue">Set a new raw config value.</param>
+    /// <param name="name">The label text to show in the form.</param>
+    /// <param name="tooltip">The tooltip text shown when the cursor hovers on the field, or <c>null</c>.</param>
+    /// <param name="allowedValues">The stable raw values which can be selected, or <c>null</c> for free text.</param>
+    /// <param name="formatAllowedValue">Get the localized display text for a raw allowed value.</param>
+    /// <param name="fieldId">The unique field ID, or <c>null</c> to auto-generate one.</param>
+    void AddTextOption(
+        IManifest manifest,
+        Func<string> getValue,
+        Action<string> setValue,
+        Func<string> name,
+        Func<string> tooltip = null,
+        string[] allowedValues = null,
+        Func<string, string> formatAllowedValue = null,
+        string fieldId = null
+    );
+
     /// <summary>Add an integer option at the current position in the form.</summary>
     /// <param name="manifest">The mod's manifest.</param>
     /// <param name="getValue">Get the current value from the mod config.</param>

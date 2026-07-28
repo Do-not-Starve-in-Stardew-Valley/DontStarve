@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Resource;
 using Microsoft.Xna.Framework;
@@ -14,67 +16,77 @@ namespace DontStarve.Display.UIElements;
 /// </summary>
 internal class SanityBar : INonTimeRelatedUIElement
 {
-    public void Init(IModHelper helper) { }
+    private readonly ISanitySystemState sanitySystemState;
+    private readonly HashSet<string> reportedFailures = new(StringComparer.Ordinal);
+    private CultureInfo culture = CultureInfo.InvariantCulture;
+
+    internal SanityBar(ISanitySystemState sanitySystemState)
+    {
+        this.sanitySystemState = sanitySystemState;
+    }
+
+    public void Init(IModHelper helper)
+    {
+        culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
+        helper.Events.Content.LocaleChanged += (_, e) =>
+            culture = LocalizedValueFormatter.ResolveCulture(e.NewLocale);
+        helper.Events.GameLoop.SaveLoaded += (_, _) => reportedFailures.Clear();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => reportedFailures.Clear();
+    }
 
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
+        if (
+            !HudDisplayRules
+                .ResolveSanityVisibility(sanitySystemState.IsEnabled)
+                .ShowBar
+        )
+        {
+            return;
+        }
+
         var player = Game1.player;
         var sanity = player.GetSanity();
         var maxSanity = player.GetMaxSanity();
 
         // 右下角锚点已在 UIRenderContext 中根据原版生命 HUD 让位。
         var hudAnchor = uiContext.ViewportBottomRightAnchor;
+        var containerTexture = TextureLoader.SanityContainer;
+        if (
+            !HudDisplayRules.TryCreateSanityFrame(
+                new HudPoint((int)hudAnchor.X, (int)hudAnchor.Y),
+                TextureLoader.SanityContainerScaledWidth,
+                TextureLoader.SanityContainerScaledHeight,
+                TextureLoader.FillerWidthMultiplier * Game1.pixelZoom,
+                sanity,
+                maxSanity,
+                out var frame,
+                out var reason
+            )
+        )
+        {
+            ReportFailureOnce(reason);
+            return;
+        }
 
-        e.SpriteBatch.Draw(
-            TextureLoader.SanityContainer,
-            new Rectangle(
-                (int)hudAnchor.X,
-                (int)hudAnchor.Y - 240,
-                TextureLoader.SanityContainer.Width * 4,
-                TextureLoader.SanityContainer.Height * 4
-            ),
-            Color.White
-        );
-
-        e.SpriteBatch.Draw(
-            TextureLoader.SanityFiller,
-            new Vector2(hudAnchor.X + 36, hudAnchor.Y - 25),
-            new Rectangle(
-                0,
-                0,
-                TextureLoader.SanityFiller.Width * 6 * Game1.pixelZoom,
-                (int)(sanity / maxSanity * 168)
-            ),
-            Brushes.SanityBrush,
-            3.138997f,
-            new Vector2(0.5f, 0.5f),
-            1f,
-            SpriteEffects.None,
-            1f
-        );
-
-        var mousePosition = new Vector2(
-            Game1.getMousePosition(true).X,
-            Game1.getMousePosition(true).Y
-        );
         var spriteBatch = e.SpriteBatch;
-
-        var containerW = TextureLoader.SanityContainerScaledWidth;
-        var containerH = TextureLoader.SanityContainerScaledHeight;
-        var fillerWidth = TextureLoader.SanityFillerScaledWidth;
-        var containerX = (int)hudAnchor.X;
-        var containerY = (int)hudAnchor.Y - 240;
+        var containerBounds = frame.ContainerBounds;
 
         spriteBatch.Draw(
-            TextureLoader.SanityContainer,
-            new Rectangle(containerX, containerY, containerW, containerH),
+            containerTexture,
+            new Rectangle(
+                containerBounds.X,
+                containerBounds.Y,
+                containerBounds.Width,
+                containerBounds.Height
+            ),
             Color.White
         );
 
         spriteBatch.Draw(
             TextureLoader.SanityFiller,
-            new Vector2(hudAnchor.X + 36, hudAnchor.Y - 25),
-            new Rectangle(0, 0, fillerWidth, (int)(sanity / maxSanity * 168)),
+            new Vector2(frame.FillerPosition.X, frame.FillerPosition.Y),
+            new Rectangle(0, 0, frame.FillerWidth, frame.FillerHeight),
             Brushes.SanityBrush,
             3.138997f,
             new Vector2(0.5f, 0.5f),
@@ -84,17 +96,25 @@ internal class SanityBar : INonTimeRelatedUIElement
         );
 
         var mousePoint = Game1.getMousePosition(true);
-        var checkX = mousePoint.X >= containerX && mousePoint.X <= containerX + containerW;
-        var checkY = mousePoint.Y >= containerY && mousePoint.Y <= containerY + containerH;
-
-        if (checkX && checkY)
+        if (containerBounds.Contains(mousePoint.X, mousePoint.Y))
         {
-            var information = $"Sanity: {Math.Round(sanity)}/{Math.Round(maxSanity)}";
+            var label = uiContext.Helper.Translation.Get("sanity-hud.label").ToString();
+            var information = uiContext.Helper.Translation
+                .Get(
+                    "sanity-hud.value",
+                    new
+                    {
+                        label,
+                        current = LocalizedValueFormatter.FormatWhole(frame.Current, culture),
+                        maximum = LocalizedValueFormatter.FormatWhole(frame.Maximum, culture),
+                    }
+                )
+                .ToString();
             var textSize = Game1.dialogueFont.MeasureString(information);
             var posX = hudAnchor.X;
-            var posY = containerY - textSize.Y + 116;
+            var posY = containerBounds.Y - textSize.Y + 116;
 
-            Game1.spriteBatch.DrawString(
+            spriteBatch.DrawString(
                 Game1.dialogueFont,
                 information,
                 new Vector2(posX, posY),
@@ -106,5 +126,16 @@ internal class SanityBar : INonTimeRelatedUIElement
                 0f
             );
         }
+    }
+
+    private void ReportFailureOnce(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason) || !reportedFailures.Add(reason))
+            return;
+
+        // DisplayManager 当前不持有 IMonitor；SMAPI 会接收标准错误，且按存档会话/reason 去重。
+        Console.Error.WriteLine(
+            $"[DontStarve][SanityHud] HUD skipped for invalid state (reason={reason})."
+        );
     }
 }

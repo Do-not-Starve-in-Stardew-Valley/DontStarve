@@ -1,0 +1,282 @@
+{
+  "SchemaVersion": 1,
+  "TemplateVersion": "sanity-audio-replacement-template-v1",
+  "RuntimeFormat": {
+    "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+    "Container": "RIFF",
+    "Codec": "PCM",
+    "FormatCode": 1,
+    "Channels": 2,
+    "SampleRateHz": 44100,
+    "BitsPerSample": 16,
+    "BlockAlign": 4,
+    "ByteRate": 176400
+  },
+  "Rules": {
+    "PreserveOriginalGain": true,
+    "DefaultLoudnessNormalization": false,
+    "TailTrimRequiresRecordedParameters": true,
+    "ClickRepairRequiresRecordedParameters": true,
+    "ReferencesRemainReadOnly": true,
+    "RuntimePathMustStartWith": "Asset/Sanity/Audio/",
+    "RealPlaybackStatusUntilListened": "PendingRealMachine",
+    "ReleaseAssetEligibleUntilFinalAndListened": false
+  },
+  "ReplacementSlots": [
+    {
+      "CueSetId": "sanity.cue.ambience",
+      "CueId": "sanity.cue.ambience.low-sanity",
+      "Group": "low-sanity-ambience",
+      "RequiredForRelease": true,
+      "CurrentStatus": "ConvertedCandidatePendingListening",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.whispers",
+      "CueId": "sanity.cue.whispers.low-sanity",
+      "Group": "low-sanity-whispers",
+      "RequiredForRelease": true,
+      "CurrentStatus": "ConvertedCandidatePendingListening",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.thresholds",
+      "CueId": "sanity.cue.thresholds.danger-enter",
+      "Group": "danger-threshold",
+      "RequiredForRelease": true,
+      "CurrentStatus": "ConvertedCandidatePendingListening",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.darkness",
+      "CueId": "sanity.cue.darkness.warning",
+      "Group": "darkness-warning",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.dark-hand",
+      "CueId": "sanity.cue.dark-hand.appear",
+      "Group": "dark-hand-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.dark-hand",
+      "CueId": "sanity.cue.dark-hand.interact",
+      "Group": "dark-hand-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.dark-hand",
+      "CueId": "sanity.cue.dark-hand.disappear",
+      "Group": "dark-hand-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.creeper-fear",
+      "CueId": "sanity.cue.creeper-fear.taunt",
+      "Group": "creeper-fear-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.creeper-fear",
+      "CueId": "sanity.cue.creeper-fear.attack",
+      "Group": "creeper-fear-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.creeper-fear",
+      "CueId": "sanity.cue.creeper-fear.hurt",
+      "Group": "creeper-fear-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.creeper-fear",
+      "CueId": "sanity.cue.creeper-fear.death",
+      "Group": "creeper-fear-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.terrorbeak",
+      "CueId": "sanity.cue.terrorbeak.taunt",
+      "Group": "terrorbeak-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.terrorbeak",
+      "CueId": "sanity.cue.terrorbeak.attack",
+      "Group": "terrorbeak-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.terrorbeak",
+      "CueId": "sanity.cue.terrorbeak.hurt",
+      "Group": "terrorbeak-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.terrorbeak",
+      "CueId": "sanity.cue.terrorbeak.death",
+      "Group": "terrorbeak-actor",
+      "RequiredForRelease": true,
+      "CurrentStatus": "DEV-PLACEHOLDER",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.sanity-change",
+      "CueId": "sanity.cue.sanity-change.gain",
+      "Group": "sanity-change-optional",
+      "RequiredForRelease": false,
+      "CurrentStatus": "DisabledOptional",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.sanity-change",
+      "CueId": "sanity.cue.sanity-change.loss",
+      "Group": "sanity-change-optional",
+      "RequiredForRelease": false,
+      "CurrentStatus": "DisabledOptional",
+      "ReplacementPathRule": "Asset/Sanity/Audio/<stable-ascii-path>.wav",
+      "Loop": false,
+      "ListeningRequired": [
+        "one-shot-or-pool-transition",
+        "loop-seam-when-enabled",
+        "stop-tail",
+        "relative-level-with-original-gain-preserved"
+      ]
+    }
+  ]
+}

@@ -16,6 +16,7 @@ internal static class DuskMusicService
     private static SoundEffectInstance _islandDuskSound;
     private static IMonitor _monitor;
     private static bool _initialized;
+    private static bool _suppressed;
     private static int _previousTime;
 
     internal static void Enable(IModHelper helper, IMonitor monitor)
@@ -51,7 +52,22 @@ internal static class DuskMusicService
         _duskSound = null;
         _islandDuskSound = null;
         _initialized = false;
+        _suppressed = false;
         _previousTime = 0;
+    }
+
+    internal static void SetSuppressed(bool suppressed)
+    {
+        if (_suppressed == suppressed)
+            return;
+
+        _suppressed = suppressed;
+        if (!_initialized || !suppressed)
+            return;
+
+        // Release does not replay the crossed dusk edge; a later day supplies a new edge.
+        _duskSound?.Stop();
+        _islandDuskSound?.Stop();
     }
 
     private static void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
@@ -68,7 +84,12 @@ internal static class DuskMusicService
             var triggerTime = GetSeasonTriggerTime();
 
             // 用 old < trigger <= new 判断跨越，避免 20:00 之后读档或重复 TimeChanged 多次播放。
-            if (oldTime < triggerTime && newTime >= triggerTime && !IsInDungeon())
+            if (
+                !_suppressed
+                && oldTime < triggerTime
+                && newTime >= triggerTime
+                && !IsInDungeon()
+            )
                 PlayDuskMusic(IsIslandArea());
 
             _previousTime = newTime;
@@ -83,6 +104,9 @@ internal static class DuskMusicService
     {
         try
         {
+            if (_suppressed)
+                return;
+
             var targetSound = island ? _islandDuskSound : _duskSound;
             if (targetSound == null)
                 return;

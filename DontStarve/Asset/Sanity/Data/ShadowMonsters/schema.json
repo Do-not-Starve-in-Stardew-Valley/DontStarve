@@ -1,0 +1,11 @@
+{
+  "SchemaId": "sanity.shadow-monster-profile-set.v1",
+  "SchemaVersion": 1,
+  "CanonicalModelVersion": 1,
+  "DropTableSchemaVersion": 1,
+  "UnknownFieldPolicy": "RejectForKnownSchemaVersion",
+  "Stardew16AdapterVersion": 1,
+  "Stardew16DataShape": "Dictionary<string,string>/slash-string",
+  "Stardew17Capability": "Unavailable",
+  "Stardew17Reason": "shadow-profile.adapter.stardew-1.7-shape-unavailable"
+}

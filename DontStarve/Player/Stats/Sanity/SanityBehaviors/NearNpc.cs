@@ -1,4 +1,3 @@
-using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Characters;
@@ -25,70 +24,66 @@ internal class NearNpc : ITimeRelatedBehavior
         if (player == null)
             return;
 
-        var location = Game1.currentLocation;
+        var location = player.currentLocation;
+        if (location == null)
+            return;
+
         var playerPosition = player.Tile;
         var value = 0.0;
+        var junimoValue = 0.0;
 
-        // 只按当前地点角色计算 10 格内影响，避免离屏 NPC 也持续给理智加成。
-        foreach (var villager in location.characters.Where(npc => npc.IsVillager))
+        // 只枚举当前玩家所在地点；Farmers 不在 characters 中，附近旁观者不会替代当前 player。
+        foreach (var npc in location.characters)
         {
-            var villagerPosition = villager.Tile;
-            var distance = Util.Distance(playerPosition, villagerPosition);
-            var percentage = 1 - distance / 10;
-            if (percentage > 0)
+            var distance = Util.Distance(playerPosition, npc.Tile);
+            if (npc is Junimo or JunimoHarvester)
             {
-                if (villager.Name == player.spouse)
-                {
-                    value += 1.176 * percentage;
-                }
-                else
-                {
-                    var level = player.getFriendshipHeartLevelForNPC(villager.Name);
-                    if (level >= 8)
-                        value += 0.588 * percentage;
-                    else if (level >= 5)
-                        value += 0.294 * percentage;
-                }
+                // player.Tile 与 npc.Tile 都是格坐标；Junimo 也必须应用相同的 10 格线性衰减。
+                junimoValue += SanityBehaviorRules.CalculateFriendlyNpcRecovery(
+                    FriendlyNpcSanityKind.Junimo,
+                    0,
+                    distance
+                );
+                continue;
             }
-        }
 
-        foreach (var npc in location.characters.Where(npc => npc is Child or Pet))
-        {
-            var villagerPosition = npc.Tile;
-            var distance = Util.Distance(playerPosition, villagerPosition);
-            var percentage = 1 - distance / 10;
-            if (percentage > 0)
+            if (npc is Child or Pet)
             {
-                var level = player.getFriendshipHeartLevelForNPC(npc.Name);
-                if (level == 5)
-                    value += 0.588 * percentage;
-                else if (level >= 3)
-                    value += 0.294 * percentage;
-                else
-                    value += 0.147 * percentage;
+                var childOrPetLevel = player.getFriendshipHeartLevelForNPC(npc.Name);
+                value += SanityBehaviorRules.CalculateFriendlyNpcRecovery(
+                    FriendlyNpcSanityKind.ChildOrPet,
+                    childOrPetLevel,
+                    distance
+                );
+                continue;
             }
-        }
 
-        foreach (var npc in location.characters.Where(npc => npc is Junimo or JunimoHarvester))
-        {
-            var villagerPosition = npc.Position;
-            var distance = Util.Distance(playerPosition, villagerPosition);
-            var percentage = 1 - distance / 10;
-            if (percentage > 0)
-                value += 0.294;
+            if (!npc.IsVillager)
+                continue;
+
+            var isSpouse = npc.Name == player.spouse;
+            var friendshipLevel = isSpouse
+                ? 0
+                : player.getFriendshipHeartLevelForNPC(npc.Name);
+            value += SanityBehaviorRules.CalculateFriendlyNpcRecovery(
+                isSpouse
+                    ? FriendlyNpcSanityKind.Spouse
+                    : FriendlyNpcSanityKind.Villager,
+                friendshipLevel,
+                distance
+            );
         }
 
         if (value > 0)
-            player.SetSanity(player.GetSanity() + value);
+            player.ChangeSanity(value, SanityChangeSource.Npc);
+        if (junimoValue > 0)
+            player.ChangeSanity(junimoValue, SanityChangeSource.Junimo);
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

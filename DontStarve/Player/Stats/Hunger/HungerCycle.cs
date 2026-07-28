@@ -52,14 +52,11 @@ internal class HungerCycle : ITimeRelatedBehavior
         }
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
-        // TimeChanged 可能一次跳过多个内部分钟；正向 delta 需要补跑，负向 delta 只延迟后续 Update。
+        // 正向分钟已由 TimeApi 逐分钟发布；回退只累加旧 wait，保留玩家存档中的兼容游标。
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

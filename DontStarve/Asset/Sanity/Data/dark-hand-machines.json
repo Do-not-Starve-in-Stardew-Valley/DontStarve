@@ -1,0 +1,136 @@
+{
+  "SchemaVersion": 2,
+  "ContractId": "sanity.dark-hand-machines.v2",
+  "Targets": [
+    {
+      "Id": "stardew.loom",
+      "QualifiedItemId": "(BC)17",
+      "ExpectedCategory": "OrdinarySingleInputFinite",
+      "Enabled": true,
+      "Excluded": false,
+      "AllowDelay": true,
+      "AllowEject": false,
+      "AllowThief": true,
+      "LocationAllowlist": ["Farm"],
+      "Evidence": [
+        "stardew-1.6.15-data-machines-default-rule-count-1-minutes-240",
+        "stardew-1.6.15.24356-single-input-wool-to-cloth",
+        "stardew-1.6.15.24356-not-overnight-no-additional-consume-no-custom-output",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.verified-loom-delay-and-explicit-thief"
+    },
+    {
+      "Id": "stardew.crystalarium",
+      "QualifiedItemId": "(BC)21",
+      "ExpectedCategory": "PermanentInput",
+      "Enabled": false,
+      "Excluded": false,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-data-machines-output-collected-and-item-input",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.pending-real-machine-and-authority-revision"
+    },
+    {
+      "Id": "stardew.bee-house",
+      "QualifiedItemId": "(BC)10",
+      "ExpectedCategory": "NoInputInfiniteOutput",
+      "Enabled": false,
+      "Excluded": false,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-data-machines-ambient-triggers-days-4-recalculate",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.pending-real-machine-and-special-state"
+    },
+    {
+      "Id": "stardew.furnace",
+      "QualifiedItemId": "(BC)13",
+      "ExpectedCategory": "MultiInput",
+      "Enabled": false,
+      "Excluded": false,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-data-machines-primary-count-and-additional-consumed-items",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.pending-real-machine-and-authority-revision"
+    },
+    {
+      "Id": "stardew.incubator",
+      "QualifiedItemId": "(BC)101",
+      "ExpectedCategory": "Unsupported",
+      "Enabled": false,
+      "Excluded": true,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-data-machines-is-incubator-and-overnight",
+        "specialized-state-excluded"
+      ],
+      "Reason": "dark-hand.machine.target.incubator-excluded"
+    },
+    {
+      "Id": "stardew.iron-anvil",
+      "QualifiedItemId": "(BC)Anvil",
+      "ExpectedCategory": "Unsupported",
+      "Enabled": false,
+      "Excluded": true,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-big-craftables-anvil-sprite-293",
+        "stardew-1.6.15-data-machines-output-anvil-additional-consumed-item"
+      ],
+      "Reason": "dark-hand.machine.target.iron-anvil-excluded"
+    },
+    {
+      "Id": "dont-starve.lureplant",
+      "QualifiedItemId": "(BC)DS_Lureplant",
+      "ExpectedCategory": "NoInputInfiniteOutput",
+      "Enabled": false,
+      "Excluded": false,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "zg-ds-1.4.1-cp-data-machines-no-item-input-days-2",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.pending-real-machine-and-special-state"
+    },
+    {
+      "Id": "dont-starve.halloween-candy-machine",
+      "QualifiedItemId": "(BC)DS_Halloween_Candy_Machine",
+      "ExpectedCategory": "MultiInput",
+      "Enabled": false,
+      "Excluded": false,
+      "AllowDelay": false,
+      "AllowEject": false,
+      "AllowThief": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "zg-ds-1.4.1-cp-data-machines-additional-consumed-item",
+        "pending-real-machine"
+      ],
+      "Reason": "dark-hand.machine.target.pending-real-machine-and-authority-revision"
+    }
+  ]
+}

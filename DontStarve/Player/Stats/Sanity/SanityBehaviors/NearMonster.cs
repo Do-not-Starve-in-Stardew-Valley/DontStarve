@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Monsters;
@@ -35,31 +34,35 @@ internal class NearMonster : ITimeRelatedBehavior
         if (player == null)
             return;
 
-        var location = Game1.currentLocation;
+        var location = player.currentLocation;
+        if (location == null)
+            return;
+
         var playerPosition = player.Tile;
         var value = 0.0;
 
         // 每分钟只扫当前地点 characters，避免跨地点或全局 NPC 扫描进入高频路径。
-        foreach (var monster in location.characters.Where(npc => npc is Monster))
+        foreach (var npc in location.characters)
         {
+            if (npc is not Monster monster)
+                continue;
+
             var monsterPosition = monster.Tile;
             var distance = Util.Distance(playerPosition, monsterPosition);
-            var percentage = 1 - distance / 10;
-            if (percentage > 0)
-                value += monsterSanity.GetValueOrDefault(monster.Name, 0) * percentage;
+            value += SanityBehaviorRules.CalculateMonsterLoss(
+                monsterSanity.GetValueOrDefault(monster.Name, 0),
+                distance
+            );
         }
 
         if (value > 0)
-            player.SetSanity(player.GetSanity() - value);
+            player.ChangeSanity(-value, SanityChangeSource.Monster);
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

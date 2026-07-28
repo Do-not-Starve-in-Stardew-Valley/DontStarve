@@ -1,4 +1,4 @@
-﻿{
+{
     "Name": "Do not starve in Stardew Valley",
     "Author": "Yurin",
     "Version": "1.0.0",
@@ -8,5 +8,12 @@
     "MinimumApiVersion": "4.0.0",
     "UpdateKeys": [
         "Github:SummerFleur/DontStarve"
+    ],
+    "Dependencies": [
+        {
+            "UniqueID": "Pathoschild.ContentPatcher",
+            "MinimumVersion": "2.9.1",
+            "IsRequired": false
+        }
     ]
 }

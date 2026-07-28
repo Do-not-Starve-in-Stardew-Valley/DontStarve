@@ -1,0 +1,158 @@
+{
+  "SchemaVersion": 1,
+  "ContractId": "sanity.dark-hand-fire-targets.v1",
+  "Targets": [
+    {
+      "Id": "stardew.campfire.146",
+      "QualifiedItemId": "(BC)146",
+      "RuntimeTypeFullName": "StardewValley.Torch",
+      "TargetKind": "Campfire",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": true,
+      "LocationAllowlist": ["Farm"],
+      "Evidence": [
+        "stardew-1.6.15-big-craftables-campfire",
+        "stardew-1.6.15-torch-is-on-public",
+        "stardew-1.6.15.24356-torch-check-for-action-safe-off-path",
+        "stardew-1.6.15.24356-object-perform-remove-action-does-not-remove-location-object"
+      ],
+      "Reason": "dark-hand.fire-target.verified-vanilla-torch-safe-off"
+    },
+    {
+      "Id": "stardew.campfire.278",
+      "QualifiedItemId": "(BC)278",
+      "RuntimeTypeFullName": "StardewValley.Torch",
+      "TargetKind": "Campfire",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": [
+        "stardew-1.6.15-big-craftables-campfire",
+        "stardew-1.6.15-torch-is-on-public",
+        "stardew-1.6.15.24356-special-278-opens-cooking-menu"
+      ],
+      "Reason": "dark-hand.fire-target.special-cooking-torch-excluded"
+    },
+    {
+      "Id": "stardew.fireplace.1792",
+      "QualifiedItemId": "(F)1792",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.1794",
+      "QualifiedItemId": "(F)1794",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.1796",
+      "QualifiedItemId": "(F)1796",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.1798",
+      "QualifiedItemId": "(F)1798",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.1800",
+      "QualifiedItemId": "(F)1800",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.1866",
+      "QualifiedItemId": "(F)1866",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.desert",
+      "QualifiedItemId": "(F)DesertFireplace",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.joja",
+      "QualifiedItemId": "(F)JojaFireplace",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.junimo",
+      "QualifiedItemId": "(F)JunimoFireplace",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.retro",
+      "QualifiedItemId": "(F)RetroFireplace",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    },
+    {
+      "Id": "stardew.fireplace.wizard",
+      "QualifiedItemId": "(F)WizardFireplace",
+      "RuntimeTypeFullName": "StardewValley.Objects.Furniture",
+      "TargetKind": "Fireplace",
+      "OperationId": "dark-hand.fire-thief.extinguish.v1",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "Evidence": ["stardew-1.6.15-furniture-fireplace-type-14"],
+      "Reason": "dark-hand.fire-target.stable-revision-and-atomic-adapter-unavailable"
+    }
+  ]
+}

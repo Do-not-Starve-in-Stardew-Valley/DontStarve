@@ -1,0 +1,208 @@
+{
+  "SchemaVersion": 1,
+  "ContractVersion": 1,
+  "TemplateVersion": "sanity-hostile-visuals-v1",
+  "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+  "AnimationTemplates": [
+    {
+      "AssetBindingId": "sanity.binding.creeper-fear",
+      "TextureSlotId": "sanity.asset.creeper-fear.sprite",
+      "AnimationProfileId": "sanity.animation.creeper-fear.profile",
+      "CueSetId": "sanity.cue.creeper-fear",
+      "TemplatePath": "scripts/sanity-assets/templates/hostile/creeper-fear-grid.png",
+      "Columns": 4,
+      "Rows": 12,
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "ActorOriginSourcePx": {
+        "X": 0,
+        "Y": 0
+      },
+      "PivotSourcePx": {
+        "X": 32,
+        "Y": 48
+      },
+      "DrawScale": 4.0,
+      "StateRows": [
+        {
+          "State": "move.down",
+          "Row": 0
+        },
+        {
+          "State": "move.right",
+          "Row": 1
+        },
+        {
+          "State": "move.up",
+          "Row": 2
+        },
+        {
+          "State": "move.left",
+          "Row": 3
+        },
+        {
+          "State": "attack.down",
+          "Row": 4
+        },
+        {
+          "State": "attack.right",
+          "Row": 5
+        },
+        {
+          "State": "attack.up",
+          "Row": 6
+        },
+        {
+          "State": "attack.left",
+          "Row": 7
+        },
+        {
+          "State": "death",
+          "Row": 8
+        },
+        {
+          "State": "spawn",
+          "Row": 9
+        },
+        {
+          "State": "idle",
+          "Row": 10
+        },
+        {
+          "State": "taunt",
+          "Row": 11
+        }
+      ],
+      "Collision": {
+        "CoordinateSpace": "ActorOriginRelativeSourcePx",
+        "HurtBoxSourcePx": {
+          "X": 4,
+          "Y": 48,
+          "Width": 56,
+          "Height": 48
+        },
+        "AttackBoxSourcePx": {
+          "X": -8,
+          "Y": 56,
+          "Width": 80,
+          "Height": 80
+        },
+        "AttackActiveFrames": [
+          3,
+          4
+        ],
+        "IsProvisional": true,
+        "ProvisionalReason": "ART-05 collision guides and the D11 source-pixel baseline still require debug-rectangle game calibration."
+      },
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "DeliveryRules": [
+        "deliver one RGBA PNG with a transparent background",
+        "keep the frozen 4x12 grid, row order, actor origin, and pivot",
+        "keep hurt/attack rectangles in actor-origin-relative source pixels",
+        "remove all magenta/red guide pixels from runtime art",
+        "do not include source canvases, GIF previews, collision guides, or gameplay values",
+        "a reviewed metadata contract revision is required before changing dimensions or anchors"
+      ]
+    },
+    {
+      "AssetBindingId": "sanity.binding.terrorbeak",
+      "TextureSlotId": "sanity.asset.terrorbeak.sprite",
+      "AnimationProfileId": "sanity.animation.terrorbeak.profile",
+      "CueSetId": "sanity.cue.terrorbeak",
+      "TemplatePath": "scripts/sanity-assets/templates/hostile/terrorbeak-grid.png",
+      "Columns": 4,
+      "Rows": 12,
+      "FrameWidth": 48,
+      "FrameHeight": 64,
+      "ActorOriginSourcePx": {
+        "X": 0,
+        "Y": 0
+      },
+      "PivotSourcePx": {
+        "X": 24,
+        "Y": 48
+      },
+      "DrawScale": 4.0,
+      "StateRows": [
+        {
+          "State": "move.down",
+          "Row": 0
+        },
+        {
+          "State": "move.right",
+          "Row": 1
+        },
+        {
+          "State": "move.up",
+          "Row": 2
+        },
+        {
+          "State": "move.left",
+          "Row": 3
+        },
+        {
+          "State": "attack.down",
+          "Row": 4
+        },
+        {
+          "State": "attack.right",
+          "Row": 5
+        },
+        {
+          "State": "attack.up",
+          "Row": 6
+        },
+        {
+          "State": "attack.left",
+          "Row": 7
+        },
+        {
+          "State": "death",
+          "Row": 8
+        },
+        {
+          "State": "spawn",
+          "Row": 9
+        },
+        {
+          "State": "idle",
+          "Row": 10
+        },
+        {
+          "State": "taunt",
+          "Row": 11
+        }
+      ],
+      "Collision": {
+        "CoordinateSpace": "ActorOriginRelativeSourcePx",
+        "HurtBoxSourcePx": {
+          "X": 8,
+          "Y": 32,
+          "Width": 32,
+          "Height": 32
+        },
+        "AttackBoxSourcePx": {
+          "X": -16,
+          "Y": 8,
+          "Width": 80,
+          "Height": 80
+        },
+        "AttackActiveFrames": [
+          3,
+          4
+        ],
+        "IsProvisional": true,
+        "ProvisionalReason": "ART-06 collision guides and the D11 source-pixel baseline still require debug-rectangle game calibration."
+      },
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "DeliveryRules": [
+        "deliver one RGBA PNG with a transparent background",
+        "keep the frozen 4x12 grid, row order, actor origin, and pivot",
+        "keep hurt/attack rectangles in actor-origin-relative source pixels",
+        "remove all magenta/red guide pixels from runtime art",
+        "do not include source canvases, GIF previews, collision guides, or gameplay values",
+        "a reviewed metadata contract revision is required before changing dimensions or anchors"
+      ]
+    }
+  ]
+}

@@ -7,10 +7,6 @@ namespace DontStarve.Display;
 
 internal readonly struct UIRenderContext
 {
-    // Stardew 原版生命/体力 HUD 展开时会占用右下角更多宽度，DS 条需要跟着让位。
-    private const int HudOffsetWithHealth = 171;
-    private const int HudOffsetWithoutHealth = 116;
-
     public IModHelper Helper { get; }
     public RenderingHudEventArgs EventArgs { get; }
     public Vector2 ViewportSize { get; }
@@ -25,9 +21,17 @@ internal readonly struct UIRenderContext
         ShowingHealth = Game1.showingHealth;
     }
 
-    public Vector2 ViewportBottomRightAnchor =>
-        new Vector2(
-            ViewportSize.X - (ShowingHealth ? HudOffsetWithHealth : HudOffsetWithoutHealth),
-            ViewportSize.Y
-        );
+    public Vector2 ViewportBottomRightAnchor
+    {
+        get
+        {
+            // Stardew 原版生命/体力 HUD 展开时会占用右下角更多宽度，DS 条需要跟着让位。
+            var anchor = HudDisplayRules.GetBottomRightAnchor(
+                (int)ViewportSize.X,
+                (int)ViewportSize.Y,
+                ShowingHealth
+            );
+            return new Vector2(anchor.X, anchor.Y);
+        }
+    }
 }

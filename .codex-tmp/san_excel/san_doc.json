@@ -1,0 +1,1858 @@
+{
+  "source": "C:\\Users\\kongd\\Desktop\\san值系统详细设计方案2.0.docx",
+  "block_count": 70,
+  "table_count": 0,
+  "blocks": [
+    {
+      "kind": "paragraph",
+      "text": "红色标记为重要部分，一定需要有的",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "红色标记为重要部分，一定需要有的",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "绿色标记为不太重要部分，一般为氛围设定之类的，如果你觉得难做，那就告知并放弃",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "绿色标记为不太重要部分，一般为氛围设定之类的，如果你觉得难做，那就告知并放弃",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "蓝色标记为你曾经提到或者我觉得难以实现的部分，你看情况，如果做不了就告知，商量替代方案或放弃",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "蓝色标记为你曾经提到或者我觉得难以实现的部分，你看情况，如果做不了就告知，商量替代方案或放弃",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "San值系统：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "San值系统：",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "已有部分：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "已有部分：",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "（有点记不太清了，但是掉san和吃东西回san应该做完了）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "（有点记不太清了，但是掉san和吃东西回san应该做完了）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "装备回san是每刻回x点（或者降低）（我不知道你新的计时单位是每1刻为几秒了），拿起来可以显示（显示内容【理智光环：/{你的计时的秒数}】），不知道你这个做了没",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "装备回san是每刻回x点（或者降低）（我不知道你新的计时单位是每1刻为几秒了），拿起来可以显示（显示内容【理智光环：/{你的计时的秒数}】），不知道你这个做了没",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "理智值默认上限为200点",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "理智值默认上限为200点",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "所有理智影响均为加算。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "所有理智影响均为加算。",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "矿井和黄昏夜晚掉san应该做了",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "矿井和黄昏夜晚掉san应该做了",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "靠近npc或者怪物应该也做了",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "靠近npc或者怪物应该也做了",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "请麻烦你一下，看看你还已经做了哪些功能",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "请麻烦你一下，看看你还已经做了哪些功能",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "未做部分：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "未做部分：",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "不知道你睡觉回san做了没，每早睡游戏内10分钟，可以多回3点san值，如果直接晕过去，则不回复san且扣除20san",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "不知道你睡觉回san做了没，每早睡游戏内10分钟，可以多回3点san值，如果直接晕过去，则不回复san且扣除20san",
+          "color": "C00000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "C00000": 59
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "当玩家死亡重生后，san值恢复为上限的一半（为什么不直接用100，因为后续出人物系统，不同角色san值不同）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "当玩家死亡重生后，san值恢复为上限的一半（为什么不直接用100，因为后续出人物系统，不同角色san值不同）",
+          "color": "C00000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "C00000": 54
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "当玩家劳累昏迷后，san值扣除20",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "当玩家劳累昏迷后，san值扣除20",
+          "color": "C00000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "C00000": 17
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "当玩家在晚上2点时昏迷在非农场房屋里，将会判定为死亡（凤凰戒指无效），第二天在哈维诊所中醒来，并且在邮件里添加一封信件（如果能做，我可以给你文本）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "当玩家在晚上2点时昏迷在非农场房屋里，将会判定为死亡（凤凰戒指无效），第二天在哈维诊所中醒来，并且在邮件里添加一封信件（如果能做，我可以给你文本）",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "0070C0": 73
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "玩家san值",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "玩家san",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "值",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于83.5%时\n会在玩家周围5-10格位置（包含5和10），出现怪物Mr.Skitts，没有血量和攻击，靠近后消失（暂无贴图，如果可以做我会让画师做）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于83.5%时",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "会",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "在",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "玩家周围5-10格位置（包含5和10），",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "出现怪物Mr.Skitts，没有血量和攻击，靠近后消失",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "暂无贴图，如果可以做我会让画师做",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "00B050": 67
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于75%\n会在玩家周围10-20格位置，有暗影之手生成，停止玩家的机器，掐灭篝火光源（暂无贴图，如果可以做我会让画师做）\n视野变得不稳定\n滤镜饱和度降低",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于75%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "会在玩家周围10-20格位置，",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "有暗影之手生成，",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "停止玩家的机器，掐灭篝火光源",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（暂无贴图，如果可以做我会让画师做）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "视野变得不稳定",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "滤镜饱和度降低",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "0070C0": 28
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于65%\n会在玩家周围5-10格位置，出现暗影观察者怪物，没有血量和攻击，靠近后消失（暂无贴图，如果可以做我会让画师做）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于65%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "会",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "在",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "玩家周围5-10格位置，",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "出现暗影观察者怪物，没有血量和攻击，靠近后消失",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "暂无贴图，如果可以做我会让画师做",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "00B050": 55
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于60%\n会在玩家周围5-10格位置，晚上会出现眼睛盯着玩家\n屏幕画面开始摇晃",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于60%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "会",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "在",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "玩家周围5-10格位置，",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "晚上会出现眼睛盯着玩家",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "屏幕画面开始摇晃",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "00B050": 25,
+          "0070C0": 8
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于50%\n会在玩家周围5-15格位置，出现爬行恐惧和恐怖尖喙怪物，刷新一只时间为30分钟（21秒），不会主动攻击玩家，也无法被攻击，靠近后消失，两种怪物最多存在2只\n可以听见低理智的背景声音",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于50%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "会",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "在",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "玩家周围5-15格位置，",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "出现爬行恐惧和恐怖尖喙怪物，",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "刷新一只时间为30分钟（21秒），",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "不会主动攻击玩家，也无法被攻击，靠近后消失，两种怪物最多存在2只",
+          "color": "00B050",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "可以听见低理智的背景声音",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "00B050": 77
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "（见“低san音效”文件夹，当中的几段音频随机且连续地播放组成的背景声音）\n玩家不进行操作时一段时间时，玩家会做一个“坐下”的动作",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "（",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "见“低san音效”文件夹，当中的几段音频随机且连续地播放组成的背景声音",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "玩家不进行操作时",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "一段时间时",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "，玩家会做一个",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "“",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "坐下",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "”的",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "动作",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "0070C0": 27
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于45%\n可以听见低语（见“低san低语音效”当中的几段音频随机且连续地播放组成的背景声音，同时和“低san音效”播放，若做不到则这俩同时随机）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于45%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "可以听见",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "低语（见“低san低语音效”当中的几段音频随机且连续地播放组成的背景声音，同时和“低san音效”播放，若做不到则这俩同时随机）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于40%\n白兔和灰兔的贴图变成胡须兔贴图（贴图暂无，如果可以实现就让画师做）\n从地上觅食捡起兔绒物品会变成胡须而不是兔绒\n从地上觅食捡起肉类会变成怪物肉\n从地上觅食捡起兔子腿会变成虚空精华",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于40%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "白兔和灰兔的贴图变成胡须兔贴图",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "贴图暂无，如果可以实现就让画师做",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "从地上觅食捡起兔绒物品会变成胡须而不是兔绒",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "从地上觅食捡起肉类会变成怪物肉",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "从地上觅食捡起兔子腿会变成虚空精华",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "0070C0": 86
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于15%时出现，高于17.5%恢复\n播放一段音效（见文件“低san阈值音效”）\n屏幕四周出现红色卷曲贴图\n刚刚存在的爬行恐惧和恐怖尖喙开始拥有血量可以被攻击，会主动攻击低san的那个玩家，最多总共存在两只，少了一只后只会游戏内20分钟（14秒）刷新爬行恐惧来补充，",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于15%时出现，高于17.5%恢复",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "播放一段音效",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "见文件“低san阈值音效”",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "屏幕四周出现红色卷曲",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "贴图",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "刚刚存在的爬行恐惧和恐怖尖喙开始拥有血量可以被攻击，会主动攻击低san的那个玩家，最多总共存在两只，少了一只后只会",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "游戏内20分钟（14秒）",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "刷新爬行恐惧来补充，",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "FF0000": 100,
+          "0070C0": 12
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "击杀爬行恐惧后恢复15点理智，击杀恐怖尖喙后恢复33点理智（刷新位置依旧是5-15格）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "击杀爬行恐惧后恢复15点理智，击杀恐怖尖喙后恢复33点理智",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "刷新位置依旧是5-15格",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "FF0000": 43
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "低于10%\n恐怖尖喙可以被刷出，并且总共最多存在提升到3个，刷新速度加快到10分钟一只（7秒，刷新位置依旧是5-15格）\n画面失真变成灰白色（灰白滤镜）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "低于10%",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "恐怖尖喙可以被刷出，并且总共最多存在提升到3个，刷新速度加快",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "到10分钟一只",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "（",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "7秒，刷新位置依旧是5-15格",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "）",
+          "color": "FF0000",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "画面失真",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "变成灰白色（灰白滤镜）",
+          "color": "0070C0",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {
+          "FF0000": 54,
+          "0070C0": 15
+        },
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "爬行恐惧行为逻辑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "爬行恐惧行为逻辑",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础生命值：300",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础生命值：300",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础移速：2.5（无法小数则向上取整）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础移速：2.5（无法小数则向上取整）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础伤害：20",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础伤害：20",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "掉落物：1-2个虚空精华（星露谷写法似乎为，99%虚空精华，51%虚空精华）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "掉落物：1-2个虚空精华（星露谷写法似乎为，99%虚空精华，51%虚空精华）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "（上面三个，包括掉落物，似乎都是可以通过json来的？不清楚）",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "（上面三个，包括掉落物，似乎都是可以通过json来的？不清楚）",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "贴图：暂无，画师电脑爆炸了（物理），目前换一个画师接班中",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "贴图：暂无，画师电脑爆炸了（物理），目前换一个画师接班中",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "行为：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "行为：",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "完成 生成动画 后，若索敌到玩家（20格），则会进行 恐吓 ，然后朝着玩家以直线最短路径移动，可以穿墙无视地形。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "完成 生成动画 后，若索敌到玩家（20格），则会进行 恐吓 ，然后朝着玩家以直线最短路径移动，可以穿墙无视地形。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "靠近到距离玩家3格后，发起攻击，（没有蓄力，星露谷史莱姆是蓄力冲刺）播放对应攻击动画，动画的同时朝着玩家冲刺6格距离。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "靠近到距离玩家3格后，发起攻击，（没有蓄力，星露谷史莱姆是蓄力冲刺）播放对应攻击动画，动画的同时朝着玩家冲刺6格距离。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若攻击到，则进行一次恐吓判定（50%概率恐吓，25%概率朝着玩家相反方向移动6格，25%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若攻击到，则进行一次恐吓判定（50%概率恐吓，25%概率朝着玩家相反方向移动6格，25%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若被攻击，则播放死亡动画然后随机传送到玩家周围5-15格范围内，进行一次恐吓判定（50%概率恐吓，50%概率直接下一步）。若正在进行攻击，则攻击动画将会被打断。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若被攻击，则播放死亡动画然后随机传送到玩家周围5-15格范围内，进行一次恐吓判定（50%概率恐吓，50%概率直接下一步）。若正在进行攻击，则攻击动画将会被打断。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若扑空，则进行一次恐吓判定（50%概率恐吓，50%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若扑空，则进行一次恐吓判定（50%概率恐吓，50%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "没有索敌到玩家，则会 静息，游戏内1小时（42秒）后消失，一旦索敌到玩家则仇恨无限范围永远不会丢失。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "没有索敌到玩家，则会 静息，游戏内1小时（42秒）后消失，一旦索敌到玩家则仇恨无限范围永远不会丢失。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "死亡后播放死亡动画。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "死亡后播放死亡动画。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "恐怖尖喙行为逻辑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "恐怖尖喙行为逻辑",
+          "color": "",
+          "highlight": "",
+          "bold": true,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础生命值：400",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础生命值：400",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础移速：6",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础移速：6",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "基础伤害：50",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "基础伤害：50",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "掉落物：1-2个虚空精华",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "掉落物：1-2个虚空精华",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "贴图：在附件文件中，每横排行为为：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "贴图：在附件文件中，每横排行为为：",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "下边跑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "下边跑",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "右边跑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "右边跑",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "上边跑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "上边跑",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "左边跑",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "左边跑",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "向下攻击",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "向下攻击",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "向右攻击",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "向右攻击",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "向上攻击",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "向上攻击",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "向左攻击",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "向左攻击",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "死亡动画",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "死亡动画",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "生成动画",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "生成动画",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "静止不动",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "静止不动",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "恐吓",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "恐吓",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "行为：",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "行为：",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "完成 生成动画 后，若索敌到玩家（20格），则会进行 恐吓 ，然后朝着玩家以直线最短路径移动，可以穿墙无视地形。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "完成 生成动画 后，若索敌到玩家（20格），则会进行 恐吓 ，然后朝着玩家以直线最短路径移动，可以穿墙无视地形。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "靠近到距离玩家4格后，发起攻击，（没有蓄力，星露谷史莱姆是蓄力冲刺）播放对应攻击动画，动画的同时朝着玩家冲刺8格距离。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "靠近到距离玩家4格后，发起攻击，（没有蓄力，星露谷史莱姆是蓄力冲刺）播放对应攻击动画，动画的同时朝着玩家冲刺8格距离。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若攻击到，则进行一次恐吓判定（50%概率恐吓，25%概率朝着玩家相反方向移动6格，25%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若攻击到，则进行一次恐吓判定（50%概率恐吓，25%概率朝着玩家相反方向移动6格，25%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若被攻击，则播放死亡动画然后随机传送到玩家周围5-15格范围内，进行一次恐吓判定（50%概率恐吓，50%概率直接下一步）。若正在进行攻击，则攻击动画将会被打断。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若被攻击，则播放死亡动画然后随机传送到玩家周围5-15格范围内，进行一次恐吓判定（50%概率恐吓，50%概率直接下一步）。若正在进行攻击，则攻击动画将会被打断。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "若扑空，则进行一次恐吓判定（50%概率恐吓，50%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "若扑空，则进行一次恐吓判定（50%概率恐吓，50%概率直接下一步），然后再次尝试靠近玩家继续进行下一轮的攻击。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "没有索敌到玩家，则会 静息，游戏内1小时（42秒）后消失，一旦索敌到玩家则仇恨无限范围永远不会丢失。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "没有索敌到玩家，则会 静息，游戏内1小时（42秒）后消失，一旦索敌到玩家则仇恨无限范围永远不会丢失。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    },
+    {
+      "kind": "paragraph",
+      "text": "死亡后播放死亡动画。",
+      "section_path": [],
+      "style": "Normal",
+      "runs": [
+        {
+          "text": "死亡后播放死亡动画。",
+          "color": "",
+          "highlight": "",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "color_summary": {
+        "colors": {},
+        "highlights": {}
+      }
+    }
+  ]
+}

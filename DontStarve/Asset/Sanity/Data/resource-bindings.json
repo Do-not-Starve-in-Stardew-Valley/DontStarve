@@ -1,0 +1,37 @@
+{
+  "SchemaVersion": 1,
+  "ContractVersion": 1,
+  "TemplateVersion": "sanity-resource-bindings-v1",
+  "AttackMotionPolicies": [
+    {
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "ContractVersion": 1,
+      "TotalAdvanceTiles": 1.0,
+      "FrameAdvanceTiles": [
+        0.5,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "ResetAfterAnimation": true
+    }
+  ],
+  "Bindings": [
+    {
+      "AssetBindingId": "sanity.binding.creeper-fear",
+      "SlotId": "sanity.asset.creeper-fear.sprite",
+      "AnimationProfileId": "sanity.animation.creeper-fear.profile",
+      "CueSetId": "sanity.cue.creeper-fear",
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "ContractVersion": 1
+    },
+    {
+      "AssetBindingId": "sanity.binding.terrorbeak",
+      "SlotId": "sanity.asset.terrorbeak.sprite",
+      "AnimationProfileId": "sanity.animation.terrorbeak.profile",
+      "CueSetId": "sanity.cue.terrorbeak",
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "ContractVersion": 1
+    }
+  ]
+}

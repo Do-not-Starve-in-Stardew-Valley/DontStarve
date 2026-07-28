@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using DontStarve.Player.Stats.Sanity;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -15,15 +17,36 @@ namespace DontStarve.Display.UIElements;
 /// </summary>
 internal class FoodTooltip : INonTimeRelatedUIElement
 {
+    private readonly ISanitySystemState sanitySystemState;
     private FoodBuffTooltipFormatter buffFormatter;
+    private CultureInfo culture = CultureInfo.InvariantCulture;
+
+    internal FoodTooltip(ISanitySystemState sanitySystemState)
+    {
+        this.sanitySystemState = sanitySystemState;
+    }
 
     public void Init(IModHelper helper)
     {
         this.buffFormatter = new FoodBuffTooltipFormatter(helper);
+        this.culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
+        helper.Events.Content.LocaleChanged += (_, e) =>
+            this.culture = LocalizedValueFormatter.ResolveCulture(e.NewLocale);
     }
 
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
+        if (
+            Game1.activeClickableMenu is not null
+            ||
+            !HudDisplayRules
+                .ResolveSanityVisibility(sanitySystemState.IsEnabled)
+                .ShowHeldFoodTooltip
+        )
+        {
+            return;
+        }
+
         var player = Game1.player;
         var activeObject = player.ActiveObject;
         if (activeObject == null)
@@ -44,8 +67,16 @@ internal class FoodTooltip : INonTimeRelatedUIElement
             : null;
         var buffLines =
             this.buffFormatter?.GetLines(activeObject) ?? Array.Empty<string>();
+        var formattedSanity = string.Empty;
+        var hasFormattedSanity =
+            foodSanity.HasValue
+            && LocalizedValueFormatter.TryFormatSigned(
+                foodSanity.Value,
+                this.culture,
+                out formattedSanity
+            );
 
-        if (foodHunger == null && foodSanity == null && buffLines.Count == 0)
+        if (foodHunger == null && !hasFormattedSanity && buffLines.Count == 0)
             return;
 
         var sizeUi = uiContext.ViewportSize;
@@ -56,10 +87,16 @@ internal class FoodTooltip : INonTimeRelatedUIElement
             parts.Add(
                 uiContext.Helper.Translation.Get("hunger-tooltip", new { value = foodHunger })
             );
-        if (foodSanity != null)
+        if (hasFormattedSanity)
+        {
+            // 该 held-item 提示独立读取食物表；阶段 02 的总开关不得把数据提示一并隐藏。
             parts.Add(
-                uiContext.Helper.Translation.Get("sanity-tooltip", new { value = foodSanity })
+                uiContext.Helper.Translation.Get(
+                    "sanity-tooltip.food-once",
+                    new { value = formattedSanity }
+                )
             );
+        }
         parts.AddRange(buffLines);
 
         var maxTextWidth = (int)Math.Max(220, Math.Min(560, sizeUi.X - 100));

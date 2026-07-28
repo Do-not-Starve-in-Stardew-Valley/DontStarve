@@ -1,0 +1,93 @@
+{
+  "SchemaVersion": 1,
+  "Groups": [
+    {
+      "CreditGroup": "ART-01",
+      "DisplayName": "Mr.Skitts visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-01",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-02",
+      "DisplayName": "Dark Hand visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-02",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-03",
+      "DisplayName": "Dark Watcher visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-03",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-04",
+      "DisplayName": "Eyes visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-04",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-05",
+      "DisplayName": "Creeper Fear visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-05",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-06",
+      "DisplayName": "Terrorbeak visual contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-06",
+      "PermissionScope": "Project-original; modification, processing, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-07",
+      "DisplayName": "Low-sanity ambience contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-07",
+      "PermissionScope": "Project-original; modification, conversion, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-08",
+      "DisplayName": "Low-sanity whisper contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-08",
+      "PermissionScope": "Project-original; modification, conversion, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-09",
+      "DisplayName": "Danger-threshold audio contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-09",
+      "PermissionScope": "Project-original; modification, conversion, internal testing, and public mod distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "ART-10",
+      "DisplayName": "Collision guide contributors",
+      "AttributionText": "PENDING-PUBLIC-ATTRIBUTION",
+      "SourceEvidenceId": "sanity4-auth-ledger:ART-10",
+      "PermissionScope": "Project-original design evidence; project use, modification, and public distribution permitted.",
+      "IsPlaceholder": true
+    },
+    {
+      "CreditGroup": "DEV-PLACEHOLDER",
+      "DisplayName": "Development placeholder",
+      "AttributionText": "Development-only placeholder; not for public release.",
+      "SourceEvidenceId": "development-placeholder",
+      "PermissionScope": "Local development and explicitly labeled internal test packages only.",
+      "IsPlaceholder": true
+    }
+  ]
+}

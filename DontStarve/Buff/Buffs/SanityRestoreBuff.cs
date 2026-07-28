@@ -5,7 +5,7 @@ using StardewValley;
 namespace DontStarve.Buff.Buffs;
 
 /// <summary>
-/// 理智恢复 Buff 适配层；理智上限由 SetSanity 统一裁剪。
+/// 理智恢复 Buff 适配层；理智上限由统一 SanityChangeService 裁剪。
 /// </summary>
 internal class SanityRestoreBuff : FixedRestoreBuff
 {
@@ -24,6 +24,6 @@ internal class SanityRestoreBuff : FixedRestoreBuff
         if (amount <= 0)
             return;
 
-        player.SetSanity(player.GetSanity() + amount);
+        player.ChangeSanity(amount, SanityChangeSource.Buff);
     }
 }

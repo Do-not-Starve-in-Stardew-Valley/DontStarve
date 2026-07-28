@@ -1,0 +1,67 @@
+{
+  "SchemaVersion": 1,
+  "ProfileId": "Stardew",
+  "IsBetaBalance": true,
+  "Monsters": [
+    {
+      "MaxHealth": 300,
+      "BaseDamage": 20,
+      "MovementSpeed": 2.5,
+      "Defense": 0,
+      "DetectionRadiusTiles": 20.0,
+      "AttackRangeTiles": 2.0,
+      "AttackIntervalSeconds": 1.0,
+      "NaturalDespawnGameHours": 2.0,
+      "DisplayNameKey": "sanity.shadow-monster.creeper-fear.name",
+      "WallTraversalMode": "DirectThroughTerrain",
+      "ImmunityTags": [
+        "Knockback",
+        "Frozen"
+      ],
+      "DropTable": {
+        "SchemaVersion": 1,
+        "DropTableId": "sanity.drop.void-essence-v1",
+        "ItemSemanticId": "stardew.item.void-essence",
+        "GuaranteedQuantity": 1,
+        "BonusQuantity": 1,
+        "BonusChance": 0.5
+      },
+      "SanityReward": 15,
+      "AssetBindingId": "sanity.binding.creeper-fear",
+      "AnimationProfileId": "sanity.animation.creeper-fear.profile",
+      "CueSetId": "sanity.cue.creeper-fear",
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "PostAttackPolicyId": "sanity.post-attack.taunt-or-delay-v1"
+    },
+    {
+      "MaxHealth": 400,
+      "BaseDamage": 50,
+      "MovementSpeed": 6.0,
+      "Defense": 0,
+      "DetectionRadiusTiles": 20.0,
+      "AttackRangeTiles": 2.0,
+      "AttackIntervalSeconds": 0.7,
+      "NaturalDespawnGameHours": 2.0,
+      "DisplayNameKey": "sanity.shadow-monster.terrorbeak.name",
+      "WallTraversalMode": "DirectThroughTerrain",
+      "ImmunityTags": [
+        "Knockback",
+        "Frozen"
+      ],
+      "DropTable": {
+        "SchemaVersion": 1,
+        "DropTableId": "sanity.drop.void-essence-v1",
+        "ItemSemanticId": "stardew.item.void-essence",
+        "GuaranteedQuantity": 1,
+        "BonusQuantity": 1,
+        "BonusChance": 0.5
+      },
+      "SanityReward": 33,
+      "AssetBindingId": "sanity.binding.terrorbeak",
+      "AnimationProfileId": "sanity.animation.terrorbeak.profile",
+      "CueSetId": "sanity.cue.terrorbeak",
+      "AttackMotionPolicyId": "sanity.attack-motion.one-tile-v1",
+      "PostAttackPolicyId": "sanity.post-attack.taunt-or-delay-v1"
+    }
+  ]
+}

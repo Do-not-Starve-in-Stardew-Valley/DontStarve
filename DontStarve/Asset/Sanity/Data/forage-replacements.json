@@ -1,0 +1,55 @@
+{
+  "SchemaVersion": 2,
+  "ContractId": "sanity.direct-pickup-replacements.v2",
+  "Revision": 1,
+  "Mappings": [
+    {
+      "Id": "bunny-puff-to-beard",
+      "SourceQualifiedItemId": "(O)DS_Bunny_Puff",
+      "TargetQualifiedItemId": null,
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "ContextAllowlist": [],
+      "Evidence": [
+        "cp-zgds-1.4.1:data-object:DS_Bunny_Puff",
+        "cp-zgds-1.4.1:farm-animal:rabbit",
+        "sanity-assets-v1:beard-item-icon-placeholder",
+        "target-qualified-id-remains-unavailable"
+      ],
+      "Reason": "forage.mapping.beard-target-qualified-id-unavailable"
+    },
+    {
+      "Id": "meat-to-monster-meat",
+      "SourceQualifiedItemId": "(O)DS_Meat",
+      "TargetQualifiedItemId": "(O)DS_Monster_Meat",
+      "Enabled": false,
+      "LocationAllowlist": [],
+      "ContextAllowlist": [],
+      "Evidence": [
+        "cp-zgds-1.4.1:data-object:DS_Meat",
+        "cp-zgds-1.4.1:data-object:DS_Monster_Meat",
+        "cp-zgds-1.4.1:source:craft-shop-animal",
+        "not-enabled-by-default"
+      ],
+      "Reason": "forage.mapping.not-enabled-by-default"
+    },
+    {
+      "Id": "rabbit-foot-to-void-essence",
+      "SourceQualifiedItemId": "(O)446",
+      "TargetQualifiedItemId": "(O)769",
+      "Enabled": true,
+      "LocationAllowlist": ["Deluxe Coop"],
+      "ContextAllowlist": [
+        "stardew.game-location-check-action.normal-direct-object-pickup.v2"
+      ],
+      "Evidence": [
+        "stardew-1.6.15:data-object:rabbits-foot-446",
+        "stardew-1.6.15:data-object:void-essence-769",
+        "stardew-1.6.15:deluxe-coop-rabbit-produce-location",
+        "stardew-1.6.15:game-location-check-action-direct-object-branch",
+        "stardew-1.6.15:mutation-starts-after-original-quality-capture"
+      ],
+      "Reason": "forage.mapping.direct-pickup-enabled"
+    }
+  ]
+}

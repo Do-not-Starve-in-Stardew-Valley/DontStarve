@@ -63,13 +63,10 @@ internal class SpawnEye : ITimeRelatedBehavior
         lastSanity = player.GetSanity();
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -11,12 +10,12 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 internal class Wearing : ITimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.Wearing";
-    private Dictionary<string, double> hatSanity = null!;
-    private Dictionary<string, double> shirtSanity = null!;
-    private Dictionary<string, double> pantsSanity = null!;
-    private Dictionary<string, double> bootsSanity = null!;
-    private Dictionary<string, double> ringSanity = null!;
-    private Dictionary<string, double> trinketSanity = null!;
+    private static Dictionary<string, double> hatSanity = new();
+    private static Dictionary<string, double> shirtSanity = new();
+    private static Dictionary<string, double> pantsSanity = new();
+    private static Dictionary<string, double> bootsSanity = new();
+    private static Dictionary<string, double> ringSanity = new();
+    private static Dictionary<string, double> trinketSanity = new();
     private long wait;
 
     public void Init(IModHelper helper)
@@ -32,6 +31,35 @@ internal class Wearing : ITimeRelatedBehavior
         );
     }
 
+    internal static bool TryGetPerMinuteSanity(Item item, out double value)
+    {
+        value = 0d;
+        if (item is null)
+            return false;
+
+        var qualifiedId = item.QualifiedItemId;
+        Dictionary<string, double> values = qualifiedId switch
+        {
+            var id when id.StartsWith("(H)", System.StringComparison.Ordinal) =>
+                hatSanity,
+            var id when id.StartsWith("(S)", System.StringComparison.Ordinal) =>
+                shirtSanity,
+            var id when id.StartsWith("(P)", System.StringComparison.Ordinal) =>
+                pantsSanity,
+            var id when id.StartsWith("(B)", System.StringComparison.Ordinal) =>
+                bootsSanity,
+            // Stardew 1.6.15 Ring derives from Object and reports "(O)", not a private ring
+            // qualifier. The ring table still filters by exact ItemId, so ordinary objects do not
+            // gain equipment text.
+            var id when id.StartsWith("(O)", System.StringComparison.Ordinal) =>
+                ringSanity,
+            var id when id.StartsWith("(TR)", System.StringComparison.Ordinal) =>
+                trinketSanity,
+            _ => null,
+        };
+        return values is not null && values.TryGetValue(item.ItemId, out value);
+    }
+
     public void Update(long _)
     {
         if (wait > 0)
@@ -44,54 +72,42 @@ internal class Wearing : ITimeRelatedBehavior
         if (player == null)
             return;
 
-        var sanity = 0.0;
-
         // 每分钟重新读取当前穿戴状态，不缓存装备对象，避免换装后继续沿用旧效果。
         var hat = player.hat.Value;
-        if (hat != null)
-            if (hatSanity.TryGetValue(hat.ItemId, out var value))
-                sanity += value;
-
         var shirt = player.shirtItem.Value;
-        if (shirt != null)
-            if (shirtSanity.TryGetValue(shirt.ItemId, out var value))
-                sanity += value;
-
         var pants = player.pantsItem.Value;
-        if (pants != null)
-            if (pantsSanity.TryGetValue(pants.ItemId, out var value))
-                sanity += value;
-
         var boots = player.boots.Value;
-        if (boots != null)
-            if (bootsSanity.TryGetValue(boots.ItemId, out var value))
-                sanity += value;
-
         var leftRing = player.leftRing.Value;
-        if (leftRing != null)
-            if (ringSanity.TryGetValue(leftRing.ItemId, out var value))
-                sanity += value;
-
         var rightRing = player.rightRing.Value;
-        if (rightRing != null)
-            if (ringSanity.TryGetValue(rightRing.ItemId, out var value))
-                sanity += value;
 
-        var trinket = player.trinketItems.FirstOrDefault();
-        if (trinket != null)
-            if (trinketSanity.TryGetValue(trinket.ItemId, out var value))
-                sanity += value;
+        // 当前 Stardew 1.6 inventory 把 MaximumTrinkets 固定为 1；只读取 slot 0，
+        // 不把 NetList 的可扩展形状误写成已经支持多个同时生效的 trinket 槽。
+        var trinket = player.trinketItems.Count > 0 ? player.trinketItems[0] : null;
+        var sanity = SanityBehaviorRules.CalculateEquipmentDelta(
+            new EquipmentSanityLoadout(
+                hat?.ItemId,
+                shirt?.ItemId,
+                pants?.ItemId,
+                boots?.ItemId,
+                leftRing?.ItemId,
+                rightRing?.ItemId,
+                trinket?.ItemId
+            ),
+            hatSanity,
+            shirtSanity,
+            pantsSanity,
+            bootsSanity,
+            ringSanity,
+            trinketSanity
+        );
 
-        player.SetSanity(player.GetSanity() + sanity);
+        player.ChangeSanity(sanity, SanityChangeSource.Equipment);
     }
 
-    public void Sync(long time, long delta)
+    public void Sync(long _, long delta)
     {
         if (delta < 0)
             wait += -delta;
-        else
-            for (var i = 0; i <= delta; i++)
-                Update(time);
     }
 
     public void Load(IModHelper helper)

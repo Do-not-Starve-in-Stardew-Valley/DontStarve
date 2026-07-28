@@ -22,6 +22,7 @@ internal static class DawnMusicService
     private static bool _isDawnTime;
     private static bool _isIslandArea;
     private static bool _isInDungeon;
+    private static bool _suppressed;
 
     internal static void Enable(IModHelper helper, IMonitor monitor, string manifestId)
     {
@@ -47,7 +48,7 @@ internal static class DawnMusicService
         if (!_initialized)
             return;
 
-        StopDawnMusic(forceRestore: true);
+        StopDawnMusic(forceStop: true, allowVanillaReselect: !_suppressed);
 
         helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
         helper.Events.GameLoop.TimeChanged -= OnTimeChanged;
@@ -65,6 +66,21 @@ internal static class DawnMusicService
         _isDawnTime = false;
         _isIslandArea = false;
         _isInDungeon = false;
+        _suppressed = false;
+    }
+
+    internal static void SetSuppressed(bool suppressed)
+    {
+        if (_suppressed == suppressed)
+            return;
+
+        _suppressed = suppressed;
+        if (_initialized && suppressed)
+        {
+            // Suppression owns the process music lifecycle. Stop our independent instances and
+            // remove the temporary morning prefix, but never resume or reselect an old cue here.
+            StopDawnMusic(forceStop: true, allowVanillaReselect: false);
+        }
     }
 
     private static void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
@@ -76,13 +92,15 @@ internal static class DawnMusicService
     private static void OnWarped(object sender, WarpedEventArgs e)
     {
         UpdateLocationState(e.NewLocation);
-        if (_isInDungeon && _isDawnTime)
+        if ((_isInDungeon || _suppressed) && _isDawnTime)
             StopDawnMusic();
     }
 
     private static void OnTimeChanged(object sender, TimeChangedEventArgs e)
     {
         UpdateLocationState(Game1.currentLocation);
+        if (_suppressed)
+            return;
 
         switch (e.NewTime)
         {
@@ -99,7 +117,12 @@ internal static class DawnMusicService
 
     private static void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
     {
-        if (_isDawnTime && !_isIslandArea && Game1.currentSong?.IsPlaying == true)
+        if (
+            !_suppressed
+            && _isDawnTime
+            && !_isIslandArea
+            && Game1.currentSong?.IsPlaying == true
+        )
             Game1.currentSong.Stop(AudioStopOptions.Immediate);
     }
 
@@ -108,7 +131,7 @@ internal static class DawnMusicService
         try
         {
             UpdateLocationState(Game1.currentLocation);
-            if (_isInDungeon)
+            if (_suppressed || _isInDungeon)
                 return;
 
             var targetSound = _isIslandArea ? _islandDawnSound : _dawnSound;
@@ -132,9 +155,12 @@ internal static class DawnMusicService
         }
     }
 
-    private static void StopDawnMusic(bool forceRestore = false)
+    private static void StopDawnMusic(
+        bool forceStop = false,
+        bool allowVanillaReselect = true
+    )
     {
-        if (!_isDawnTime && !forceRestore)
+        if (!_isDawnTime && !forceStop)
             return;
 
         _isDawnTime = false;
@@ -143,10 +169,11 @@ internal static class DawnMusicService
 
         try
         {
-            if (!_isIslandArea || forceRestore)
+            if (!_isIslandArea || forceStop)
             {
                 PatchMorningSong(false);
-                RestoreMusicSystem();
+                if (allowVanillaReselect && !_suppressed)
+                    RestoreMusicSystem();
             }
         }
         catch (Exception ex)
@@ -215,7 +242,7 @@ internal static class DawnMusicService
 
     private static void OnDayEnding(object sender, DayEndingEventArgs e)
     {
-        StopDawnMusic(forceRestore: true);
+        StopDawnMusic(forceStop: true, allowVanillaReselect: !_suppressed);
     }
 
     private static void UpdateLocationState(GameLocation location)

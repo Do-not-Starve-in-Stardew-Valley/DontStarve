@@ -1,0 +1,174 @@
+{
+  "SchemaVersion": 1,
+  "TemplateVersion": "sanity-harmless-visuals-v1",
+  "AnimationTemplates": [
+    {
+      "AnimationProfileId": "sanity.animation.mr-skitts.profile",
+      "TemplatePath": "scripts/sanity-assets/templates/mr-skitts-grid.png",
+      "Columns": 4,
+      "Rows": 2,
+      "FrameWidth": 184,
+      "FrameHeight": 112,
+      "PivotSourcePx": {
+        "X": 92,
+        "Y": 108
+      },
+      "StateRows": [
+        {
+          "AnimationId": "sanity.animation.mr-skitts.idle",
+          "Row": 0
+        },
+        {
+          "AnimationId": "sanity.animation.mr-skitts.disappear",
+          "Row": 1
+        }
+      ],
+      "DeliveryRules": [
+        "RGBA PNG with transparent background",
+        "keep the frozen grid and pivot unless a reviewed metadata revision accompanies the art",
+        "remove magenta guide pixels from the delivered runtime sheet",
+        "do not include source canvases, GIF previews, or collision guides"
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.dark-hand.profile",
+      "TemplatePath": "scripts/sanity-assets/templates/dark-hand-grid.png",
+      "Columns": 4,
+      "Rows": 5,
+      "FrameWidth": 192,
+      "FrameHeight": 176,
+      "PivotSourcePx": {
+        "X": 96,
+        "Y": 172
+      },
+      "StateRows": [
+        {
+          "AnimationId": "sanity.animation.dark-hand.appear",
+          "Row": 0
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.move",
+          "Row": 1
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.interact",
+          "Row": 2
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.retreat",
+          "Row": 3
+        },
+        {
+          "AnimationId": "sanity.animation.dark-hand.disappear",
+          "Row": 4
+        }
+      ],
+      "DeliveryRules": [
+        "RGBA PNG with transparent background",
+        "keep the frozen grid and pivot unless a reviewed metadata revision accompanies the art",
+        "remove magenta guide pixels from the delivered runtime sheet",
+        "do not include source canvases, GIF previews, or collision guides"
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.dark-watcher.profile",
+      "TemplatePath": "scripts/sanity-assets/templates/dark-watcher-grid.png",
+      "Columns": 4,
+      "Rows": 3,
+      "FrameWidth": 904,
+      "FrameHeight": 128,
+      "PivotSourcePx": {
+        "X": 452,
+        "Y": 124
+      },
+      "StateRows": [
+        {
+          "AnimationId": "sanity.animation.dark-watcher.appear",
+          "Row": 0
+        },
+        {
+          "AnimationId": "sanity.animation.dark-watcher.idle",
+          "Row": 1
+        },
+        {
+          "AnimationId": "sanity.animation.dark-watcher.disappear",
+          "Row": 2
+        }
+      ],
+      "DeliveryRules": [
+        "RGBA PNG with transparent background",
+        "keep the frozen grid and pivot unless a reviewed metadata revision accompanies the art",
+        "remove magenta guide pixels from the delivered runtime sheet",
+        "do not include source canvases, GIF previews, or collision guides"
+      ]
+    },
+    {
+      "AnimationProfileId": "sanity.animation.eyes.profile",
+      "TemplatePath": "scripts/sanity-assets/templates/eyes-grid.png",
+      "Columns": 4,
+      "Rows": 1,
+      "FrameWidth": 64,
+      "FrameHeight": 32,
+      "PivotSourcePx": {
+        "X": 32,
+        "Y": 16
+      },
+      "StateRows": [
+        {
+          "AnimationId": "sanity.animation.eyes.blink",
+          "Row": 0
+        }
+      ],
+      "DeliveryRules": [
+        "RGBA PNG with transparent background",
+        "keep the frozen grid and pivot unless a reviewed metadata revision accompanies the art",
+        "remove magenta guide pixels from the delivered runtime sheet",
+        "do not include source canvases, GIF previews, or collision guides"
+      ]
+    }
+  ],
+  "OverlayTemplates": [
+    {
+      "OverlayProfileId": "sanity.overlay.danger-border.profile",
+      "TemplatePath": "scripts/sanity-assets/templates/danger-border-nine-slice-grid.png",
+      "Width": 64,
+      "Height": 64,
+      "SliceSourcePx": {
+        "Left": 16,
+        "Top": 16,
+        "Right": 16,
+        "Bottom": 16
+      },
+      "DeliveryRules": [
+        "RGBA PNG with transparent center",
+        "corner regions are never stretched",
+        "edge regions may stretch only along their long axis",
+        "remove magenta and red guide pixels from final art"
+      ]
+    }
+  ],
+  "StaticSpriteTemplates": [
+    {
+      "TextureSlotId": "sanity.asset.beard-rabbit.sprite",
+      "Width": 64,
+      "Height": 64,
+      "PivotSourcePx": {
+        "X": 32,
+        "Y": 60
+      },
+      "OwnerLocalOnly": true,
+      "SharedObjectIdMutation": false
+    },
+    {
+      "TextureSlotId": "sanity.asset.beard-item.icon",
+      "Width": 16,
+      "Height": 16,
+      "PivotSourcePx": {
+        "X": 8,
+        "Y": 8
+      },
+      "OwnerLocalOnly": true,
+      "SharedObjectIdMutation": false
+    }
+  ]
+}

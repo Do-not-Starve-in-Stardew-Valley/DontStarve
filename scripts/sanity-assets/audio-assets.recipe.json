@@ -1,0 +1,2861 @@
+{
+  "SchemaVersion": 1,
+  "RecipeVersion": "sanity-audio-assets-v1",
+  "Toolchain": {
+    "Python": "3.14.0",
+    "Implementation": "CPython",
+    "Dependencies": "Python standard library only"
+  },
+  "Conversion": {
+    "RuntimeFormat": {
+      "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+      "Container": "RIFF",
+      "Codec": "PCM",
+      "FormatCode": 1,
+      "Channels": 2,
+      "SampleRateHz": 44100,
+      "BitsPerSample": 16,
+      "BlockAlign": 4,
+      "ByteRate": 176400
+    },
+    "Resampler": "deterministic signed-integer linear interpolation",
+    "GainAppliedDb": 0.0,
+    "NormalizationApplied": false,
+    "TrimmedFrames": 0,
+    "ClickRepairApplied": false,
+    "ListeningStatus": "PendingRealMachine"
+  },
+  "Inputs": [
+    {
+      "ClipId": "sanity.clip.ambience.01",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_000.wav",
+      "Sha256": "C702115BEA67EE8EE1BCF7D6FC7D62A812288852AEBE10E1DB4D12A9FD83628D",
+      "Bytes": 1430912,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 357717
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1430912,
+        "RiffDeclaredFileBytes": 1430908,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1430868,
+        "DataDecodedBytes": 1430868,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 357717,
+        "DurationSeconds": 11.178656,
+        "PeakLinear": 0.880523682,
+        "PeakDbfs": -1.105179,
+        "RmsLinear": 0.094673873,
+        "RmsDbfs": -20.475397,
+        "ExactZeroTailFrames": 506,
+        "ExactZeroTailSeconds": 0.015813,
+        "TrailingBelowMinus60DbfsSeconds": 1.85,
+        "TrailingBelowMinus50DbfsSeconds": 2.45,
+        "TrailingBelowMinus40DbfsSeconds": 3.05,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.02",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_001.wav",
+      "Sha256": "7746186A52831C921931F94F339C41269FBDE81AA70A84E019DDF0D750C98FA3",
+      "Bytes": 409300,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 11000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 44000,
+        "Frames": 102314
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 409300,
+        "RiffDeclaredFileBytes": 409296,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 409256,
+        "DataDecodedBytes": 409256,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 102314,
+        "DurationSeconds": 9.301273,
+        "PeakLinear": 0.896392822,
+        "PeakDbfs": -0.950033,
+        "RmsLinear": 0.093560032,
+        "RmsDbfs": -20.578193,
+        "ExactZeroTailFrames": 4909,
+        "ExactZeroTailSeconds": 0.446273,
+        "TrailingBelowMinus60DbfsSeconds": 1.5,
+        "TrailingBelowMinus50DbfsSeconds": 2.0,
+        "TrailingBelowMinus40DbfsSeconds": 2.8,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.03",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_002.wav",
+      "Sha256": "EF6BA30F3A3EFAFC8850EB874C96CFA477BEA0810E1D52C0303823001AB4B78F",
+      "Bytes": 329088,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 8000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 32000,
+        "Frames": 82261
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 329088,
+        "RiffDeclaredFileBytes": 329084,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 329044,
+        "DataDecodedBytes": 329044,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 82261,
+        "DurationSeconds": 10.282625,
+        "PeakLinear": 0.897735596,
+        "PeakDbfs": -0.937031,
+        "RmsLinear": 0.142218047,
+        "RmsDbfs": -16.940906,
+        "ExactZeroTailFrames": 3659,
+        "ExactZeroTailSeconds": 0.457375,
+        "TrailingBelowMinus60DbfsSeconds": 1.6,
+        "TrailingBelowMinus50DbfsSeconds": 2.2,
+        "TrailingBelowMinus40DbfsSeconds": 3.15,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.04",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_003.wav",
+      "Sha256": "2DD94D8EBC8EE9B5AC9D854E61360A2494372A6D5C430E60B017813553DEE2B9",
+      "Bytes": 745516,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 16000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 64000,
+        "Frames": 186368
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 745516,
+        "RiffDeclaredFileBytes": 745512,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 745472,
+        "DataDecodedBytes": 745472,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 186368,
+        "DurationSeconds": 11.648,
+        "PeakLinear": 0.902252197,
+        "PeakDbfs": -0.893441,
+        "RmsLinear": 0.100088651,
+        "RmsDbfs": -19.992303,
+        "ExactZeroTailFrames": 10170,
+        "ExactZeroTailSeconds": 0.635625,
+        "TrailingBelowMinus60DbfsSeconds": 1.95,
+        "TrailingBelowMinus50DbfsSeconds": 2.55,
+        "TrailingBelowMinus40DbfsSeconds": 3.15,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.05",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_004.wav",
+      "Sha256": "035652855F22390A2B53C2D296575C93E2280C74619FA92136B077EFDC58F44D",
+      "Bytes": 767360,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 16000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 64000,
+        "Frames": 191829
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 767360,
+        "RiffDeclaredFileBytes": 767356,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 767316,
+        "DataDecodedBytes": 767316,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 191829,
+        "DurationSeconds": 11.989313,
+        "PeakLinear": 0.892120361,
+        "PeakDbfs": -0.991531,
+        "RmsLinear": 0.124078513,
+        "RmsDbfs": -18.126068,
+        "ExactZeroTailFrames": 0,
+        "ExactZeroTailSeconds": 0.0,
+        "TrailingBelowMinus60DbfsSeconds": 0.0,
+        "TrailingBelowMinus50DbfsSeconds": 0.25,
+        "TrailingBelowMinus40DbfsSeconds": 2.8,
+        "FirstFrameSamples": [
+          5,
+          11
+        ],
+        "LastFrameSamples": [
+          12,
+          27
+        ],
+        "BoundaryPeakLinear": 0.000823975
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.06",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_005.wav",
+      "Sha256": "A0C578313293543FF079F3C7E288D10B165CBEBB174BBD283566686121243100",
+      "Bytes": 1326572,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 22050,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 88200,
+        "Frames": 331632
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1326572,
+        "RiffDeclaredFileBytes": 1326568,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1326528,
+        "DataDecodedBytes": 1326528,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 331632,
+        "DurationSeconds": 15.04,
+        "PeakLinear": 0.907043457,
+        "PeakDbfs": -0.847438,
+        "RmsLinear": 0.105220389,
+        "RmsDbfs": -19.558002,
+        "ExactZeroTailFrames": 17128,
+        "ExactZeroTailSeconds": 0.77678,
+        "TrailingBelowMinus60DbfsSeconds": 2.848707,
+        "TrailingBelowMinus50DbfsSeconds": 3.698322,
+        "TrailingBelowMinus40DbfsSeconds": 4.897778,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.07",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_006.wav",
+      "Sha256": "A755C15B70D8DD82A5EFCFD4C0B0D29A4B48019C68FE000CA6B3F3B3E8CA92A3",
+      "Bytes": 772820,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 16000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 64000,
+        "Frames": 193194
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 772820,
+        "RiffDeclaredFileBytes": 772816,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 772776,
+        "DataDecodedBytes": 772776,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 193194,
+        "DurationSeconds": 12.074625,
+        "PeakLinear": 0.892364502,
+        "PeakDbfs": -0.989154,
+        "RmsLinear": 0.071535316,
+        "RmsDbfs": -22.90959,
+        "ExactZeroTailFrames": 10889,
+        "ExactZeroTailSeconds": 0.680562,
+        "TrailingBelowMinus60DbfsSeconds": 2.3,
+        "TrailingBelowMinus50DbfsSeconds": 3.15,
+        "TrailingBelowMinus40DbfsSeconds": 4.2,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.08",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_007.wav",
+      "Sha256": "93C8A50C0E46AEC69311FC2B4297651FC8234341C7B92E18732BEBCCC009489B",
+      "Bytes": 830164,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 16000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 64000,
+        "Frames": 207530
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 830164,
+        "RiffDeclaredFileBytes": 830160,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 830120,
+        "DataDecodedBytes": 830120,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 207530,
+        "DurationSeconds": 12.970625,
+        "PeakLinear": 0.890838623,
+        "PeakDbfs": -1.004019,
+        "RmsLinear": 0.114797329,
+        "RmsDbfs": -18.801364,
+        "ExactZeroTailFrames": 10351,
+        "ExactZeroTailSeconds": 0.646938,
+        "TrailingBelowMinus60DbfsSeconds": 2.3,
+        "TrailingBelowMinus50DbfsSeconds": 2.9,
+        "TrailingBelowMinus40DbfsSeconds": 3.85,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.09",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_008.wav",
+      "Sha256": "0EBBBAB17B844D24DE534F9BD7D146B4E68880DBD68B349E61EDE6724F208DEE",
+      "Bytes": 536960,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 11000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 44000,
+        "Frames": 134229
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 536960,
+        "RiffDeclaredFileBytes": 536956,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 536916,
+        "DataDecodedBytes": 536916,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 134229,
+        "DurationSeconds": 12.202636,
+        "PeakLinear": 0.888183594,
+        "PeakDbfs": -1.029945,
+        "RmsLinear": 0.101799634,
+        "RmsDbfs": -19.845076,
+        "ExactZeroTailFrames": 8368,
+        "ExactZeroTailSeconds": 0.760727,
+        "TrailingBelowMinus60DbfsSeconds": 2.4,
+        "TrailingBelowMinus50DbfsSeconds": 3.2,
+        "TrailingBelowMinus40DbfsSeconds": 4.3,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.10",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_009.wav",
+      "Sha256": "ACC86E24B33F774A749ED823387E17E63E857ECD95D1FB0F6AAE7FA341CB993E",
+      "Bytes": 1542868,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 385706
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1542868,
+        "RiffDeclaredFileBytes": 1542864,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1542824,
+        "DataDecodedBytes": 1542824,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 385706,
+        "DurationSeconds": 12.053313,
+        "PeakLinear": 0.875427246,
+        "PeakDbfs": -1.155599,
+        "RmsLinear": 0.061797835,
+        "RmsDbfs": -24.180535,
+        "ExactZeroTailFrames": 2444,
+        "ExactZeroTailSeconds": 0.076375,
+        "TrailingBelowMinus60DbfsSeconds": 2.35,
+        "TrailingBelowMinus50DbfsSeconds": 3.2,
+        "TrailingBelowMinus40DbfsSeconds": 4.15,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.11",
+      "EvidenceId": "ART-07",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/01-低理智环境声-50pct/dontstarve_sanity_sanity_010.wav",
+      "Sha256": "250E387335D7BE71CECFCD960641A9FCDCDBEE8C4FBD8FDF4E28198F3F133C4F",
+      "Bytes": 1256952,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 22050,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 88200,
+        "Frames": 314227
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1256952,
+        "RiffDeclaredFileBytes": 1256948,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1256908,
+        "DataDecodedBytes": 1256908,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 314227,
+        "DurationSeconds": 14.250658,
+        "PeakLinear": 0.907531738,
+        "PeakDbfs": -0.842764,
+        "RmsLinear": 0.094599947,
+        "RmsDbfs": -20.482182,
+        "ExactZeroTailFrames": 16391,
+        "ExactZeroTailSeconds": 0.743356,
+        "TrailingBelowMinus60DbfsSeconds": 2.748753,
+        "TrailingBelowMinus50DbfsSeconds": 3.648345,
+        "TrailingBelowMinus40DbfsSeconds": 4.647891,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.01",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_000.wav",
+      "Sha256": "5502C90B465866833B16716D4BDE2BB564667B9FF8F1898A7318F2B04E0724BE",
+      "Bytes": 2871364,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 44100,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 176400,
+        "Frames": 717830
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2871364,
+        "RiffDeclaredFileBytes": 2871360,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2871320,
+        "DataDecodedBytes": 2871320,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 717830,
+        "DurationSeconds": 16.277324,
+        "PeakLinear": 0.363342285,
+        "PeakDbfs": -8.793681,
+        "RmsLinear": 0.020342049,
+        "RmsDbfs": -33.832106,
+        "ExactZeroTailFrames": 2864,
+        "ExactZeroTailSeconds": 0.064943,
+        "TrailingBelowMinus60DbfsSeconds": 4.45,
+        "TrailingBelowMinus50DbfsSeconds": 5.75,
+        "TrailingBelowMinus40DbfsSeconds": 7.1,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.02",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_001.wav",
+      "Sha256": "0D7E034289AC90C678FE67F47CE073B671662FA63FC8891F4197EC1CABC1367D",
+      "Bytes": 2981932,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 48000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 192000,
+        "Frames": 745472
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2981932,
+        "RiffDeclaredFileBytes": 2981928,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2981888,
+        "DataDecodedBytes": 2981888,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 745472,
+        "DurationSeconds": 15.530667,
+        "PeakLinear": 0.230316162,
+        "PeakDbfs": -12.753512,
+        "RmsLinear": 0.010749508,
+        "RmsDbfs": -39.372228,
+        "ExactZeroTailFrames": 126,
+        "ExactZeroTailSeconds": 0.002625,
+        "TrailingBelowMinus60DbfsSeconds": 3.3,
+        "TrailingBelowMinus50DbfsSeconds": 5.25,
+        "TrailingBelowMinus40DbfsSeconds": 7.7,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.03",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_002.wav",
+      "Sha256": "E25200679E166E7A856D48D7A4DDD625DE37AE9B2458DCF712952887432E8EC4",
+      "Bytes": 3469356,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 48000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 192000,
+        "Frames": 867328
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 3469356,
+        "RiffDeclaredFileBytes": 3469352,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 3469312,
+        "DataDecodedBytes": 3469312,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 867328,
+        "DurationSeconds": 18.069333,
+        "PeakLinear": 0.388763428,
+        "PeakDbfs": -8.206292,
+        "RmsLinear": 0.020199167,
+        "RmsDbfs": -33.893331,
+        "ExactZeroTailFrames": 70,
+        "ExactZeroTailSeconds": 0.001458,
+        "TrailingBelowMinus60DbfsSeconds": 4.5,
+        "TrailingBelowMinus50DbfsSeconds": 6.0,
+        "TrailingBelowMinus40DbfsSeconds": 7.45,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.04",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_003.wav",
+      "Sha256": "6DA3EBD05A6CD9C7174A7A7E50240A2C4685DD5C52723E90DC2DD0410E17C0F3",
+      "Bytes": 3317804,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 48000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 192000,
+        "Frames": 829440
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 3317804,
+        "RiffDeclaredFileBytes": 3317800,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 3317760,
+        "DataDecodedBytes": 3317760,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 829440,
+        "DurationSeconds": 17.28,
+        "PeakLinear": 0.331207275,
+        "PeakDbfs": -9.598003,
+        "RmsLinear": 0.016463841,
+        "RmsDbfs": -35.669377,
+        "ExactZeroTailFrames": 30,
+        "ExactZeroTailSeconds": 0.000625,
+        "TrailingBelowMinus60DbfsSeconds": 4.45,
+        "TrailingBelowMinus50DbfsSeconds": 6.0,
+        "TrailingBelowMinus40DbfsSeconds": 8.65,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.05",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_004.wav",
+      "Sha256": "E592068F7E10D5ABE0414EFF3545E2DAA9FF2AA158BA5AD5557DD6AF9B25532C",
+      "Bytes": 2542292,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 635562
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2542292,
+        "RiffDeclaredFileBytes": 2542288,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2542248,
+        "DataDecodedBytes": 2542248,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 635562,
+        "DurationSeconds": 19.861313,
+        "PeakLinear": 0.379394531,
+        "PeakDbfs": -8.418179,
+        "RmsLinear": 0.01624758,
+        "RmsDbfs": -35.784226,
+        "ExactZeroTailFrames": 3085,
+        "ExactZeroTailSeconds": 0.096406,
+        "TrailingBelowMinus60DbfsSeconds": 5.4,
+        "TrailingBelowMinus50DbfsSeconds": 6.85,
+        "TrailingBelowMinus40DbfsSeconds": 8.65,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.06",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_005.wav",
+      "Sha256": "D87F345BB52AEBEC431ECA9962F948E7962B6616275DD2CF0EB86903E1B61943",
+      "Bytes": 2187308,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 24000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 96000,
+        "Frames": 546816
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2187308,
+        "RiffDeclaredFileBytes": 2187304,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2187264,
+        "DataDecodedBytes": 2187264,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 546816,
+        "DurationSeconds": 22.784,
+        "PeakLinear": 0.358917236,
+        "PeakDbfs": -8.900114,
+        "RmsLinear": 0.022899575,
+        "RmsDbfs": -32.803452,
+        "ExactZeroTailFrames": 41986,
+        "ExactZeroTailSeconds": 1.749417,
+        "TrailingBelowMinus60DbfsSeconds": 5.95,
+        "TrailingBelowMinus50DbfsSeconds": 7.8,
+        "TrailingBelowMinus40DbfsSeconds": 9.5,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.07",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_006.wav",
+      "Sha256": "EB794170788579D3CB48D86FB329C1B125E2AAE30B1D459FA401A93F3E42D9B8",
+      "Bytes": 2517716,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 629418
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2517716,
+        "RiffDeclaredFileBytes": 2517712,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2517672,
+        "DataDecodedBytes": 2517672,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 629418,
+        "DurationSeconds": 19.669313,
+        "PeakLinear": 0.285980225,
+        "PeakDbfs": -10.87328,
+        "RmsLinear": 0.015531599,
+        "RmsDbfs": -36.175677,
+        "ExactZeroTailFrames": 448,
+        "ExactZeroTailSeconds": 0.014,
+        "TrailingBelowMinus60DbfsSeconds": 5.45,
+        "TrailingBelowMinus50DbfsSeconds": 7.0,
+        "TrailingBelowMinus40DbfsSeconds": 9.95,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.08",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_007.wav",
+      "Sha256": "6ECEDD9DC050343B4955808E8F910C2A4878E6AA74A3D1E9B02A7B2661A75A9C",
+      "Bytes": 1768748,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 22050,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 88200,
+        "Frames": 442176
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1768748,
+        "RiffDeclaredFileBytes": 1768744,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1768704,
+        "DataDecodedBytes": 1768704,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 442176,
+        "DurationSeconds": 20.053333,
+        "PeakLinear": 0.295806885,
+        "PeakDbfs": -10.579834,
+        "RmsLinear": 0.018749915,
+        "RmsDbfs": -34.540014,
+        "ExactZeroTailFrames": 36144,
+        "ExactZeroTailSeconds": 1.639184,
+        "TrailingBelowMinus60DbfsSeconds": 5.59746,
+        "TrailingBelowMinus50DbfsSeconds": 7.146757,
+        "TrailingBelowMinus40DbfsSeconds": 9.14585,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.09",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_008.wav",
+      "Sha256": "4B99DC05554471658C33350A4E2385520DAC2BEB89F0F1E044E59C2337E7ECAD",
+      "Bytes": 2648788,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 662186
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2648788,
+        "RiffDeclaredFileBytes": 2648784,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2648744,
+        "DataDecodedBytes": 2648744,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 662186,
+        "DurationSeconds": 20.693313,
+        "PeakLinear": 0.247894287,
+        "PeakDbfs": -12.11467,
+        "RmsLinear": 0.015808351,
+        "RmsDbfs": -36.022269,
+        "ExactZeroTailFrames": 1564,
+        "ExactZeroTailSeconds": 0.048875,
+        "TrailingBelowMinus60DbfsSeconds": 6.0,
+        "TrailingBelowMinus50DbfsSeconds": 8.05,
+        "TrailingBelowMinus40DbfsSeconds": 10.4,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.10",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_009.wav",
+      "Sha256": "91AB66BA92BEF1FDFCCB5CF4ABF8E2EFE7F36829D159E0CF5AEC93063C37B919",
+      "Bytes": 1203412,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 11000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 44000,
+        "Frames": 300842
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1203412,
+        "RiffDeclaredFileBytes": 1203408,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1203368,
+        "DataDecodedBytes": 1203368,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 300842,
+        "DurationSeconds": 27.349273,
+        "PeakLinear": 0.555969238,
+        "PeakDbfs": -5.098985,
+        "RmsLinear": 0.066352908,
+        "RmsDbfs": -23.562801,
+        "ExactZeroTailFrames": 24214,
+        "ExactZeroTailSeconds": 2.201273,
+        "TrailingBelowMinus60DbfsSeconds": 6.4,
+        "TrailingBelowMinus50DbfsSeconds": 8.15,
+        "TrailingBelowMinus40DbfsSeconds": 10.2,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.11",
+      "EvidenceId": "ART-08",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/02-低语-45pct/dontstarve_sanity_sanity_random_2_010.wav",
+      "Sha256": "CFC2E4A174B2D23ACCA82D9A5590C5C6AEF56BBF6B38EF50E2E1CAC2A027529A",
+      "Bytes": 1224064,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 11000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 44000,
+        "Frames": 306005
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 1224064,
+        "RiffDeclaredFileBytes": 1224060,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 1224020,
+        "DataDecodedBytes": 1224020,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 306005,
+        "DurationSeconds": 27.818636,
+        "PeakLinear": 0.484313965,
+        "PeakDbfs": -6.29746,
+        "RmsLinear": 0.053076291,
+        "RmsDbfs": -25.501989,
+        "ExactZeroTailFrames": 22862,
+        "ExactZeroTailSeconds": 2.078364,
+        "TrailingBelowMinus60DbfsSeconds": 6.45,
+        "TrailingBelowMinus50DbfsSeconds": 7.95,
+        "TrailingBelowMinus40DbfsSeconds": 10.6,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    },
+    {
+      "ClipId": "sanity.clip.thresholds.danger-enter",
+      "EvidenceId": "ART-09",
+      "ReferencePath": "references/san值系统设计稿重整/素材/待加工原始素材/音频/03-危险阈值-15pct/低san阈值音效.wav",
+      "Sha256": "DAB3249DE3D6F53BDD1270EEBE6E0B71A2DEBCA9E464206B9DBDDE21F0E9CC5D",
+      "Bytes": 2965548,
+      "Format": {
+        "Container": "RIFF",
+        "Codec": "PCM",
+        "FormatCode": 1,
+        "Channels": 2,
+        "SampleRateHz": 32000,
+        "BitsPerSample": 16,
+        "BlockAlign": 4,
+        "ByteRate": 128000,
+        "Frames": 741376
+      },
+      "ContainerEvidence": {
+        "ActualFileBytes": 2965548,
+        "RiffDeclaredFileBytes": 2965544,
+        "RiffLengthDeltaBytes": 4,
+        "DataDeclaredBytes": 2965504,
+        "DataDecodedBytes": 2965504,
+        "CanonicalHeaderRebuilt": true,
+        "CanonicalHeaderRepairReason": "Source RIFF outer length was four bytes short; the complete declared data chunk was retained."
+      },
+      "AudioEvidence": {
+        "Frames": 741376,
+        "DurationSeconds": 23.168,
+        "PeakLinear": 0.464141846,
+        "PeakDbfs": -6.666986,
+        "RmsLinear": 0.062742687,
+        "RmsDbfs": -24.048738,
+        "ExactZeroTailFrames": 1,
+        "ExactZeroTailSeconds": 3.1e-05,
+        "TrailingBelowMinus60DbfsSeconds": 4.1,
+        "TrailingBelowMinus50DbfsSeconds": 6.1,
+        "TrailingBelowMinus40DbfsSeconds": 8.25,
+        "FirstFrameSamples": [
+          0,
+          0
+        ],
+        "LastFrameSamples": [
+          0,
+          0
+        ],
+        "BoundaryPeakLinear": 0.0
+      }
+    }
+  ],
+  "Outputs": [
+    {
+      "ClipId": "sanity.clip.ambience.01",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-01.wav",
+      "Sha256": "972A8A9C7DDEDC4225A7B1F8F9847219412AF5FFB2A01FA1477B044DAC11BBEE",
+      "DurationFrames": 492979,
+      "DurationSeconds": 11.178662,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.880523682,
+        "SourcePeakDbfs": -1.105179,
+        "SourceRmsLinear": 0.094673873,
+        "SourceRmsDbfs": -20.475397,
+        "OutputPeakLinear": 0.880432129,
+        "OutputPeakDbfs": -1.106082,
+        "OutputRmsLinear": 0.094456112,
+        "OutputRmsDbfs": -20.495399
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 506,
+        "SourceExactZeroTailSeconds": 0.015813,
+        "OutputExactZeroTailFrames": 698,
+        "OutputExactZeroTailSeconds": 0.015828,
+        "OutputTrailingBelowMinus60DbfsSeconds": 1.85,
+        "OutputTrailingBelowMinus50DbfsSeconds": 2.45,
+        "OutputTrailingBelowMinus40DbfsSeconds": 3.05,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.02",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-02.wav",
+      "Sha256": "D61672EC975F644B8FAC6B06418E4F04C0E20B7E214924C4A862BF24E7E659D5",
+      "DurationFrames": 410186,
+      "DurationSeconds": 9.30127,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.896392822,
+        "SourcePeakDbfs": -0.950033,
+        "SourceRmsLinear": 0.093560032,
+        "SourceRmsDbfs": -20.578193,
+        "OutputPeakLinear": 0.896026611,
+        "OutputPeakDbfs": -0.953582,
+        "OutputRmsLinear": 0.093155598,
+        "OutputRmsDbfs": -20.615821
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 4909,
+        "SourceExactZeroTailSeconds": 0.446273,
+        "OutputExactZeroTailFrames": 19682,
+        "OutputExactZeroTailSeconds": 0.446304,
+        "OutputTrailingBelowMinus60DbfsSeconds": 1.5,
+        "OutputTrailingBelowMinus50DbfsSeconds": 2.0,
+        "OutputTrailingBelowMinus40DbfsSeconds": 2.8,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.03",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-03.wav",
+      "Sha256": "FF4C8F2DC16BA2CFDF2DE27C10D1C2480ADF567EE6D654871F533111683BBBB7",
+      "DurationFrames": 453464,
+      "DurationSeconds": 10.28263,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.897735596,
+        "SourcePeakDbfs": -0.937031,
+        "SourceRmsLinear": 0.142218047,
+        "SourceRmsDbfs": -16.940906,
+        "OutputPeakLinear": 0.89755249,
+        "OutputPeakDbfs": -0.938803,
+        "OutputRmsLinear": 0.142138071,
+        "OutputRmsDbfs": -16.945792
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 3659,
+        "SourceExactZeroTailSeconds": 0.457375,
+        "OutputExactZeroTailFrames": 20173,
+        "OutputExactZeroTailSeconds": 0.457438,
+        "OutputTrailingBelowMinus60DbfsSeconds": 1.6,
+        "OutputTrailingBelowMinus50DbfsSeconds": 2.2,
+        "OutputTrailingBelowMinus40DbfsSeconds": 3.15,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.04",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-04.wav",
+      "Sha256": "B8B54022424ECE8B3FB07161038217C5A374291028FC0359B4BFF23AC2820A85",
+      "DurationFrames": 513677,
+      "DurationSeconds": 11.648005,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.902252197,
+        "SourcePeakDbfs": -0.893441,
+        "SourceRmsLinear": 0.100088651,
+        "SourceRmsDbfs": -19.992303,
+        "OutputPeakLinear": 0.901947021,
+        "OutputPeakDbfs": -0.896379,
+        "OutputRmsLinear": 0.100038813,
+        "OutputRmsDbfs": -19.996629
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 10170,
+        "SourceExactZeroTailSeconds": 0.635625,
+        "OutputExactZeroTailFrames": 28032,
+        "OutputExactZeroTailSeconds": 0.635646,
+        "OutputTrailingBelowMinus60DbfsSeconds": 1.95,
+        "OutputTrailingBelowMinus50DbfsSeconds": 2.55,
+        "OutputTrailingBelowMinus40DbfsSeconds": 3.15,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.05",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-05.wav",
+      "Sha256": "4DBAD7DDE6A9504077CBB55D8FA38D95A5F5574B1FE2B78014C5AAB127C74EC4",
+      "DurationFrames": 528729,
+      "DurationSeconds": 11.98932,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.892120361,
+        "SourcePeakDbfs": -0.991531,
+        "SourceRmsLinear": 0.124078513,
+        "SourceRmsDbfs": -18.126068,
+        "OutputPeakLinear": 0.89175415,
+        "OutputPeakDbfs": -0.995097,
+        "OutputRmsLinear": 0.124022509,
+        "OutputRmsDbfs": -18.12999
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 0,
+        "SourceExactZeroTailSeconds": 0.0,
+        "OutputExactZeroTailFrames": 0,
+        "OutputExactZeroTailSeconds": 0.0,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.0,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.25,
+        "OutputTrailingBelowMinus40DbfsSeconds": 2.8,
+        "OutputFirstFrameSamples": [
+          5,
+          11
+        ],
+        "OutputLastFrameSamples": [
+          12,
+          27
+        ],
+        "OutputBoundaryPeakLinear": 0.000823975
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.06",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-06.wav",
+      "Sha256": "3C6D09827B1CC495D73FFE05328A2D9D8203905E091813626E690AF9095D95BB",
+      "DurationFrames": 663264,
+      "DurationSeconds": 15.04,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.907043457,
+        "SourcePeakDbfs": -0.847438,
+        "SourceRmsLinear": 0.105220389,
+        "SourceRmsDbfs": -19.558002,
+        "OutputPeakLinear": 0.907043457,
+        "OutputPeakDbfs": -0.847438,
+        "OutputRmsLinear": 0.104886544,
+        "OutputRmsDbfs": -19.585604
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 17128,
+        "SourceExactZeroTailSeconds": 0.77678,
+        "OutputExactZeroTailFrames": 34256,
+        "OutputExactZeroTailSeconds": 0.77678,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.85,
+        "OutputTrailingBelowMinus50DbfsSeconds": 3.7,
+        "OutputTrailingBelowMinus40DbfsSeconds": 4.9,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.07",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-07.wav",
+      "Sha256": "8152A84254C1AB1A1E7F261A5C33B69CED7B18798CEABDF5D3585314EB09DA23",
+      "DurationFrames": 532491,
+      "DurationSeconds": 12.074626,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.892364502,
+        "SourcePeakDbfs": -0.989154,
+        "SourceRmsLinear": 0.071535316,
+        "SourceRmsDbfs": -22.90959,
+        "OutputPeakLinear": 0.890960693,
+        "OutputPeakDbfs": -1.002829,
+        "OutputRmsLinear": 0.071225318,
+        "OutputRmsDbfs": -22.947312
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 10889,
+        "SourceExactZeroTailSeconds": 0.680562,
+        "OutputExactZeroTailFrames": 30014,
+        "OutputExactZeroTailSeconds": 0.68059,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.4,
+        "OutputTrailingBelowMinus50DbfsSeconds": 3.15,
+        "OutputTrailingBelowMinus40DbfsSeconds": 4.2,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.08",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-08.wav",
+      "Sha256": "7E9E0331F202F6310E6CAB377AE1C8B20502AEFA06E53A9553BCA345494C69E6",
+      "DurationFrames": 572005,
+      "DurationSeconds": 12.970635,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.890838623,
+        "SourcePeakDbfs": -1.004019,
+        "SourceRmsLinear": 0.114797329,
+        "SourceRmsDbfs": -18.801364,
+        "OutputPeakLinear": 0.890655518,
+        "OutputPeakDbfs": -1.005805,
+        "OutputRmsLinear": 0.114257966,
+        "OutputRmsDbfs": -18.84227
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 10351,
+        "SourceExactZeroTailSeconds": 0.646938,
+        "OutputExactZeroTailFrames": 28531,
+        "OutputExactZeroTailSeconds": 0.646961,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.3,
+        "OutputTrailingBelowMinus50DbfsSeconds": 2.9,
+        "OutputTrailingBelowMinus40DbfsSeconds": 3.85,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.09",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-09.wav",
+      "Sha256": "66943821956A4695E8239ABECF4C9F1547E7E7A330F45C918945F0D009EA3237",
+      "DurationFrames": 538136,
+      "DurationSeconds": 12.20263,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.888183594,
+        "SourcePeakDbfs": -1.029945,
+        "SourceRmsLinear": 0.101799634,
+        "SourceRmsDbfs": -19.845076,
+        "OutputPeakLinear": 0.885192871,
+        "OutputPeakDbfs": -1.059242,
+        "OutputRmsLinear": 0.101387836,
+        "OutputRmsDbfs": -19.880283
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 8368,
+        "SourceExactZeroTailSeconds": 0.760727,
+        "OutputExactZeroTailFrames": 33549,
+        "OutputExactZeroTailSeconds": 0.760748,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.4,
+        "OutputTrailingBelowMinus50DbfsSeconds": 3.2,
+        "OutputTrailingBelowMinus40DbfsSeconds": 4.3,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.10",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-10.wav",
+      "Sha256": "90C57F3CBE57459A5AF14499796F84B1B29AD3FE64B65FFAAD6819DB8785E120",
+      "DurationFrames": 531551,
+      "DurationSeconds": 12.053311,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.875427246,
+        "SourcePeakDbfs": -1.155599,
+        "SourceRmsLinear": 0.061797835,
+        "SourceRmsDbfs": -24.180535,
+        "OutputPeakLinear": 0.873352051,
+        "OutputPeakDbfs": -1.176213,
+        "OutputRmsLinear": 0.061672321,
+        "OutputRmsDbfs": -24.198194
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 2444,
+        "SourceExactZeroTailSeconds": 0.076375,
+        "OutputExactZeroTailFrames": 3368,
+        "OutputExactZeroTailSeconds": 0.076372,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.35,
+        "OutputTrailingBelowMinus50DbfsSeconds": 3.2,
+        "OutputTrailingBelowMinus40DbfsSeconds": 4.15,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.ambience.11",
+      "Path": "Asset/Sanity/Audio/Ambience/ambience-11.wav",
+      "Sha256": "AAB60A7F4C6009C2B515069923C34627DE0BAA49E14891AE7C8B0E37D4F2E36B",
+      "DurationFrames": 628454,
+      "DurationSeconds": 14.250658,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.907531738,
+        "SourcePeakDbfs": -0.842764,
+        "SourceRmsLinear": 0.094599947,
+        "SourceRmsDbfs": -20.482182,
+        "OutputPeakLinear": 0.907531738,
+        "OutputPeakDbfs": -0.842764,
+        "OutputRmsLinear": 0.094421525,
+        "OutputRmsDbfs": -20.49858
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 16391,
+        "SourceExactZeroTailSeconds": 0.743356,
+        "OutputExactZeroTailFrames": 32782,
+        "OutputExactZeroTailSeconds": 0.743356,
+        "OutputTrailingBelowMinus60DbfsSeconds": 2.75,
+        "OutputTrailingBelowMinus50DbfsSeconds": 3.6,
+        "OutputTrailingBelowMinus40DbfsSeconds": 4.65,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.creeper-fear.attack",
+      "Path": "Asset/Sanity/Audio/Creatures/creeper-fear/attack.wav",
+      "Sha256": "B7178BAA6489F3B7ECC849A71C5B9EF162A6A91BDE2030A7C26EB86C59988503",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047948561,
+        "OutputRmsDbfs": -26.384488
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.creeper-fear.death",
+      "Path": "Asset/Sanity/Audio/Creatures/creeper-fear/death.wav",
+      "Sha256": "E332A45B23401DA8FCCC407A83E19722C9A1F79AAED88029D799A975BF4C5F63",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047949439,
+        "OutputRmsDbfs": -26.384329
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.creeper-fear.hurt",
+      "Path": "Asset/Sanity/Audio/Creatures/creeper-fear/hurt.wav",
+      "Sha256": "2750760DE6DBB6C8B61C7A782B43EE1D71147E4AAF10BEF93DBE2F0CA7BE6797",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047949469,
+        "OutputRmsDbfs": -26.384324
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.creeper-fear.taunt",
+      "Path": "Asset/Sanity/Audio/Creatures/creeper-fear/taunt.wav",
+      "Sha256": "D9BB5A949765B47D199B7053C1A9111D96A9EE32CC2C39C8C7E04BEF0EAE1EAC",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047944201,
+        "OutputRmsDbfs": -26.385278
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.dark-hand.appear",
+      "Path": "Asset/Sanity/Audio/Creatures/dark-hand/appear.wav",
+      "Sha256": "6364BDD0C7BAE32F93C252EAF43AD15BBD0267D096DE2EE248F6CCC9572AFAA5",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047949272,
+        "OutputRmsDbfs": -26.38436
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.dark-hand.disappear",
+      "Path": "Asset/Sanity/Audio/Creatures/dark-hand/disappear.wav",
+      "Sha256": "92E99C2E8887759C8505F58C937A6F3CFEF086751A6BAD1F1240526E8B0013E5",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047945085,
+        "OutputRmsDbfs": -26.385118
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.dark-hand.interact",
+      "Path": "Asset/Sanity/Audio/Creatures/dark-hand/interact.wav",
+      "Sha256": "828A722B5789EC2B8234B9146EEEE71C0942CE89FA6CC5B9659A0A2E2E65B019",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.1199646,
+        "OutputPeakDbfs": -18.418938,
+        "OutputRmsLinear": 0.047949529,
+        "OutputRmsDbfs": -26.384313
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.darkness.warning",
+      "Path": "Asset/Sanity/Audio/Events/darkness-warning.wav",
+      "Sha256": "99EA7A4C8C45305D6EBB3231AD94F15F0159C4D7EAB2D299171D084C2C5F1245",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047949439,
+        "OutputRmsDbfs": -26.384329
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.terrorbeak.attack",
+      "Path": "Asset/Sanity/Audio/Creatures/terrorbeak/attack.wav",
+      "Sha256": "C22047BA51A96EA39E591CF6FE1CCC94C097195342368C3FC8773E5D481E0103",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047947191,
+        "OutputRmsDbfs": -26.384737
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.terrorbeak.death",
+      "Path": "Asset/Sanity/Audio/Creatures/terrorbeak/death.wav",
+      "Sha256": "1336902E7DBE5350956AE2439AB3942FFE9E99D1B59B616744279D5E19B93736",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.1199646,
+        "OutputPeakDbfs": -18.418938,
+        "OutputRmsLinear": 0.047947991,
+        "OutputRmsDbfs": -26.384592
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.terrorbeak.hurt",
+      "Path": "Asset/Sanity/Audio/Creatures/terrorbeak/hurt.wav",
+      "Sha256": "FE2208701DF5A05EF754E223DF388DE22A24078B9A78AC16AFCAFA2912B1EE53",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.1199646,
+        "OutputPeakDbfs": -18.418938,
+        "OutputRmsLinear": 0.047949325,
+        "OutputRmsDbfs": -26.38435
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.terrorbeak.taunt",
+      "Path": "Asset/Sanity/Audio/Creatures/terrorbeak/taunt.wav",
+      "Sha256": "2F61A04979830A5811FE9246B7BD9F5F3AFFED8CC2E30229F1FB51AF0B96566C",
+      "DurationFrames": 21168,
+      "DurationSeconds": 0.48,
+      "IsPlaceholder": true,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": null,
+        "SourcePeakDbfs": null,
+        "SourceRmsLinear": null,
+        "SourceRmsDbfs": null,
+        "OutputPeakLinear": 0.119995117,
+        "OutputPeakDbfs": -18.416729,
+        "OutputRmsLinear": 0.047949176,
+        "OutputRmsDbfs": -26.384377
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": null,
+        "SourceExactZeroTailSeconds": null,
+        "OutputExactZeroTailFrames": 5734,
+        "OutputExactZeroTailSeconds": 0.130023,
+        "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.thresholds.danger-enter",
+      "Path": "Asset/Sanity/Audio/Thresholds/danger-enter.wav",
+      "Sha256": "915CCA5A09586BEB05DDDACFFFC5D59EDD88E4FEF6D59778B75D3A139AF8AC10",
+      "DurationFrames": 1021709,
+      "DurationSeconds": 23.168005,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.464141846,
+        "SourcePeakDbfs": -6.666986,
+        "SourceRmsLinear": 0.062742687,
+        "SourceRmsDbfs": -24.048738,
+        "OutputPeakLinear": 0.463623047,
+        "OutputPeakDbfs": -6.6767,
+        "OutputRmsLinear": 0.06271533,
+        "OutputRmsDbfs": -24.052526
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 1,
+        "SourceExactZeroTailSeconds": 3.1e-05,
+        "OutputExactZeroTailFrames": 2,
+        "OutputExactZeroTailSeconds": 4.5e-05,
+        "OutputTrailingBelowMinus60DbfsSeconds": 4.1,
+        "OutputTrailingBelowMinus50DbfsSeconds": 6.1,
+        "OutputTrailingBelowMinus40DbfsSeconds": 8.25,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.01",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-01.wav",
+      "Sha256": "D4EB958C0E79D78AF3EE59C63213E61F88D6F27267371D7288251F1D42031131",
+      "DurationFrames": 717830,
+      "DurationSeconds": 16.277324,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.363342285,
+        "SourcePeakDbfs": -8.793681,
+        "SourceRmsLinear": 0.020342049,
+        "SourceRmsDbfs": -33.832106,
+        "OutputPeakLinear": 0.363342285,
+        "OutputPeakDbfs": -8.793681,
+        "OutputRmsLinear": 0.020342049,
+        "OutputRmsDbfs": -33.832106
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 2864,
+        "SourceExactZeroTailSeconds": 0.064943,
+        "OutputExactZeroTailFrames": 2864,
+        "OutputExactZeroTailSeconds": 0.064943,
+        "OutputTrailingBelowMinus60DbfsSeconds": 4.45,
+        "OutputTrailingBelowMinus50DbfsSeconds": 5.75,
+        "OutputTrailingBelowMinus40DbfsSeconds": 7.1,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.02",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-02.wav",
+      "Sha256": "0A717148E9B92A072B573DDD984EFBB8B9B54452D81DF245B272786C0536BEDA",
+      "DurationFrames": 684902,
+      "DurationSeconds": 15.530658,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.230316162,
+        "SourcePeakDbfs": -12.753512,
+        "SourceRmsLinear": 0.010749508,
+        "SourceRmsDbfs": -39.372228,
+        "OutputPeakLinear": 0.229370117,
+        "OutputPeakDbfs": -12.789263,
+        "OutputRmsLinear": 0.010710029,
+        "OutputRmsDbfs": -39.404187
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 126,
+        "SourceExactZeroTailSeconds": 0.002625,
+        "OutputExactZeroTailFrames": 115,
+        "OutputExactZeroTailSeconds": 0.002608,
+        "OutputTrailingBelowMinus60DbfsSeconds": 3.3,
+        "OutputTrailingBelowMinus50DbfsSeconds": 5.25,
+        "OutputTrailingBelowMinus40DbfsSeconds": 7.7,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.03",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-03.wav",
+      "Sha256": "C3C40354337C33AD3A3A8A1F4349BF8AC7AD11E1D457CF29D99A2B1B7BAEEA7E",
+      "DurationFrames": 796858,
+      "DurationSeconds": 18.069342,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.388763428,
+        "SourcePeakDbfs": -8.206292,
+        "SourceRmsLinear": 0.020199167,
+        "SourceRmsDbfs": -33.893331,
+        "OutputPeakLinear": 0.388366699,
+        "OutputPeakDbfs": -8.21516,
+        "OutputRmsLinear": 0.020169812,
+        "OutputRmsDbfs": -33.905963
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 70,
+        "SourceExactZeroTailSeconds": 0.001458,
+        "OutputExactZeroTailFrames": 65,
+        "OutputExactZeroTailSeconds": 0.001474,
+        "OutputTrailingBelowMinus60DbfsSeconds": 4.5,
+        "OutputTrailingBelowMinus50DbfsSeconds": 6.0,
+        "OutputTrailingBelowMinus40DbfsSeconds": 7.45,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.04",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-04.wav",
+      "Sha256": "F84654EFA78B760E52C1B0DFF7B43612E3B61E22757C070FBE55119E74E7B71B",
+      "DurationFrames": 762048,
+      "DurationSeconds": 17.28,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.331207275,
+        "SourcePeakDbfs": -9.598003,
+        "SourceRmsLinear": 0.016463841,
+        "SourceRmsDbfs": -35.669377,
+        "OutputPeakLinear": 0.330810547,
+        "OutputPeakDbfs": -9.608413,
+        "OutputRmsLinear": 0.016438466,
+        "OutputRmsDbfs": -35.682774
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 30,
+        "SourceExactZeroTailSeconds": 0.000625,
+        "OutputExactZeroTailFrames": 43,
+        "OutputExactZeroTailSeconds": 0.000975,
+        "OutputTrailingBelowMinus60DbfsSeconds": 4.45,
+        "OutputTrailingBelowMinus50DbfsSeconds": 6.0,
+        "OutputTrailingBelowMinus40DbfsSeconds": 8.65,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.05",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-05.wav",
+      "Sha256": "85EB80ADD56631C929FDCB3F171706ED5A5DCCCB999F1DDD19DFEB4964BE8106",
+      "DurationFrames": 875884,
+      "DurationSeconds": 19.861315,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.379394531,
+        "SourcePeakDbfs": -8.418179,
+        "SourceRmsLinear": 0.01624758,
+        "SourceRmsDbfs": -35.784226,
+        "OutputPeakLinear": 0.379119873,
+        "OutputPeakDbfs": -8.424469,
+        "OutputRmsLinear": 0.016230391,
+        "OutputRmsDbfs": -35.79342
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 3085,
+        "SourceExactZeroTailSeconds": 0.096406,
+        "OutputExactZeroTailFrames": 4252,
+        "OutputExactZeroTailSeconds": 0.096417,
+        "OutputTrailingBelowMinus60DbfsSeconds": 5.4,
+        "OutputTrailingBelowMinus50DbfsSeconds": 6.85,
+        "OutputTrailingBelowMinus40DbfsSeconds": 8.65,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.06",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-06.wav",
+      "Sha256": "E284A66873C21F0A4843020BFD6C7814D8A369BFD5C3E15F0AC665566DF8A13E",
+      "DurationFrames": 1004774,
+      "DurationSeconds": 22.783991,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.358917236,
+        "SourcePeakDbfs": -8.900114,
+        "SourceRmsLinear": 0.022899575,
+        "SourceRmsDbfs": -32.803452,
+        "OutputPeakLinear": 0.358032227,
+        "OutputPeakDbfs": -8.921558,
+        "OutputRmsLinear": 0.022851069,
+        "OutputRmsDbfs": -32.82187
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 41986,
+        "SourceExactZeroTailSeconds": 1.749417,
+        "OutputExactZeroTailFrames": 77149,
+        "OutputExactZeroTailSeconds": 1.74941,
+        "OutputTrailingBelowMinus60DbfsSeconds": 5.95,
+        "OutputTrailingBelowMinus50DbfsSeconds": 7.8,
+        "OutputTrailingBelowMinus40DbfsSeconds": 9.5,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.07",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-07.wav",
+      "Sha256": "F2470FB2A82A85C374FB83A26FE7610633DF3F4989CB670579837E36F3E07589",
+      "DurationFrames": 867417,
+      "DurationSeconds": 19.66932,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.285980225,
+        "SourcePeakDbfs": -10.87328,
+        "SourceRmsLinear": 0.015531599,
+        "SourceRmsDbfs": -36.175677,
+        "OutputPeakLinear": 0.285980225,
+        "OutputPeakDbfs": -10.87328,
+        "OutputRmsLinear": 0.015510296,
+        "OutputRmsDbfs": -36.187598
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 448,
+        "SourceExactZeroTailSeconds": 0.014,
+        "OutputExactZeroTailFrames": 618,
+        "OutputExactZeroTailSeconds": 0.014014,
+        "OutputTrailingBelowMinus60DbfsSeconds": 5.45,
+        "OutputTrailingBelowMinus50DbfsSeconds": 7.0,
+        "OutputTrailingBelowMinus40DbfsSeconds": 9.95,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.08",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-08.wav",
+      "Sha256": "C44F0539E5FA1D816EB01B95596CAA8932B29078FF36C7CD66E9C67953E2216C",
+      "DurationFrames": 884352,
+      "DurationSeconds": 20.053333,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.295806885,
+        "SourcePeakDbfs": -10.579834,
+        "SourceRmsLinear": 0.018749915,
+        "SourceRmsDbfs": -34.540014,
+        "OutputPeakLinear": 0.295806885,
+        "OutputPeakDbfs": -10.579834,
+        "OutputRmsLinear": 0.018727269,
+        "OutputRmsDbfs": -34.550511
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 36144,
+        "SourceExactZeroTailSeconds": 1.639184,
+        "OutputExactZeroTailFrames": 72288,
+        "OutputExactZeroTailSeconds": 1.639184,
+        "OutputTrailingBelowMinus60DbfsSeconds": 5.6,
+        "OutputTrailingBelowMinus50DbfsSeconds": 7.15,
+        "OutputTrailingBelowMinus40DbfsSeconds": 10.05,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.09",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-09.wav",
+      "Sha256": "C736389D0EEE007F1EA6E789622E75AF7DEE6D473736D5DB7536D51B73315E51",
+      "DurationFrames": 912575,
+      "DurationSeconds": 20.693311,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.247894287,
+        "SourcePeakDbfs": -12.11467,
+        "SourceRmsLinear": 0.015808351,
+        "SourceRmsDbfs": -36.022269,
+        "OutputPeakLinear": 0.247650146,
+        "OutputPeakDbfs": -12.123228,
+        "OutputRmsLinear": 0.01578909,
+        "OutputRmsDbfs": -36.032858
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 1564,
+        "SourceExactZeroTailSeconds": 0.048875,
+        "OutputExactZeroTailFrames": 2155,
+        "OutputExactZeroTailSeconds": 0.048866,
+        "OutputTrailingBelowMinus60DbfsSeconds": 6.0,
+        "OutputTrailingBelowMinus50DbfsSeconds": 8.05,
+        "OutputTrailingBelowMinus40DbfsSeconds": 10.4,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.10",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-10.wav",
+      "Sha256": "03E60A50E7E82853F0EEF7D7E8FEF773BE1102E505477AE1D371C3F181CFE859",
+      "DurationFrames": 1206103,
+      "DurationSeconds": 27.349274,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.555969238,
+        "SourcePeakDbfs": -5.098985,
+        "SourceRmsLinear": 0.066352908,
+        "SourceRmsDbfs": -23.562801,
+        "OutputPeakLinear": 0.553497314,
+        "OutputPeakDbfs": -5.13769,
+        "OutputRmsLinear": 0.066019347,
+        "OutputRmsDbfs": -23.606576
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 24214,
+        "SourceExactZeroTailSeconds": 2.201273,
+        "OutputExactZeroTailFrames": 97078,
+        "OutputExactZeroTailSeconds": 2.201315,
+        "OutputTrailingBelowMinus60DbfsSeconds": 6.4,
+        "OutputTrailingBelowMinus50DbfsSeconds": 8.15,
+        "OutputTrailingBelowMinus40DbfsSeconds": 10.2,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    },
+    {
+      "ClipId": "sanity.clip.whispers.11",
+      "Path": "Asset/Sanity/Audio/Whispers/whisper-11.wav",
+      "Sha256": "ACAB70AD7976DFB4F534199F3DD2F7F41A2E01979BFA80E6E75410A55A0FF11B",
+      "DurationFrames": 1226802,
+      "DurationSeconds": 27.818639,
+      "IsPlaceholder": false,
+      "GainEvidence": {
+        "GainAppliedDb": 0.0,
+        "NormalizationApplied": false,
+        "SourcePeakLinear": 0.484313965,
+        "SourcePeakDbfs": -6.29746,
+        "SourceRmsLinear": 0.053076291,
+        "SourceRmsDbfs": -25.501989,
+        "OutputPeakLinear": 0.482147217,
+        "OutputPeakDbfs": -6.336407,
+        "OutputRmsLinear": 0.052741837,
+        "OutputRmsDbfs": -25.556895
+      },
+      "TailEvidence": {
+        "TrimmedFrames": 0,
+        "ClickRepairApplied": false,
+        "SourceExactZeroTailFrames": 22862,
+        "SourceExactZeroTailSeconds": 2.078364,
+        "OutputExactZeroTailFrames": 91657,
+        "OutputExactZeroTailSeconds": 2.07839,
+        "OutputTrailingBelowMinus60DbfsSeconds": 6.45,
+        "OutputTrailingBelowMinus50DbfsSeconds": 7.95,
+        "OutputTrailingBelowMinus40DbfsSeconds": 10.6,
+        "OutputFirstFrameSamples": [
+          0,
+          0
+        ],
+        "OutputLastFrameSamples": [
+          0,
+          0
+        ],
+        "OutputBoundaryPeakLinear": 0.0
+      },
+      "ListeningEvidence": {
+        "OverallStatus": "PendingRealMachine",
+        "OneShotStatus": "PendingRealMachine",
+        "LoopSeamStatus": "NotApplicableIndividualClip",
+        "PoolTransitionStatus": "PendingRealMachine",
+        "StopTailStatus": "PendingRealMachine",
+        "Reason": "No game-audio playback session was performed in stage 05."
+      }
+    }
+  ],
+  "Metadata": {
+    "Path": "Asset/Sanity/Audio/audio-cues.json",
+    "Sha256": "46C5B1BE3C8DC0D5188AEACC0F2E9AED9A0776393710F3CFD8F1DD9FF10CF323",
+    "CueSetCount": 8,
+    "CueCount": 17,
+    "PhysicalClipCount": 35
+  },
+  "Manifest": {
+    "Path": "DontStarve/Asset/Sanity/Data/sanity-assets.json",
+    "Sha256": "C7B46DE5DFD024C7A7115272418983F01851AE76C00B05AE9DA26A432C8DDE86"
+  },
+  "Template": {
+    "Path": "scripts/sanity-assets/templates/audio/audio-replacement-template.json",
+    "Sha256": "4E4AFFC08542A21D6E21352AE9DECE043F3A0A9E2E5F56810BB95D4A7CBF9669"
+  },
+  "ForbiddenOutputs": [
+    "references runtime dependency",
+    "tests fixture audio copy",
+    "manual TestPackage candidate",
+    "runtime loader/cache/coordinator",
+    "loudness-normalized derivative"
+  ]
+}

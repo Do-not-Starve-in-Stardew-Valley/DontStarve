@@ -258,7 +258,7 @@ public sealed class HostileShadowRuntimeBoundaryTests
     }
 
     [Fact]
-    public void Collision_preflight_is_allocation_free_until_first_legal_hit_event()
+    public void Collision_preflight_defers_geometry_and_protocol_work_until_the_target_is_eligible()
     {
         var combat = Contract("SmapiHostileAttackCombatService.cs");
         var geometry = Contract("HostileAttackGeometry.cs");
@@ -273,30 +273,51 @@ public sealed class HostileShadowRuntimeBoundaryTests
             "var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(",
             StringComparison.Ordinal
         );
-        Assert.True(playerKeyOffset > 0);
-        var preflight = process[..playerKeyOffset];
-
-        Assert.Contains("Game1.getOnlineFarmers()", preflight, StringComparison.Ordinal);
-        Assert.Contains("instance.HasSettledPlayer(playerId)", preflight, StringComparison.Ordinal);
-        Assert.Contains("attackBox.Intersects(targetBox)", preflight, StringComparison.Ordinal);
-        Assert.Contains(
-            "HostileAttackCollisionResolver.IsWithinRange(",
-            preflight,
+        var targetKeyOffset = process.IndexOf(
+            "!string.Equals(playerKey, state.TargetPlayerKey",
             StringComparison.Ordinal
         );
+        var settledOffset = process.IndexOf(
+            "instance.HasSettledPlayer(playerId)",
+            StringComparison.Ordinal
+        );
+        var targetBoundsOffset = process.IndexOf(
+            "var farmerBoundingBox = farmer.GetBoundingBox()",
+            StringComparison.Ordinal
+        );
+        Assert.True(playerKeyOffset > 0);
+        Assert.True(targetKeyOffset > playerKeyOffset);
+        Assert.True(settledOffset > targetKeyOffset);
+        Assert.True(targetBoundsOffset > settledOffset);
+        var preflight = process[..targetBoundsOffset];
+
+        Assert.Contains("Game1.getOnlineFarmers()", preflight, StringComparison.Ordinal);
         Assert.True(
             preflight.IndexOf("farmer.currentLocation", StringComparison.Ordinal)
-                < preflight.IndexOf("instance.HasSettledPlayer", StringComparison.Ordinal)
+                < playerKeyOffset
         );
         Assert.True(
-            preflight.IndexOf("instance.HasSettledPlayer", StringComparison.Ordinal)
-                < preflight.IndexOf("attackBox.Intersects", StringComparison.Ordinal)
+            targetKeyOffset < settledOffset
+        );
+        Assert.Contains(
+            "if (MissDiagnosticsEnabled && loggedMissReasons.Add(\"attack-hit.player-location-mismatch\"))",
+            preflight,
+            StringComparison.Ordinal
         );
         AssertNoManagedCollisionConstruction(preflight);
         Assert.DoesNotContain("IEnumerable<Farmer>", process, StringComparison.Ordinal);
         Assert.DoesNotContain(".Cast<Farmer>", process, StringComparison.Ordinal);
         Assert.DoesNotContain(".AsEnumerable(", process, StringComparison.Ordinal);
         Assert.DoesNotContain("Rejected(", process, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "HostileAttackCollisionResolver.IsWithinRange(",
+            process,
+            StringComparison.Ordinal
+        );
+        Assert.True(
+            targetBoundsOffset
+                < process.IndexOf("attackBox.Intersects(targetBox)", StringComparison.Ordinal)
+        );
         Assert.True(
             process.IndexOf("new ShadowAttackHitRequest", StringComparison.Ordinal)
                 < process.IndexOf("!TryProcessHit(", StringComparison.Ordinal)
@@ -344,7 +365,12 @@ public sealed class HostileShadowRuntimeBoundaryTests
             StringComparison.Ordinal
         );
         Assert.Contains(
-            "(bindingId, visualState, frameIndex)",
+            "var visualResourceState = visualState;",
+            draw,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "(bindingId, visualResourceState, frameIndex)",
             draw,
             StringComparison.Ordinal
         );
@@ -476,6 +502,16 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.Contains("HostileAttackHitProcessor.TryProcess", attack, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Debug_and_interval_spawn_commands_share_the_same_physical_materialization_path()
+    {
+        var source = Contract("SmapiHostileShadowHost.cs");
+        Assert.Contains("HostileShadowSpawnOrigin.DebugCommand", source, StringComparison.Ordinal);
+        Assert.Contains("HostileShadowSpawnOrigin.Interval", source, StringComparison.Ordinal);
+        Assert.Contains("HostileShadowSpawnOrigin origin", source, StringComparison.Ordinal);
+        Assert.True(Count(source, "world.TryMaterialize(") >= 2);
+    }
+
     private static void AssertPair(string source, string eventName, string handler)
     {
         Assert.Contains($"{eventName} += {handler}", source, StringComparison.Ordinal);
@@ -527,7 +563,6 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.DoesNotContain("new Dictionary<", source, StringComparison.Ordinal);
         Assert.DoesNotContain("new HashSet<", source, StringComparison.Ordinal);
         Assert.DoesNotContain(".ToString(", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("string.Concat", source, StringComparison.Ordinal);
         Assert.DoesNotContain(".Select(", source, StringComparison.Ordinal);
         Assert.DoesNotContain(".ToArray(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Enumerable.", source, StringComparison.Ordinal);

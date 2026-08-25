@@ -112,6 +112,19 @@ internal sealed class SanityShadowBudgetPolicy
     internal long IntervalMinutes { get; }
 
     /// <summary>
+    /// Shadow refreshes use wall-clock milliseconds. IntervalMinutes remains available for the
+    /// legacy budget contract, diagnostics, and multiplayer protocol timestamps.
+    /// </summary>
+    internal long RealIntervalMilliseconds => IntensityId switch
+    {
+        SanityMonsterIntensityIds.None => 0L,
+        SanityMonsterIntensityIds.Less => 84_000L,
+        SanityMonsterIntensityIds.Many => 21_000L,
+        SanityMonsterIntensityIds.Insane => 21_000L,
+        _ => 42_000L,
+    };
+
+    /// <summary>
     /// 50% 无害池与 15% 敌对池共享这一列；10% tier 才切到
     /// <see cref="TerrorbeakCap"/>。两列都只约束同一 owner 的两种影怪。
     /// </summary>

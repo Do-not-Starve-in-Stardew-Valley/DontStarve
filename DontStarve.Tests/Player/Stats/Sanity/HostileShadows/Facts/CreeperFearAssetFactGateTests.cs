@@ -13,7 +13,7 @@ public sealed class CreeperFearAssetFactGateTests
     private const string SpriteSlotId = "sanity.asset.creeper-fear.sprite";
     private const string SpritePath = "Asset/Sanity/Sprites/Monsters/creeper-fear.png";
     private const string SpriteSha256 =
-        "0AD10E4A35C51310939F843E39CC540D2523D14A4B047999CED698DC5D95CDC0";
+        "12C96EDB8842EF50A9408273A5736E1AD201CE06B52C7A28A3E6270523C5FF4F";
 
     private static string ShippedModRoot =>
         Path.Combine(AppContext.BaseDirectory, "ShippedMod");
@@ -148,11 +148,11 @@ public sealed class CreeperFearAssetFactGateTests
             selection.Result.VisualPreview
         );
         Assert.Equal(SanityVisualPreviewKind.AnimationFrame, preview.Kind);
-        Assert.Equal(new SanityResourceRectangle(128, 256, 64, 64), preview.SourceRectangle);
-        Assert.Equal(new SanityResourcePoint(0, 0), preview.ActorOriginSourcePx);
+        Assert.Equal(new SanityResourceRectangle(128, 384, 64, 96), preview.SourceRectangle);
+        Assert.Equal(new SanityResourcePoint(32, 48), preview.ActorOriginSourcePx);
         Assert.Equal(new SanityResourcePoint(32, 48), preview.PivotSourcePx);
         Assert.Equal(new SanityResourceRectangle(4, 48, 56, 48), preview.HurtBoxSourcePx);
-        Assert.Equal(new SanityResourceRectangle(-8, 56, 80, 80), preview.AttackBoxSourcePx);
+        Assert.Equal(new SanityResourceRectangle(0, 64, 64, 64), preview.AttackBoxSourcePx);
         Assert.Equal(4d, preview.DrawScale);
         Assert.False(preview.OwnerLocalOnly);
         Assert.True(preview.IsProvisional);
@@ -174,7 +174,7 @@ public sealed class CreeperFearAssetFactGateTests
 
         Assert.True(death.Success, death.Diagnostic.Reason);
         var preview = Assert.IsType<SanityVisualPreviewDefinition>(death.VisualPreview);
-        Assert.Equal(new SanityResourceRectangle(0, 512, 64, 64), preview.SourceRectangle);
+        Assert.Equal(new SanityResourceRectangle(0, 768, 64, 96), preview.SourceRectangle);
         Assert.Equal(4, preview.FrameCount);
         Assert.False(despawn.Success);
         Assert.Equal(SanityResourceCapabilityStatus.DisabledOptional, despawn.Diagnostic.Status);

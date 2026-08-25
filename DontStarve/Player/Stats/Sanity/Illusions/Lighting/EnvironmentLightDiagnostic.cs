@@ -34,7 +34,6 @@ internal sealed class EnvironmentLightDiagnostic
     internal string LocationRuleId { get; private init; } = string.Empty;
     internal EnvironmentLightLocationLightProfile LocationLightProfile { get; private init; }
     internal bool TwoAmSpecialDeathSafe { get; private init; }
-    internal bool DarknessAttackSafe { get; private init; }
     internal bool HostileShadowSafe { get; private init; }
     internal bool JunimoBlessingEligible { get; private init; }
     internal string TwoAmSpecialDeathReason { get; private init; } = string.Empty;
@@ -134,7 +133,6 @@ internal sealed class EnvironmentLightDiagnostic
             LocationRuleId = snapshot.LocationRule.RuleId,
             LocationLightProfile = snapshot.LocationRule.LightProfile,
             TwoAmSpecialDeathSafe = snapshot.LocationRule.TwoAmSpecialDeathSafe,
-            DarknessAttackSafe = snapshot.LocationRule.DarknessAttackSafe,
             HostileShadowSafe = snapshot.LocationRule.HostileShadowSafe,
             JunimoBlessingEligible = snapshot.LocationRule.JunimoBlessingEligible,
             TwoAmSpecialDeathReason = snapshot.LocationRule.TwoAmSpecialDeathReason,

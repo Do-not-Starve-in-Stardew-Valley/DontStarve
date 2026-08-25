@@ -54,6 +54,8 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.Equal("NonLethal", api.GetSingle(ConfigKeys.DarknessDamageMode));
         Assert.Equal("DontStarve", api.GetSingle(ConfigKeys.MonsterDifficultyProfile));
         Assert.Equal("true", api.GetSingle(ConfigKeys.EnableJunimoBlessing));
+        Assert.False(api.Contains(ConfigKeys.EnableSanityVignette));
+        Assert.False(api.Contains(ConfigKeys.EnableLowSanityScreenDistortion));
         Assert.False(api.Contains(ConfigKeys.EnableDawnDuskMusic));
         Assert.Null(api.Query("UnknownToken"));
         Assert.Empty(diagnostics);

@@ -90,6 +90,54 @@ public sealed class SanityProcessAudioCoordinatorTests
     }
 
     [Fact]
+    public void Direct_drop_to_zero_triggers_once_and_hysteresis_does_not_rearm_until_exit()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+
+        coordinator.SubmitClaim(Claim("1", 0, 1, 1d));
+        coordinator.SubmitClaim(
+            Claim("1", 0, 2, 0d, ambience: true, whispers: true, danger: true, musicSuppression: true)
+        );
+        Assert.Equal(1, output.DangerTriggerCount);
+
+        // The tier state machine keeps Danger active in the 15%-17.5% hysteresis band.
+        coordinator.SubmitClaim(
+            Claim("1", 0, 3, 0.16d, ambience: true, whispers: true, danger: true, musicSuppression: true)
+        );
+        coordinator.SubmitClaim(
+            Claim("1", 0, 4, 0.15d, ambience: true, whispers: true, danger: true, musicSuppression: true)
+        );
+        Assert.Equal(1, output.DangerTriggerCount);
+
+        coordinator.SubmitClaim(
+            Claim("1", 0, 5, 0.176d, ambience: true, whispers: true, musicSuppression: true)
+        );
+        Assert.True(coordinator.Snapshot().DangerArmed);
+
+        coordinator.SubmitClaim(
+            Claim("1", 0, 6, 0.15d, ambience: true, whispers: true, danger: true, musicSuppression: true)
+        );
+        Assert.Equal(2, output.DangerTriggerCount);
+    }
+
+    [Fact]
+    public void Fifty_percent_music_request_is_valid_without_the_danger_lane()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+
+        var result = coordinator.SubmitClaim(
+            Claim("1", 0, 1, 0.5d, ambience: true, musicSuppression: true)
+        );
+
+        Assert.Equal(SanityAudioClaimUpdateStatus.Applied, result.Status);
+        Assert.True(output.AmbiencePhysical);
+        Assert.False(coordinator.Snapshot().DangerActive);
+        Assert.True(coordinator.Snapshot().Winner?.MusicSuppressionRequested);
+    }
+
+    [Fact]
     public void Paused_danger_edge_consumes_receipt_without_late_replay()
     {
         var output = new FakeProcessOutput();
@@ -181,14 +229,16 @@ public sealed class SanityProcessAudioCoordinatorTests
     {
         var output = new FakeProcessOutput();
         using var coordinator = new SanityProcessAudioCoordinator(output);
-        coordinator.SubmitClaim(Claim("1", 0, 1, 0.1d, true, true, true));
+        coordinator.SubmitClaim(Claim("1", 0, 1, 0.1d, true, true, true, true));
         coordinator.SetEventSuspended(true);
 
         Assert.Equal(0, coordinator.Snapshot().PhysicalInstanceCount);
         Assert.Single(coordinator.Snapshot().Claims);
 
         coordinator.SetEventSuspended(false);
-        Assert.Equal(2, coordinator.Snapshot().PhysicalInstanceCount);
+        var resumed = coordinator.Snapshot();
+        Assert.Equal(2, resumed.PhysicalInstanceCount);
+        Assert.True(resumed.Winner?.MusicSuppressionRequested);
         Assert.Equal(1, output.DangerTriggerCount);
     }
 
@@ -214,7 +264,7 @@ public sealed class SanityProcessAudioCoordinatorTests
     }
 
     [Fact]
-    public void Warp_removal_retains_revision_receipt_until_a_higher_revision_arrives()
+    public void Explicit_claim_removal_retains_revision_receipt_until_a_higher_revision_arrives()
     {
         var output = new FakeProcessOutput();
         using var coordinator = new SanityProcessAudioCoordinator(output);
@@ -450,8 +500,18 @@ public sealed class SanityProcessAudioCoordinatorTests
         double ratio,
         bool ambience = false,
         bool whispers = false,
-        bool danger = false
-    ) => new(playerKey, screenId, revision, ratio, ambience, whispers, danger);
+        bool danger = false,
+        bool musicSuppression = false
+    ) => new(
+        playerKey,
+        screenId,
+        revision,
+        ratio,
+        ambience,
+        whispers,
+        danger,
+        musicSuppression
+    );
 
     private static SanityAudioInstanceLane Lane(
         SanityAudioLaneKind kind,

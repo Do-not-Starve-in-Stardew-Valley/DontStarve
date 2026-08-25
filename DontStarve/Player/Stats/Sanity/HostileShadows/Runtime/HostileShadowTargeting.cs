@@ -19,6 +19,7 @@ internal enum HostileShadowTargetSource
 {
     None,
     RecentAttacker,
+    LockedTarget,
     Owner,
     NearestPlayer,
 }
@@ -27,7 +28,8 @@ internal sealed record HostileShadowPlayerSample(
     string PlayerKey,
     string LocationId,
     double StandingX,
-    double StandingY
+    double StandingY,
+    bool IsDangerActive = true
 );
 
 internal readonly record struct HostileShadowPlayerIndexBuildResult(
@@ -50,6 +52,13 @@ internal sealed class HostileShadowLocationPlayerIndex
 
     internal int PlayerCount => byPlayer.Count;
     internal int LocationCount => byLocation.Count;
+
+    internal bool HasPlayers(string locationId)
+    {
+        return !string.IsNullOrWhiteSpace(locationId)
+            && byLocation.TryGetValue(locationId, out var players)
+            && players.Count > 0;
+    }
 
     internal HostileShadowPlayerIndexBuildResult Rebuild(
         IEnumerable<HostileShadowPlayerSample>? samples
@@ -113,7 +122,9 @@ internal sealed class HostileShadowLocationPlayerIndex
     internal bool TrySelectTarget(
         string locationId,
         string ownerPlayerKey,
+        string aggroLockPlayerKey,
         string recentAttackerPlayerKey,
+        string lockedTargetPlayerKey,
         double originX,
         double originY,
         double detectionRadiusPixels,
@@ -137,6 +148,19 @@ internal sealed class HostileShadowLocationPlayerIndex
         }
 
         if (
+            SanityPlayerKey.IsCanonical(aggroLockPlayerKey)
+            && TryGetEligibleWithoutDistance(
+                aggroLockPlayerKey,
+                locationId,
+                out target
+            )
+        )
+        {
+            source = HostileShadowTargetSource.RecentAttacker;
+            return true;
+        }
+
+        if (
             SanityPlayerKey.IsCanonical(recentAttackerPlayerKey)
             && TryGetEligible(
                 recentAttackerPlayerKey,
@@ -144,11 +168,27 @@ internal sealed class HostileShadowLocationPlayerIndex
                 originX,
                 originY,
                 detectionRadiusPixels,
+                requireDanger: false,
                 out target
             )
         )
         {
             source = HostileShadowTargetSource.RecentAttacker;
+            return true;
+        }
+
+        // The danger gate applies to acquiring a new target. A validated target that is still
+        // online on this map remains the combat subject after sanity recovers.
+        if (
+            SanityPlayerKey.IsCanonical(lockedTargetPlayerKey)
+            && TryGetEligibleWithoutDistance(
+                lockedTargetPlayerKey,
+                locationId,
+                out target
+            )
+        )
+        {
+            source = HostileShadowTargetSource.LockedTarget;
             return true;
         }
 
@@ -159,6 +199,7 @@ internal sealed class HostileShadowLocationPlayerIndex
                 originX,
                 originY,
                 detectionRadiusPixels,
+                requireDanger: true,
                 out target
             )
         )
@@ -178,6 +219,8 @@ internal sealed class HostileShadowLocationPlayerIndex
                 candidate.StandingY
             );
             if (distanceSquared > rangeSquared)
+                continue;
+            if (!candidate.IsDangerActive)
                 continue;
             if (
                 target is null
@@ -202,12 +245,31 @@ internal sealed class HostileShadowLocationPlayerIndex
         return true;
     }
 
+    private bool TryGetEligibleWithoutDistance(
+        string playerKey,
+        string locationId,
+        out HostileShadowPlayerSample? sample
+    )
+    {
+        sample = null;
+        if (
+            !byPlayer.TryGetValue(playerKey, out var candidate)
+            || !string.Equals(candidate.LocationId, locationId, StringComparison.Ordinal)
+        )
+        {
+            return false;
+        }
+        sample = candidate;
+        return true;
+    }
+
     private bool TryGetEligible(
         string playerKey,
         string locationId,
         double originX,
         double originY,
         double detectionRadiusPixels,
+        bool requireDanger,
         out HostileShadowPlayerSample? sample
     )
     {
@@ -219,6 +281,7 @@ internal sealed class HostileShadowLocationPlayerIndex
                 locationId,
                 StringComparison.Ordinal
             )
+            || (requireDanger && !candidate.IsDangerActive)
             || DistanceSquared(
                 originX,
                 originY,
@@ -284,7 +347,9 @@ internal sealed class HostileShadowTargetingInput
     internal long EntityId { get; init; }
     internal string OwnerPlayerKey { get; init; } = string.Empty;
     internal string LocationId { get; init; } = string.Empty;
+    internal string AggroLockPlayerKey { get; init; } = string.Empty;
     internal string RecentAttackerPlayerKey { get; init; } = string.Empty;
+    internal string LockedTargetPlayerKey { get; init; } = string.Empty;
     internal double PositionX { get; init; }
     internal double PositionY { get; init; }
     internal double StandingX { get; init; }
@@ -295,6 +360,8 @@ internal sealed class HostileShadowTargetingInput
     internal long SpawnGameMinute { get; init; }
     internal long CurrentGameMinute { get; init; }
     internal long NaturalTtlMinutes { get; init; }
+    internal long? NoTargetSinceGameMinute { get; init; }
+    internal long? NoTargetElapsedGameMinutes { get; init; }
     internal double ElapsedSeconds { get; init; }
 }
 
@@ -316,31 +383,16 @@ internal static class HostileShadowTargetingEngine
         HostileShadowLocationPlayerIndex? index
     )
     {
-        if (!IsValid(input) || index is null)
+        if (input is null || index is null || !IsValid(input))
             return Invalid("hostile-shadow.targeting-input-invalid");
-
-        var ageMinutes = input!.CurrentGameMinute >= input.SpawnGameMinute
-            ? input.CurrentGameMinute - input.SpawnGameMinute
-            : 0;
-        if (ageMinutes >= input.NaturalTtlMinutes)
-        {
-            return new HostileShadowTargetingDecision(
-                true,
-                true,
-                HostileShadowStateIds.Idle,
-                string.Empty,
-                HostileShadowTargetSource.None,
-                input.PositionX,
-                input.PositionY,
-                "hostile-shadow.natural-ttl-expired"
-            );
-        }
 
         if (
             !index.TrySelectTarget(
                 input.LocationId,
                 input.OwnerPlayerKey,
+                input.AggroLockPlayerKey,
                 input.RecentAttackerPlayerKey,
+                input.LockedTargetPlayerKey,
                 input.StandingX,
                 input.StandingY,
                 input.DetectionRadiusPixels,
@@ -348,8 +400,31 @@ internal static class HostileShadowTargetingEngine
                 out var source
             )
             || target is null
-        )
+            )
         {
+            if (index.HasPlayers(input.LocationId))
+            {
+                var noTargetSince = input.NoTargetSinceGameMinute
+                    ?? input.CurrentGameMinute;
+                var ageMinutes = input.NoTargetElapsedGameMinutes
+                    ?? (input.CurrentGameMinute >= noTargetSince
+                        ? input.CurrentGameMinute - noTargetSince
+                        : 0);
+                if (input.NoTargetSinceGameMinute.HasValue
+                    && ageMinutes >= input.NaturalTtlMinutes)
+                {
+                    return new HostileShadowTargetingDecision(
+                        true,
+                        true,
+                        HostileShadowStateIds.Idle,
+                        string.Empty,
+                        HostileShadowTargetSource.None,
+                        input.PositionX,
+                        input.PositionY,
+                        "hostile-shadow.natural-ttl-expired"
+                    );
+                }
+            }
             return new HostileShadowTargetingDecision(
                 true,
                 false,
@@ -384,9 +459,11 @@ internal static class HostileShadowTargetingEngine
             advanced.PositionY,
             source == HostileShadowTargetSource.RecentAttacker
                 ? "hostile-shadow.target-recent-attacker"
-                : source == HostileShadowTargetSource.Owner
-                    ? "hostile-shadow.target-owner"
-                    : "hostile-shadow.target-nearest-player"
+                : source == HostileShadowTargetSource.LockedTarget
+                    ? "hostile-shadow.target-locked"
+                    : source == HostileShadowTargetSource.Owner
+                        ? "hostile-shadow.target-owner"
+                        : "hostile-shadow.target-nearest-player"
         );
     }
 
@@ -499,3 +576,19 @@ internal readonly record struct HostileShadowMovementDecision(
     double PositionY,
     string Reason
 );
+
+internal static class HostileShadowRetreatSubjectSelector
+{
+    internal static string Select(
+        string activeAggroLockPlayerKey,
+        string targetPlayerKey,
+        string ownerPlayerKey
+    )
+    {
+        if (SanityPlayerKey.IsCanonical(activeAggroLockPlayerKey))
+            return activeAggroLockPlayerKey;
+        if (SanityPlayerKey.IsCanonical(targetPlayerKey))
+            return targetPlayerKey;
+        return string.Empty;
+    }
+}

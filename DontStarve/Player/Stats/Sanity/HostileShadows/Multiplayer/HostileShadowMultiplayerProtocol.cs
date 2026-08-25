@@ -56,6 +56,15 @@ internal sealed class ShadowStateSnapshot
     /// <summary>One-based attack animation frame, or zero outside Attack.</summary>
     public int AttackFrameNumber { get; set; }
 
+    /// <summary>DIAG-20260809: 绑定隐藏态——危险实体被无害投影外观取代（不渲染/无敌/行为禁用）。</summary>
+    public bool IsBindingHidden { get; set; }
+
+    /// <summary>DIAG-20260809: 绑定的无害投影 correlation id（空=未绑定）。</summary>
+    public string BindingCorrelationId { get; set; } = string.Empty;
+
+    /// <summary>DIAG-20260809: 当前朝向（隐藏/恢复/动画行选择用）。</summary>
+    public string FacingId { get; set; } = string.Empty;
+
     /// <summary>The host table revision at which this entity last changed.</summary>
     public long Revision { get; set; }
 
@@ -77,6 +86,9 @@ internal sealed class ShadowStateSnapshot
             AttackInstanceId = AttackInstanceId,
             AttackInstanceRevision = AttackInstanceRevision,
             AttackFrameNumber = AttackFrameNumber,
+            IsBindingHidden = IsBindingHidden,
+            BindingCorrelationId = BindingCorrelationId,
+            FacingId = FacingId,
             Revision = Revision,
         };
     }
@@ -193,6 +205,13 @@ internal sealed class ShadowProjectionConversionRequest
 
     /// <summary>The Sanity revision which opened the current host-confirmed danger epoch.</summary>
     public long DangerRevision { get; set; }
+
+    /// <summary>DIAG-20260809: 是否携带投影当前位置（原地转化用）。</summary>
+    public bool HasPosition { get; set; }
+
+    public double PositionX { get; set; }
+
+    public double PositionY { get; set; }
 }
 
 /// <summary>

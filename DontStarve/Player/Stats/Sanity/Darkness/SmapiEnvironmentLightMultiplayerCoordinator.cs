@@ -31,6 +31,8 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
     private readonly SanitySystemLifecycleCoordinator lifecycle;
     private readonly EnvironmentLightService lightService;
     private readonly EnvironmentLightLocationRuleCatalog locationRules;
+    private readonly DarknessAttackLocationAuthorizationPolicy
+        darknessAttackLocationAuthorization;
     private readonly SanitySmapiAudioService audio;
     private readonly Func<EnvironmentLightConfigIdentity> configIdentityProvider;
     private readonly Dictionary<DarknessAttackOwnerKey, EnvironmentLightAcceptedRemoteEvidence>
@@ -57,6 +59,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         SanitySystemLifecycleCoordinator lifecycle,
         EnvironmentLightService lightService,
         EnvironmentLightLocationRuleCatalog locationRules,
+        DarknessAttackLocationAuthorizationPolicy darknessAttackLocationAuthorization,
         SanitySmapiAudioService audio,
         Func<EnvironmentLightConfigIdentity> configIdentityProvider
     )
@@ -75,6 +78,8 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             ?? throw new ArgumentNullException(nameof(lightService));
         this.locationRules = locationRules
             ?? throw new ArgumentNullException(nameof(locationRules));
+        this.darknessAttackLocationAuthorization = darknessAttackLocationAuthorization
+            ?? throw new ArgumentNullException(nameof(darknessAttackLocationAuthorization));
         this.audio = audio ?? throw new ArgumentNullException(nameof(audio));
         this.configIdentityProvider = configIdentityProvider
             ?? throw new ArgumentNullException(nameof(configIdentityProvider));
@@ -274,8 +279,10 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             || !diagnostic.FinalVisibilityScore.HasValue
             || !double.IsFinite(diagnostic.FinalVisibilityScore.Value)
             || diagnostic.RendererRevision <= 0
-            || diagnostic.LocationRuleStatus
-                != EnvironmentLightLocationRuleStatus.Matched
+            || diagnostic.LocationRuleStatus is not (
+                EnvironmentLightLocationRuleStatus.Matched
+                or EnvironmentLightLocationRuleStatus.Unmatched
+            )
             || diagnostic.NightVisionCapabilityStatus
                 != EnvironmentLightCapabilityStatus.Available
             || diagnostic.IsNightVisionActive != false
@@ -487,7 +494,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
                 location.NameOrUniqueName,
                 locationRule.ContractVersion,
                 locationRule.RuleId,
-                locationRule.DarknessAttackSafe,
+                darknessAttackLocationAuthorization.Allows(locationRule),
                 GetConfigIdentity(),
                 Game1.version,
                 modVersion,
@@ -708,7 +715,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             locationRules
         );
         var expectedAuthorization =
-            rule.DarknessAttackSafe
+            darknessAttackLocationAuthorization.Allows(rule)
             && evidence.Level == EnvironmentLightLevel.PitchBlack
             && EnvironmentLightVisibilityMath.CanAuthorizePitchBlack(
                 evidence.VisibilityScore,

@@ -21,25 +21,64 @@ public sealed class HudDisplayRulesTests
     }
 
     [Theory]
-    [InlineData(false, 884)]
-    [InlineData(true, 829)]
-    public void BottomRightAnchorUsesUiViewportAndHealthOffset(
+    [InlineData(false, true, 824, 884, 944)]
+    [InlineData(true, true, 768, 828, 888)]
+    [InlineData(false, false, 884, 884, 944)]
+    public void LayoutUsesVisibleVanillaBarAsAnchorAndReflowsWhenSanityIsHidden(
         bool showingHealth,
-        int expectedX
+        bool showingSanity,
+        int expectedHungerX,
+        int expectedSanityX,
+        int expectedVanillaAnchorX
     )
     {
-        var anchor = HudDisplayRules.GetBottomRightAnchor(1000, 800, showingHealth);
+        var layout = HudDisplayRules.CreateLayout(
+            1000,
+            800,
+            showingHealth,
+            showingSanity,
+            100,
+            270,
+            48,
+            224
+        );
 
-        Assert.Equal(new HudPoint(expectedX, 800), anchor);
+        Assert.Equal(expectedHungerX, layout.HungerBounds.X);
+        Assert.Equal(expectedSanityX, layout.SanityBounds.X);
+        Assert.Equal(expectedVanillaAnchorX, layout.AnchorBounds.X);
+        Assert.Equal(560, layout.HungerBounds.Y);
+        Assert.Equal(560, layout.SanityBounds.Y);
+        Assert.Equal(48, layout.HungerBounds.Width);
+        Assert.Equal(224, layout.HungerBounds.Height);
+        Assert.Equal(showingSanity, layout.ShowingSanity);
+    }
+
+    [Fact]
+    public void LayoutUsesUiViewportDimensionsAndTracksVanillaBarHeight()
+    {
+        var layout = HudDisplayRules.CreateLayout(
+            1600,
+            900,
+            true,
+            true,
+            205,
+            370,
+            48,
+            224
+        );
+
+        Assert.Equal(new HudBounds(1544, 598, 48, 286), layout.Vanilla.EnergyBounds);
+        Assert.Equal(new HudBounds(1488, 555, 48, 329), layout.Vanilla.HealthBounds);
+        Assert.Equal(new HudBounds(1368, 660, 48, 224), layout.HungerBounds);
+        Assert.Equal(new HudBounds(1428, 660, 48, 224), layout.SanityBounds);
+        Assert.Equal(layout.Vanilla.HealthBounds.Bottom, layout.SanityBounds.Bottom);
     }
 
     [Fact]
     public void SanityFrameUsesOneContainerBoundsForDrawingAndHitTesting()
     {
         var success = HudDisplayRules.TryCreateSanityFrame(
-            new HudPoint(884, 800),
-            44,
-            60,
+            new HudBounds(884, 560, 48, 224),
             24,
             50,
             200,
@@ -48,14 +87,14 @@ public sealed class HudDisplayRulesTests
         );
 
         Assert.True(success, reason);
-        Assert.Equal(new HudBounds(884, 560, 44, 60), frame.ContainerBounds);
+        Assert.Equal(new HudBounds(884, 560, 48, 224), frame.ContainerBounds);
         Assert.Equal(new HudPoint(920, 775), frame.FillerPosition);
         Assert.Equal(24, frame.FillerWidth);
         Assert.Equal(42, frame.FillerHeight);
         Assert.True(frame.ContainerBounds.Contains(884, 560));
-        Assert.True(frame.ContainerBounds.Contains(927, 619));
-        Assert.False(frame.ContainerBounds.Contains(928, 619));
-        Assert.False(frame.ContainerBounds.Contains(927, 620));
+        Assert.True(frame.ContainerBounds.Contains(931, 783));
+        Assert.False(frame.ContainerBounds.Contains(932, 783));
+        Assert.False(frame.ContainerBounds.Contains(931, 784));
     }
 
     [Theory]
@@ -69,9 +108,7 @@ public sealed class HudDisplayRulesTests
     {
         Assert.True(
             HudDisplayRules.TryCreateSanityFrame(
-                new HudPoint(0, 0),
-                1,
-                1,
+                new HudBounds(0, 0, 1, 224),
                 1,
                 current,
                 200,
@@ -96,9 +133,7 @@ public sealed class HudDisplayRulesTests
     )
     {
         var success = HudDisplayRules.TryCreateSanityFrame(
-            new HudPoint(0, 0),
-            1,
-            1,
+            new HudBounds(0, 0, 1, 1),
             1,
             current,
             maximum,

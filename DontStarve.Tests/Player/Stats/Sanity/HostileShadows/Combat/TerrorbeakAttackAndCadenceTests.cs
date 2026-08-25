@@ -8,14 +8,15 @@ namespace DontStarve.Tests.Player.Stats.Sanity.HostileShadows.Combat;
 public sealed class TerrorbeakAttackAndCadenceTests
 {
     [Fact]
-    public void Shipped_attack_uses_400ms_animation_07s_interval_and_frames_three_four()
+    public void Shipped_attack_uses_400ms_animation_12s_interval_06s_post_taunt_delay_and_frames_three_four()
     {
         var profile = RuntimeProfile();
         var definition = HostileAttackTestFactory.Definition(profile);
 
         Assert.Equal(400, profile.MaxHealth);
         Assert.Equal(50, profile.BaseDamage);
-        Assert.Equal(0.7d, profile.AttackIntervalSeconds);
+        Assert.Equal(1.2d, profile.AttackIntervalSeconds);
+        Assert.Equal(0.6d, TerrorbeakAttackTransitionPolicy.DelayAfterTauntSeconds);
         Assert.Equal(4, definition.AttackFrameCount);
         Assert.Equal(100, definition.AttackFrameDurationMilliseconds);
         Assert.Equal(
@@ -72,10 +73,10 @@ public sealed class TerrorbeakAttackAndCadenceTests
     }
 
     [Theory]
-    [InlineData(0d, true, 500d)]
-    [InlineData(0.249999d, true, 500d)]
-    [InlineData(0.25d, false, 700d)]
-    [InlineData(0.999999d, false, 700d)]
+    [InlineData(0d, true, 600d)]
+    [InlineData(0.249999d, true, 600d)]
+    [InlineData(0.25d, false, 1200d)]
+    [InlineData(0.999999d, false, 1200d)]
     public void Attack_completion_waits_after_taunt_or_for_profile_interval(
         double sample,
         bool entersTaunt,

@@ -15,14 +15,15 @@ namespace DontStarve.Resource.Sanity;
 internal sealed class SanityRuntimePhysicalResourceCache
 {
     private const int MaxTextureResources = 9;
-    private const int MaxSoundResources = 35;
-    private const string AudioFormatId = "sanity.wav.pcm-s16-stereo-44100-v1";
+    private const int MaxSoundResources = 140;
 
     private readonly string deploymentRoot;
     private readonly ISanityAssetFileAccess fileAccess;
     private readonly ISanityPhysicalResourceFactory resourceFactory;
     private readonly Action<SanityRuntimeResourceDiagnostic> reportDiagnostic;
     private readonly Dictionary<string, ISanityPhysicalResource> resources =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> soundFormatIds =
         new(StringComparer.OrdinalIgnoreCase);
 
     internal SanityRuntimePhysicalResourceCache(
@@ -52,12 +53,57 @@ internal sealed class SanityRuntimePhysicalResourceCache
         SanityPhysicalResourceKind kind,
         string? expectedSha256,
         bool required,
-        bool isPlaceholder
+        bool isPlaceholder,
+        string? expectedFormatId = null
     )
     {
+        SanityWavFormatDescriptor? expectedAudioFormat = null;
+        if (kind == SanityPhysicalResourceKind.SoundEffect)
+        {
+            var resolvedFormatId = string.IsNullOrWhiteSpace(expectedFormatId)
+                ? SanityWavFormatCatalog.PcmS16Stereo44100V1
+                : expectedFormatId;
+            if (!SanityWavFormatCatalog.TryGet(resolvedFormatId, out var descriptor))
+            {
+                return Failed(
+                    slotId,
+                    path,
+                    required,
+                    isPlaceholder,
+                    "resource.sound.unknown-format-id",
+                    $"The audio clip declared unsupported format id '{resolvedFormatId}'."
+                );
+            }
+
+            expectedAudioFormat = descriptor;
+        }
+
         var key = CreateKey(kind, path);
         if (resources.TryGetValue(key, out var cached))
         {
+            if (
+                kind == SanityPhysicalResourceKind.SoundEffect
+                && (
+                    expectedAudioFormat is null
+                    || !soundFormatIds.TryGetValue(key, out var cachedFormatId)
+                    || !string.Equals(
+                        cachedFormatId,
+                        expectedAudioFormat.FormatId,
+                        StringComparison.Ordinal
+                    )
+                )
+            )
+            {
+                return Failed(
+                    slotId,
+                    path,
+                    required,
+                    isPlaceholder,
+                    "resource.sound.cached-format-mismatch",
+                    $"The cached sound path is bound to format '{soundFormatIds.GetValueOrDefault(key, "unknown")}', not '{expectedAudioFormat?.FormatId ?? "unknown"}'."
+                );
+            }
+
             Hits++;
             return SanityPhysicalCacheLoadResult.Available(
                 cached,
@@ -150,15 +196,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
         else
         {
             var wav = SanityWavInspector.Inspect(bytes);
-            if (
-                !wav.Success
-                || wav.FormatCode != 1
-                || wav.Channels != 2
-                || wav.SampleRateHz != 44100
-                || wav.BitsPerSample != 16
-                || wav.BlockAlign != 4
-                || wav.ByteRate != 176400
-            )
+            if (expectedAudioFormat is null || !expectedAudioFormat.Matches(wav))
             {
                 return Failed(
                     slotId,
@@ -166,7 +204,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
                     required,
                     isPlaceholder,
                     "resource.sound.invalid-runtime-format",
-                    $"The deployed WAV failed {AudioFormatId}."
+                    $"The deployed WAV failed {expectedAudioFormat?.FormatId ?? "the declared runtime format"}."
                 );
             }
         }
@@ -223,6 +261,8 @@ internal sealed class SanityRuntimePhysicalResourceCache
         }
 
         resources.Add(key, creation.Resource);
+        if (kind == SanityPhysicalResourceKind.SoundEffect && expectedAudioFormat is not null)
+            soundFormatIds[key] = expectedAudioFormat.FormatId;
         return SanityPhysicalCacheLoadResult.Available(
             creation.Resource,
             new SanityRuntimeResourceDiagnostic(
@@ -245,6 +285,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
         {
             if (!resources.Remove(key, out var resource))
                 continue;
+            soundFormatIds.Remove(key);
             DisposeResource(
                 resource,
                 string.Empty,
@@ -262,6 +303,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
         foreach (var pair in resources.ToArray())
             DisposeResource(pair.Value, string.Empty, pair.Value.Path, reason);
         resources.Clear();
+        soundFormatIds.Clear();
         return true;
     }
 

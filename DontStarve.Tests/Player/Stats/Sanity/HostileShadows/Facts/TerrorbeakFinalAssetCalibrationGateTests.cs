@@ -106,7 +106,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
     }
 
     [Fact]
-    public void Four_by_twelve_sheet_is_machine_valid_but_visual_calibration_stays_provisional()
+    public void Four_by_thirteen_sheet_is_machine_valid_but_visual_calibration_stays_provisional()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(AnimationMetadataPath));
         var profile = Assert.Single(
@@ -122,15 +122,15 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
         Assert.Equal("sanity.asset.terrorbeak.sprite", profile.GetProperty("TextureSlotId").GetString());
         Assert.Equal(48, profile.GetProperty("FrameWidth").GetInt32());
         Assert.Equal(64, profile.GetProperty("FrameHeight").GetInt32());
-        Assert.Equal(12, profile.GetProperty("SheetRows").GetInt32());
+        Assert.Equal(13, profile.GetProperty("SheetRows").GetInt32());
         Assert.Equal("FourWayRows", profile.GetProperty("DirectionMode").GetString());
         Assert.False(profile.GetProperty("OwnerLocalOnly").GetBoolean());
         Assert.True(profile.GetProperty("IsPlaceholder").GetBoolean());
         Assert.Equal("ART-06", profile.GetProperty("CreditGroup").GetString());
 
         var actorOrigin = profile.GetProperty("ActorOriginSourcePx");
-        Assert.Equal(0, actorOrigin.GetProperty("X").GetInt32());
-        Assert.Equal(0, actorOrigin.GetProperty("Y").GetInt32());
+        Assert.Equal(24, actorOrigin.GetProperty("X").GetInt32());
+        Assert.Equal(40, actorOrigin.GetProperty("Y").GetInt32());
 
         var collision = profile.GetProperty("Collision");
         Assert.Equal(
@@ -138,7 +138,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
             collision.GetProperty("CoordinateSpace").GetString()
         );
         AssertRect(collision.GetProperty("HurtBoxSourcePx"), 8, 32, 32, 32);
-        AssertRect(collision.GetProperty("AttackBoxSourcePx"), -16, 8, 80, 80);
+        AssertRect(collision.GetProperty("AttackBoxSourcePx"), -8, 16, 64, 64);
         Assert.True(collision.GetProperty("IsProvisional").GetBoolean());
         Assert.Equal(new[] { 3, 4 }, IntValues(collision.GetProperty("AttackActiveFrames")));
 
@@ -156,10 +156,10 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
             states.Select(state => state.GetProperty("AnimationId").GetString())
         );
         Assert.Equal(new[] { 0, 4, 8, 9, 10, 11 }, states.Select(StateRow));
+        Assert.Equal(new[] { 100, 100, 100, 100, 200, 300 }, states.Select(StateDuration));
         Assert.All(states, state =>
         {
             Assert.Equal(4, state.GetProperty("FrameCount").GetInt32());
-            Assert.Equal(100, StateDuration(state));
             Assert.Equal(24, state.GetProperty("PivotSourcePx").GetProperty("X").GetInt32());
             Assert.Equal(48, state.GetProperty("PivotSourcePx").GetProperty("Y").GetInt32());
             Assert.Equal(4d, state.GetProperty("DrawScale").GetDouble());
@@ -171,7 +171,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
             ResolveShippedPath("Asset/Sanity/Sprites/Monsters/terrorbeak.png")
         );
         Assert.Equal(192, sheet.Width);
-        Assert.Equal(768, sheet.Height);
+        Assert.Equal(832, sheet.Height);
     }
 
     [Fact]

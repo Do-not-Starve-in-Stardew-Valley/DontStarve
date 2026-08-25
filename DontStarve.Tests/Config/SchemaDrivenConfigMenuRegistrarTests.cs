@@ -43,10 +43,16 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             registry.Options.Select(option => option.Key),
             menu.FieldOrder
         );
-        Assert.Equal(4, menu.BooleanFields.Count);
+        Assert.Equal(7, menu.BooleanFields.Count);
         Assert.Equal(4, menu.EnumFields.Count);
         Assert.False(
             menu.BooleanFields[ConfigKeys.EnableDawnDuskMusic].GetValue()
+        );
+        Assert.True(
+            menu.BooleanFields[ConfigKeys.EnableSanityVignette].GetValue()
+        );
+        Assert.True(
+            menu.BooleanFields[ConfigKeys.EnableLowSanityScreenDistortion].GetValue()
         );
 
         var profile = menu.EnumFields[ConfigKeys.MonsterDifficultyProfile];
@@ -157,6 +163,51 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
     }
 
     [Fact]
+    public void RegisteredConfigTextUsesTheLocaleAvailableWhenGmcmDraws()
+    {
+        var registry = ConfigTestData.LoadShippedRegistry();
+        var file = new MemoryFlatConfigFileAccess("{}");
+        var store = Assert.IsType<FlatConfigValueStore>(
+            FlatConfigValueStore.Load(registry, file).Store
+        );
+        var resolver = new TypedConfigResolver(registry, store);
+        var translations = new MutableTranslationProvider(
+            JsonTranslationProvider.Default.Values
+        );
+        var menu = new RecordingConfigMenuApi();
+
+        var result = SchemaDrivenConfigMenuRegistrar.Register(
+            registry,
+            resolver,
+            store.TrySave,
+            menu,
+            translations,
+            _ => { },
+            _ => { }
+        );
+
+        Assert.Equal(ConfigMenuRegistrationStatus.Available, result.Status);
+        var sanity = menu.BooleanFields[ConfigKeys.EnableSanitySystem];
+        var darkHand = menu.EnumFields[ConfigKeys.DarkHandMode];
+        Assert.Equal(
+            "Sanity",
+            menu.SectionTextGetters["config.sanity.section"]()
+        );
+        Assert.Equal("Enable Sanity system", sanity.GetName());
+        Assert.Equal("Fire Thief", darkHand.FormatAllowedValue("FireThief"));
+
+        translations.SetValues(JsonTranslationProvider.Zh.Values);
+
+        Assert.Equal(
+            "理智",
+            menu.SectionTextGetters["config.sanity.section"]()
+        );
+        Assert.Equal("启用理智系统", sanity.GetName());
+        Assert.Equal("启用理智系统及其玩法效果。", sanity.GetTooltip());
+        Assert.Equal("偷火", darkHand.FormatAllowedValue("FireThief"));
+    }
+
+    [Fact]
     public void ResetOnlyChangesEditBufferUntilAtomicSaveAndReload()
     {
         WithTemporaryConfig(
@@ -218,7 +269,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 );
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
-                Assert.Equal(8, document.RootElement.EnumerateObject().Count(property =>
+                Assert.Equal(11, document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 ));
             }
@@ -327,7 +378,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
 
         Assert.Equal(ConfigMenuRegistrationStatus.Degraded, partial.Status);
-        Assert.Equal(7, partial.RegisteredKeys.Count);
+        Assert.Equal(10, partial.RegisteredKeys.Count);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, partial.RegisteredKeys);
         Assert.Equal(
             new[] { $"gmcm.option-registration-failed:{ConfigKeys.DarkHandMode}" },
@@ -537,6 +588,9 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
 
     internal List<string> Sections { get; } = new();
 
+    internal Dictionary<string, Func<string>> SectionTextGetters { get; } =
+        new(StringComparer.Ordinal);
+
     internal List<string> FieldOrder { get; } = new();
 
     internal Dictionary<string, RecordedBooleanField> BooleanFields { get; } =
@@ -555,24 +609,25 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
         SaveAction = save;
     }
 
-    public void AddSection(string sectionId, string text)
+    public void AddSection(string sectionId, Func<string> getText)
     {
         Sections.Add(sectionId);
+        SectionTextGetters.Add(sectionId, getText);
     }
 
     public void AddBoolean(
         string fieldId,
         Func<bool> getValue,
         Action<bool> setValue,
-        string name,
-        string tooltip
+        Func<string> getName,
+        Func<string> getTooltip
     )
     {
         ThrowIfRequested(fieldId);
         FieldOrder.Add(fieldId);
         BooleanFields.Add(
             fieldId,
-            new RecordedBooleanField(getValue, setValue, name, tooltip)
+            new RecordedBooleanField(getValue, setValue, getName, getTooltip)
         );
     }
 
@@ -580,8 +635,8 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
         string fieldId,
         Func<string> getValue,
         Action<string> setValue,
-        string name,
-        string tooltip,
+        Func<string> getName,
+        Func<string> getTooltip,
         string[] allowedValues,
         Func<string, string> formatAllowedValue
     )
@@ -593,8 +648,8 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
             new RecordedEnumField(
                 getValue,
                 setValue,
-                name,
-                tooltip,
+                getName,
+                getTooltip,
                 allowedValues,
                 formatAllowedValue
             )
@@ -611,15 +666,15 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
 internal sealed record RecordedBooleanField(
     Func<bool> GetValue,
     Action<bool> SetValue,
-    string Name,
-    string Tooltip
+    Func<string> GetName,
+    Func<string> GetTooltip
 );
 
 internal sealed record RecordedEnumField(
     Func<string> GetValue,
     Action<string> SetValue,
-    string Name,
-    string Tooltip,
+    Func<string> GetName,
+    Func<string> GetTooltip,
     string[] AllowedValues,
     Func<string, string> FormatAllowedValue
 );
@@ -659,5 +714,25 @@ internal sealed class JsonTranslationProvider : IConfigMenuTranslationProvider
             loaded.Add(property.Name, property.Value.GetString() ?? string.Empty);
 
         return new JsonTranslationProvider(loaded);
+    }
+}
+
+internal sealed class MutableTranslationProvider : IConfigMenuTranslationProvider
+{
+    private IReadOnlyDictionary<string, string> values;
+
+    internal MutableTranslationProvider(IReadOnlyDictionary<string, string> values)
+    {
+        this.values = values;
+    }
+
+    internal void SetValues(IReadOnlyDictionary<string, string> values)
+    {
+        this.values = values;
+    }
+
+    public bool TryGet(string key, out string value)
+    {
+        return values.TryGetValue(key, out value!);
     }
 }

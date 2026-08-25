@@ -18,13 +18,13 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
 
     [Theory]
     [InlineData("StardewValley.Locations.FarmHouse", "Default", "FarmHouse", "", "vanilla.farm-house", true)]
-    [InlineData("StardewValley.Locations.Cabin", "Default", "Cabin0001", "Cabin", "vanilla.cabin", false)]
+    [InlineData("StardewValley.Locations.Cabin", "Default", "Cabin0001", "Cabin", "vanilla.cabin", true)]
     [InlineData("StardewValley.Locations.IslandFarmHouse", "Island", "IslandFarmHouse", "", "vanilla.island-farm-house", true)]
-    [InlineData("StardewValley.Shed", "Default", "Shed0001", "Shed", "vanilla.shed", false)]
-    [InlineData("StardewValley.AnimalHouse", "Default", "Coop0001", "Coop", "vanilla.coop", false)]
-    [InlineData("StardewValley.AnimalHouse", "Default", "Barn0001", "Barn", "vanilla.barn", false)]
-    [InlineData("StardewValley.SlimeHutch", "Default", "SlimeHutch0001", "Slime Hutch", "vanilla.slime-hutch", false)]
-    [InlineData("StardewValley.GameLocation", "Default", "Greenhouse", "", "vanilla.greenhouse", false)]
+    [InlineData("StardewValley.Shed", "Default", "Shed0001", "Shed", "vanilla.shed", true)]
+    [InlineData("StardewValley.AnimalHouse", "Default", "Coop0001", "Coop", "vanilla.coop", true)]
+    [InlineData("StardewValley.AnimalHouse", "Default", "Barn0001", "Barn", "vanilla.barn", true)]
+    [InlineData("StardewValley.SlimeHutch", "Default", "SlimeHutch0001", "Slime Hutch", "vanilla.slime-hutch", true)]
+    [InlineData("StardewValley.GameLocation", "Default", "Greenhouse", "", "vanilla.greenhouse", true)]
     public void EveryRequiredVanillaLocationIsTwoAmSafeAndOtherSemanticsStayIndependent(
         string runtimeType,
         string contextId,
@@ -41,7 +41,6 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
         Assert.Equal(EnvironmentLightLocationRuleStatus.Matched, resolution.Status);
         Assert.Equal(expectedRuleId, resolution.RuleId);
         Assert.True(resolution.TwoAmSpecialDeathSafe);
-        Assert.False(resolution.DarknessAttackSafe);
         Assert.False(resolution.HostileShadowSafe);
         Assert.Equal(junimoEligible, resolution.JunimoBlessingEligible);
         Assert.Equal(
@@ -75,7 +74,6 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
     }
 
     [Theory]
-    [InlineData("StardewValley.Locations.FarmCave", "Default", "FarmCave", "")]
     [InlineData("StardewValley.GameLocation", "Default", "Hospital", "")]
     [InlineData("Example.Mod.CustomLocation", "Example.Mod", "UnknownRoom", "")]
     [InlineData("Example.Mod.GreenhouseLocation", "Default", "Greenhouse", "")]
@@ -93,11 +91,26 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
 
         Assert.Equal(EnvironmentLightLocationRuleStatus.Unmatched, resolution.Status);
         Assert.False(resolution.TwoAmSpecialDeathSafe);
-        Assert.False(resolution.DarknessAttackSafe);
         Assert.False(resolution.HostileShadowSafe);
         Assert.False(resolution.JunimoBlessingEligible);
         Assert.Equal(
             TwoAmSpecialDeathLocationReasonIds.UnmatchedDefaultUnsafe,
+            resolution.TwoAmSpecialDeathReason
+        );
+    }
+
+    [Fact]
+    public void NaturalDarknessOnlyFarmCaveRuleRemainsTwoAmUnsafe()
+    {
+        var resolution = LoadShipped().Catalog.Resolve(
+            Location("StardewValley.Locations.FarmCave", "Default", "FarmCave", "")
+        );
+
+        Assert.Equal(EnvironmentLightLocationRuleStatus.Matched, resolution.Status);
+        Assert.Equal("vanilla.farm-cave", resolution.RuleId);
+        Assert.False(resolution.TwoAmSpecialDeathSafe);
+        Assert.Equal(
+            TwoAmSpecialDeathLocationReasonIds.UnsafeRuleMatched,
             resolution.TwoAmSpecialDeathReason
         );
     }
@@ -173,7 +186,7 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
     }
 
     [Fact]
-    public void VersionOneAndMissingIndependentSemanticFieldsAreRejected()
+    public void OlderSchemaVersionsAndMissingIndependentSemanticFieldsAreRejected()
     {
         var versionOne = EnvironmentLightLocationRuleCatalog.Load(
             "{\"SchemaVersion\":1,\"Rules\":[]}"
@@ -181,11 +194,23 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
         Assert.False(versionOne.IsAvailable);
         Assert.Equal("environment-light.location-rules-version-unsupported", versionOne.Reason);
 
+        var versionTwo = EnvironmentLightLocationRuleCatalog.Load(
+            "{\"SchemaVersion\":2,\"Rules\":[]}"
+        );
+        Assert.False(versionTwo.IsAvailable);
+        Assert.Equal("environment-light.location-rules-version-unsupported", versionTwo.Reason);
+
+        var versionThree = EnvironmentLightLocationRuleCatalog.Load(
+            "{\"SchemaVersion\":3,\"Rules\":[]}"
+        );
+        Assert.False(versionThree.IsAvailable);
+        Assert.Equal("environment-light.location-rules-version-unsupported", versionThree.Reason);
+
         const string missingHostile =
-            "{\"SchemaVersion\":2,\"Rules\":[{\"Id\":\"bad\",\"Priority\":1,"
+            "{\"SchemaVersion\":4,\"Rules\":[{\"Id\":\"bad\",\"Priority\":1,"
             + "\"Match\":{\"RuntimeType\":\"Example.Location\"},"
             + "\"LightProfile\":\"FallbackOnly\",\"TwoAmSpecialDeathSafe\":false,"
-            + "\"DarknessAttackSafe\":false,\"JunimoBlessingEligible\":false}]}";
+            + "\"JunimoBlessingEligible\":false,\"NaturalDarknessProfile\":\"Unchanged\"}]}";
         var missing = EnvironmentLightLocationRuleCatalog.Load(missingHostile);
         Assert.False(missing.IsAvailable);
         Assert.Equal("environment-light.location-rule-invalid", missing.Reason);
@@ -233,7 +258,7 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
 
     private static string CatalogJson(params string[] rules)
     {
-        return "{\"SchemaVersion\":2,\"Rules\":[" + string.Join(",", rules) + "]}";
+        return "{\"SchemaVersion\":4,\"Rules\":[" + string.Join(",", rules) + "]}";
     }
 
     private static string RuleJson(string id, int priority, bool twoAmSafe)
@@ -246,8 +271,8 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
             ",\"Match\":{\"RuntimeType\":\"Example.Location\"},",
             "\"LightProfile\":\"FallbackOnly\",\"TwoAmSpecialDeathSafe\":",
             twoAmSafe ? "true" : "false",
-            ",\"DarknessAttackSafe\":false,\"HostileShadowSafe\":false,",
-            "\"JunimoBlessingEligible\":false}"
+            ",\"HostileShadowSafe\":false,",
+            "\"JunimoBlessingEligible\":false,\"NaturalDarknessProfile\":\"Unchanged\"}"
         );
     }
 }

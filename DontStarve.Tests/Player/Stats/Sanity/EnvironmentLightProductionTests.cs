@@ -55,11 +55,9 @@ public sealed class EnvironmentLightProductionTests
     }
 
     [Fact]
-    public void FarmHasARealConfirmedPitchBlackAuthorizationPath()
+    public void ConfirmedPitchBlackCanAuthorizeAnUnprotectedLocation()
     {
-        var result = new EnvironmentLightClassifier().Classify(
-            Snapshot(score: 0.10d, darknessAttackSafe: true)
-        );
+        var result = CreateClassifier().Classify(Snapshot(score: 0.10d));
 
         Assert.Equal(EnvironmentLightLevel.PitchBlack, result.Level);
         Assert.Equal(EnvironmentLightEvidenceStatus.Confirmed, result.EvidenceStatus);
@@ -73,12 +71,10 @@ public sealed class EnvironmentLightProductionTests
     [Fact]
     public void StandardLightRecoveryImmediatelyRevokesPitchBlackAuthorization()
     {
-        var classifier = new EnvironmentLightClassifier();
-        var dark = classifier.Classify(
-            Snapshot(score: 0.10d, darknessAttackSafe: true)
-        );
+        var classifier = CreateClassifier();
+        var dark = classifier.Classify(Snapshot(score: 0.10d));
         var lit = classifier.Classify(
-            Snapshot(score: 0.80d, darknessAttackSafe: true, revision: 2),
+            Snapshot(score: 0.80d, revision: 2),
             dark.Level
         );
 
@@ -91,13 +87,13 @@ public sealed class EnvironmentLightProductionTests
     [Fact]
     public void PitchBlackExitHysteresisNeverExtendsHarmAuthorization()
     {
-        var classifier = new EnvironmentLightClassifier();
+        var classifier = CreateClassifier();
         var hysteresis = classifier.Classify(
-            Snapshot(score: 0.25d, darknessAttackSafe: true),
+            Snapshot(score: 0.25d),
             EnvironmentLightLevel.PitchBlack
         );
         var withoutHistory = classifier.Classify(
-            Snapshot(score: 0.25d, darknessAttackSafe: true, revision: 2)
+            Snapshot(score: 0.25d, revision: 2)
         );
 
         Assert.Equal(EnvironmentLightLevel.PitchBlack, hysteresis.Level);
@@ -106,17 +102,17 @@ public sealed class EnvironmentLightProductionTests
     }
 
     [Fact]
-    public void UnsafeLocationCanClassifyPitchBlackButNeverAuthorizeDamage()
+    public void JunimoProtectedLocationCanClassifyPitchBlackButNeverAuthorizeDamage()
     {
-        var result = new EnvironmentLightClassifier().Classify(
-            Snapshot(score: 0.10d, darknessAttackSafe: false)
+        var result = CreateClassifier(junimoBlessingEnabled: true).Classify(
+            Snapshot(score: 0.10d)
         );
 
         Assert.Equal(EnvironmentLightLevel.PitchBlack, result.Level);
         Assert.Equal(EnvironmentLightEvidenceStatus.Confirmed, result.EvidenceStatus);
         Assert.False(result.PitchBlackAuthorized);
         Assert.Equal(
-            EnvironmentLightReasonIds.FinalVisibilityPitchBlackLocationUnsafe,
+            EnvironmentLightReasonIds.FinalVisibilityPitchBlackAuthorizationDenied,
             result.Reason
         );
     }
@@ -226,11 +222,11 @@ public sealed class EnvironmentLightProductionTests
     }
 
     [Fact]
-    public void RemoteAuthorizationMustEqualHostRuleAndStrictThreshold()
+    public void RemoteAuthorizationMustEqualHostLocationAuthorizationAndStrictThreshold()
     {
         var unsafeContext = ValidationContext() with
         {
-            ExpectedDarknessAttackSafe = false,
+            ExpectedDarknessAttackLocationAuthorized = false,
         };
         var message = ValidMessage();
 
@@ -240,7 +236,7 @@ public sealed class EnvironmentLightProductionTests
         );
         message.PitchBlackAuthorized = false;
         message.Reason =
-            EnvironmentLightReasonIds.FinalVisibilityPitchBlackLocationUnsafe;
+            EnvironmentLightReasonIds.FinalVisibilityPitchBlackAuthorizationDenied;
         var accepted = EnvironmentLightEvidenceProtocol.Validate(
             message,
             unsafeContext
@@ -257,7 +253,7 @@ public sealed class EnvironmentLightProductionTests
         message.VisibilityScore = 0.25d;
         message.PitchBlackAuthorized = false;
         message.Reason =
-            EnvironmentLightReasonIds.FinalVisibilityPitchBlackLocationUnsafe;
+            EnvironmentLightReasonIds.FinalVisibilityPitchBlackAuthorizationDenied;
 
         var result = EnvironmentLightEvidenceProtocol.Validate(
             message,
@@ -313,8 +309,8 @@ public sealed class EnvironmentLightProductionTests
 
     private static EnvironmentLightSnapshot Snapshot(
         double score,
-        bool darknessAttackSafe,
-        long revision = 1
+        long revision = 1,
+        bool junimoBlessingEligible = true
     )
     {
         return new EnvironmentLightSnapshot(
@@ -333,13 +329,12 @@ public sealed class EnvironmentLightProductionTests
             ),
             new EnvironmentLightLocationRuleResolution(
                 EnvironmentLightLocationRuleStatus.Matched,
-                2,
+                3,
                 "vanilla.farm",
                 EnvironmentLightLocationLightProfile.OpaqueWhiteBase,
                 TwoAmSpecialDeathSafe: false,
-                DarknessAttackSafe: darknessAttackSafe,
                 HostileShadowSafe: false,
-                JunimoBlessingEligible: true,
+                JunimoBlessingEligible: junimoBlessingEligible,
                 EnvironmentLightReasonIds.LocationRuleMatched
             ),
             new EnvironmentLightWorldPoint(100d, 100d),
@@ -399,7 +394,7 @@ public sealed class EnvironmentLightProductionTests
             PlayerKey = PlayerKey,
             ScreenId = 0,
             LocationNameOrUniqueName = LocationName,
-            LocationRuleContractVersion = 2,
+            LocationRuleContractVersion = 3,
             LocationRuleId = "vanilla.farm",
             ConfigSchemaVersion = Config.SchemaVersion,
             ConfigFingerprint = Config.Fingerprint,
@@ -429,14 +424,29 @@ public sealed class EnvironmentLightProductionTests
             SessionId,
             PlayerKey,
             LocationName,
-            2,
+            3,
             "vanilla.farm",
-            ExpectedDarknessAttackSafe: true,
+            ExpectedDarknessAttackLocationAuthorized: true,
             Config,
             EnvironmentLightProductionContract.SupportedGameVersion,
             ModVersion,
             LastAcceptedSequence: 6,
             HostUtcMilliseconds: 2_000_000L
+        );
+    }
+
+    private static EnvironmentLightClassifier CreateClassifier(
+        bool junimoBlessingEnabled = false,
+        bool configurationAvailable = true
+    )
+    {
+        return new EnvironmentLightClassifier(
+            new DarknessAttackLocationAuthorizationPolicy(
+                () => new EnvironmentLightJunimoBlessingState(
+                    configurationAvailable,
+                    junimoBlessingEnabled
+                )
+            )
         );
     }
 }

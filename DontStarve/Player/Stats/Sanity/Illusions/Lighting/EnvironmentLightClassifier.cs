@@ -6,12 +6,17 @@ namespace DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 
 internal sealed class EnvironmentLightClassifier
 {
+    private readonly DarknessAttackLocationAuthorizationPolicy
+        darknessAttackLocationAuthorization;
     private readonly EnvironmentLightThresholds thresholds;
 
     internal EnvironmentLightClassifier(
+        DarknessAttackLocationAuthorizationPolicy darknessAttackLocationAuthorization,
         EnvironmentLightThresholds? thresholds = null
     )
     {
+        this.darknessAttackLocationAuthorization = darknessAttackLocationAuthorization
+            ?? throw new ArgumentNullException(nameof(darknessAttackLocationAuthorization));
         this.thresholds = thresholds ?? EnvironmentLightThresholds.Default;
     }
 
@@ -212,7 +217,12 @@ internal sealed class EnvironmentLightClassifier
         }
 
         var locationRule = snapshot.LocationRule;
-        if (!locationRule.IsMatched)
+        if (
+            locationRule.Status is not (
+                EnvironmentLightLocationRuleStatus.Matched
+                or EnvironmentLightLocationRuleStatus.Unmatched
+            )
+        )
         {
             var fallback = locationRule.Status switch
             {
@@ -296,7 +306,7 @@ internal sealed class EnvironmentLightClassifier
             );
             var canAuthorize =
                 level == EnvironmentLightLevel.PitchBlack
-                && snapshot.LocationRule.DarknessAttackSafe
+                && darknessAttackLocationAuthorization.Allows(locationRule)
                 && EnvironmentLightVisibilityMath.CanAuthorizePitchBlack(
                     finalVisibility.VisibilityScore,
                     thresholds
@@ -309,7 +319,7 @@ internal sealed class EnvironmentLightClassifier
                     EnvironmentLightReasonIds.FinalVisibilityDimConfirmed,
                 _ when canAuthorize =>
                     EnvironmentLightReasonIds.FinalVisibilityPitchBlackConfirmed,
-                _ => EnvironmentLightReasonIds.FinalVisibilityPitchBlackLocationUnsafe,
+                _ => EnvironmentLightReasonIds.FinalVisibilityPitchBlackAuthorizationDenied,
             };
             return EnvironmentLightResult.Confirmed(
                 level,

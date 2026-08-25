@@ -1,25 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using DontStarve.Player.Stats.Sanity;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Menus;
-using HungerEatFood = DontStarve.Player.Stats.Hunger.HungerBehaviors.EatFood;
-using SanityEatFood = DontStarve.Player.Stats.Sanity.SanityBehaviors.EatFood;
 
 namespace DontStarve.Display.UIElements;
 
 /// <summary>
-/// 在屏幕底部显示手持食物的饥饿、理智和 Buff 文案；只读资源表与对象数据，不改变物品效果。
+/// 旧版屏幕底部手持属性面板。保留实现以便回退，但 DisplayManager 不再注册它；当前属性
+/// 统一由原版集中 tooltip 显示。
 /// </summary>
 internal class FoodTooltip : INonTimeRelatedUIElement
 {
     private readonly ISanitySystemState sanitySystemState;
     private FoodBuffTooltipFormatter buffFormatter;
-    private CultureInfo culture = CultureInfo.InvariantCulture;
 
     internal FoodTooltip(ISanitySystemState sanitySystemState)
     {
@@ -29,74 +26,33 @@ internal class FoodTooltip : INonTimeRelatedUIElement
     public void Init(IModHelper helper)
     {
         this.buffFormatter = new FoodBuffTooltipFormatter(helper);
-        this.culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
-        helper.Events.Content.LocaleChanged += (_, e) =>
-            this.culture = LocalizedValueFormatter.ResolveCulture(e.NewLocale);
     }
 
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
         if (
             Game1.activeClickableMenu is not null
-            ||
-            !HudDisplayRules
-                .ResolveSanityVisibility(sanitySystemState.IsEnabled)
-                .ShowHeldFoodTooltip
         )
         {
             return;
         }
 
         var player = Game1.player;
-        var activeObject = player.ActiveObject;
-        if (activeObject == null)
+        var activeItem = player.ActiveItem;
+        if (activeItem == null)
             return;
 
-        // DS 自己的饥饿/理智表和 Stardew Data/Objects 的 Buff 字段是两套来源，tooltip 只在显示层合并。
-        double? foodHunger = HungerEatFood.FoodHunger.TryGetValue(
-            activeObject.ItemId,
-            out var hungerValue
-        )
-            ? hungerValue
-            : null;
-        double? foodSanity = SanityEatFood.FoodSanity.TryGetValue(
-            activeObject.ItemId,
-            out var sanityValue
-        )
-            ? sanityValue
-            : null;
         var buffLines =
-            this.buffFormatter?.GetLines(activeObject) ?? Array.Empty<string>();
-        var formattedSanity = string.Empty;
-        var hasFormattedSanity =
-            foodSanity.HasValue
-            && LocalizedValueFormatter.TryFormatSigned(
-                foodSanity.Value,
-                this.culture,
-                out formattedSanity
-            );
+            this.buffFormatter?.GetLines(activeItem, this.sanitySystemState.IsEnabled)
+            ?? Array.Empty<string>();
 
-        if (foodHunger == null && !hasFormattedSanity && buffLines.Count == 0)
+        if (buffLines.Count == 0)
             return;
 
         var sizeUi = uiContext.ViewportSize;
         var spriteBatch = e.SpriteBatch;
 
-        var parts = new List<string>(2 + buffLines.Count);
-        if (foodHunger != null)
-            parts.Add(
-                uiContext.Helper.Translation.Get("hunger-tooltip", new { value = foodHunger })
-            );
-        if (hasFormattedSanity)
-        {
-            // 该 held-item 提示独立读取食物表；阶段 02 的总开关不得把数据提示一并隐藏。
-            parts.Add(
-                uiContext.Helper.Translation.Get(
-                    "sanity-tooltip.food-once",
-                    new { value = formattedSanity }
-                )
-            );
-        }
+        var parts = new List<string>(buffLines.Count);
         parts.AddRange(buffLines);
 
         var maxTextWidth = (int)Math.Max(220, Math.Min(560, sizeUi.X - 100));

@@ -61,6 +61,7 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
 
     private readonly ShadowCreatureHarmlessProjectionIndex index;
     private readonly IShadowCreatureProjectionBudgetAuthority budgetAuthority;
+    private readonly ISanityShadowRealTimeBudgetAuthority? realTimeBudgetAuthority;
     private readonly IShadowProjectionConversionIntentSink conversionIntentSink;
     private readonly IShadowProjectionCorrelationSource correlationSource;
     private readonly List<ShadowCreatureHarmlessProjectionPolicy> policies = new();
@@ -70,6 +71,13 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     private readonly Dictionary<string, ShadowProjectionConversionEvidence>
         evidenceByCorrelation = new(StringComparer.Ordinal);
     private readonly Queue<string> evidenceOrder = new();
+    // DIAG-20260809: 驱赶补偿队列——被玩家驱赶/远离消失的影怪延迟 7 秒补刷一只
+    // （防玩家把无害影怪清光；不占预算 60 分钟 timer）。
+    // DIAG-20260810: 带到期时间（累计真实毫秒），由 ConsumePendingCompensations 按到期过滤。
+    private const double CompensationDelayMilliseconds = 7000d;
+    private readonly Dictionary<string, double> pendingCompensationDueBySpecies =
+        new(StringComparer.Ordinal);
+    private double accumulatedElapsedMilliseconds;
 
     internal ShadowCreatureHarmlessProjectionCoordinator(
         ShadowCreatureHarmlessProjectionIndex index,
@@ -81,6 +89,7 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         this.index = index ?? throw new ArgumentNullException(nameof(index));
         this.budgetAuthority = budgetAuthority
             ?? throw new ArgumentNullException(nameof(budgetAuthority));
+        realTimeBudgetAuthority = budgetAuthority as ISanityShadowRealTimeBudgetAuthority;
         this.conversionIntentSink = conversionIntentSink
             ?? throw new ArgumentNullException(nameof(conversionIntentSink));
         this.correlationSource = correlationSource
@@ -188,16 +197,22 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
                 return Transition("shadow-state.shadow-tier-entered");
             }
 
-            var removed = CleanupOwner(
+            // DIAG-20260809: 高理智（>50%）不立即清除——标记全部实例 1 秒淡出，
+            // 由行为 tick 完成移除；保留 phase（ShadowTierActive=false 停止新刷），
+            // 下次重新进入 ShadowCreatures 档时按 entered 分支解锁调度。
+            var exitingPhase = GetOrCreatePhase(stateEvent.PlayerKey);
+            exitingPhase.ShadowTierActive = false;
+            var fading = index.MarkAllFadingOut(
                 stateEvent.PlayerKey,
-                HarmlessProjectionCleanupReason.TierExited,
-                forgetOwnerPhase: true
+                ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds,
+                ShadowCreatureHarmlessProjectionInstance
+                    .ShadowCreatureProjectionFadeOutKind.HighSan
             );
             return new ShadowCreatureProjectionTransitionResult(
-                removed,
+                fading,
                 0,
                 false,
-                "shadow-state.shadow-tier-exited"
+                "shadow-state.shadow-tier-exited-fade-out"
             );
         }
 
@@ -236,7 +251,8 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         HarmlessProjectionWorldPoint ownerStandingWorldPixel,
         long gameMinute,
         int elapsedMilliseconds,
-        IShadowCreatureHarmlessProjectionSpawnFactory spawnFactory
+        IShadowCreatureHarmlessProjectionSpawnFactory spawnFactory,
+        bool advanceMovement = true
     )
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -256,16 +272,27 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
             );
         }
 
-        var proximityCleanup = UpdateLocalInstances(
-            owner,
-            ownerStandingWorldPixel,
-            elapsedMilliseconds
-        );
+        accumulatedElapsedMilliseconds += Math.Max(0, elapsedMilliseconds);
         if (!phasesByOwner.TryGetValue(owner.PlayerKey, out var phase))
         {
+            if (index.CountForOwner(owner.PlayerKey) > 0)
+            {
+                index.MarkAllFadingOut(
+                    owner.PlayerKey,
+                    ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds,
+                    ShadowCreatureHarmlessProjectionInstance
+                        .ShadowCreatureProjectionFadeOutKind.HighSan
+                );
+            }
+            var inactiveCleanup = UpdateLocalInstances(
+                owner,
+                ownerStandingWorldPixel,
+                elapsedMilliseconds,
+                advanceMovement
+            );
             return UpdateResult(
                 ShadowCreatureProjectionUpdateStatus.Inactive,
-                proximityCleanup,
+                inactiveCleanup,
                 owner.PlayerKey,
                 0,
                 "shadow-projection.owner-phase-missing"
@@ -273,9 +300,26 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         }
         if (!phase.ShadowTierActive)
         {
+            // DIAG-20260812: 高理智（ShadowCreatures 档未激活）时场上仍可能有调试召唤
+            // （ds_spawn harmless）的投影——自然投影只在档内生成、退出时已由 TierExited
+            // 触发淡出；调试投影生成时档位可能早已退出（无退出事件），必须在此兜底标记
+            // 高理智淡出，否则投影永远卡住不消失（用户实测“高于50%不进入消失流程”）。
+            if (index.CountForOwner(owner.PlayerKey) > 0)
+            {
+                index.MarkAllFadingOut(
+                    owner.PlayerKey,
+                    ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds
+                );
+            }
+            var inactiveCleanup = UpdateLocalInstances(
+                owner,
+                ownerStandingWorldPixel,
+                elapsedMilliseconds,
+                advanceMovement
+            );
             return UpdateResult(
                 ShadowCreatureProjectionUpdateStatus.Inactive,
-                proximityCleanup,
+                inactiveCleanup,
                 owner.PlayerKey,
                 0,
                 "shadow-projection.shadow-tier-inactive"
@@ -283,14 +327,30 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         }
         if (phase.DangerTierActive || phase.RequiresFutureReverseResolution)
         {
+            // DIAG-20260811: 危险状态（Danger 已激活）下的存量无害投影——指令召唤
+            // （ds_spawn harmless）/驱赶补偿生成的实例——提交转化（RecordDangerEntry
+            // 内部按 evidence 去重：已提交过的实例不重复提交；新出现的实例立即转化）。
+            if (
+                phase.DangerTierActive
+                && index.CountForOwner(owner.PlayerKey) > 0
+            )
+            {
+                RecordDangerEntry(owner.PlayerKey, gameMinute);
+            }
             return UpdateResult(
                 ShadowCreatureProjectionUpdateStatus.ConversionLocked,
-                proximityCleanup,
+                0,
                 owner.PlayerKey,
                 0,
                 "shadow-projection.future-reverse-resolution-required"
             );
         }
+        var proximityCleanup = UpdateLocalInstances(
+            owner,
+            ownerStandingWorldPixel,
+            elapsedMilliseconds,
+            advanceMovement
+        );
         if (policies.Count == 0)
         {
             return UpdateResult(
@@ -306,6 +366,7 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         if (
             phase.LastBudgetEvaluationMinute == gameMinute
             && phase.LastBudgetEvaluationOccupancy == occupancy
+            && realTimeBudgetAuthority is null
         )
         {
             return UpdateResult(
@@ -319,11 +380,19 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         SanityShadowBudgetEvaluationResult budget;
         try
         {
-            budget = budgetAuthority.EvaluateShadowBudget(
-                owner.PlayerKey,
-                gameMinute,
-                occupancy
-            );
+            budget = realTimeBudgetAuthority is not null
+                ? realTimeBudgetAuthority.EvaluateShadowBudgetRealTime(
+                    owner.PlayerKey,
+                    gameMinute,
+                    occupancy,
+                    elapsedMilliseconds,
+                    requestedSpecies: null
+                )
+                : budgetAuthority.EvaluateShadowBudget(
+                    owner.PlayerKey,
+                    gameMinute,
+                    occupancy
+                );
         }
         catch (Exception exception)
         {
@@ -499,6 +568,108 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         );
     }
 
+    /// <summary>
+    /// Registers a caller-selected position only after the same harmless-pool permit checks used
+    /// by the normal refresh path. The debug command may choose the point, but it cannot bypass
+    /// tier state, the real-time interval, the shared cap, or the conversion lock.
+    /// </summary>
+    internal bool TryRegisterAuthorizedProjection(
+        HarmlessProjectionOwnerContext owner,
+        ShadowCreatureHarmlessProjectionInstance instance,
+        SanityShadowSpawnPermit permit,
+        out string reason
+    )
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(instance);
+        if (instance.IsCleanedUp || !instance.Owner.Matches(owner))
+        {
+            reason = "shadow-projection.owner-context-invalid";
+            return false;
+        }
+        if (!phasesByOwner.TryGetValue(owner.PlayerKey, out var phase))
+        {
+            reason = "shadow-projection.shadow-tier-inactive";
+            return false;
+        }
+        if (!phase.ShadowTierActive)
+        {
+            reason = "shadow-projection.shadow-tier-inactive";
+            return false;
+        }
+        if (phase.DangerTierActive || phase.RequiresFutureReverseResolution)
+        {
+            reason = "shadow-projection.future-reverse-resolution-required";
+            return false;
+        }
+        if (
+            !policies.Contains(instance.Policy)
+            || !ShadowCreatureHarmlessProjectionCatalog.IsPermitConsumer(
+                instance.SpeciesId
+            )
+        )
+        {
+            reason = "shadow-projection.species-not-registered";
+            return false;
+        }
+
+        var occupancy = index.CountForOwner(owner.PlayerKey);
+        if (
+            !ShadowCreatureProjectionPermitGate.TryAuthorize(
+                instance.SpeciesId,
+                owner.PlayerKey,
+                permit.IssuedAtMinute,
+                occupancy,
+                permit,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+        if (instance.SpawnedAtMinute != permit.IssuedAtMinute)
+        {
+            reason = "shadow-projection.spawn-minute-mismatch";
+            return false;
+        }
+        if (!index.TryAdd(instance, out reason))
+            return false;
+
+        phase.LastBudgetEvaluationMinute = permit.IssuedAtMinute;
+        phase.LastBudgetEvaluationOccupancy = occupancy + 1;
+        phase.LastBudgetStatus = ShadowCreatureProjectionUpdateStatus.Waiting;
+        reason = "shadow-projection.registered";
+        return true;
+    }
+
+    /// <summary>
+    /// Debug-only registration. It deliberately skips the natural permit, timer, cap and
+    /// conversion-lock checks while retaining owner, species and index integrity checks.
+    /// </summary>
+    internal bool TryRegisterDebugProjection(
+        HarmlessProjectionOwnerContext owner,
+        ShadowCreatureHarmlessProjectionInstance instance,
+        out string reason
+    )
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(instance);
+        if (instance.IsCleanedUp || !instance.Owner.Matches(owner))
+        {
+            reason = "shadow-projection.owner-context-invalid";
+            return false;
+        }
+        if (
+            !policies.Contains(instance.Policy)
+            || !ShadowCreatureHarmlessProjectionCatalog.IsPermitConsumer(instance.SpeciesId)
+        )
+        {
+            reason = "shadow-projection.species-not-registered";
+            return false;
+        }
+        return index.TryAdd(instance, out reason);
+    }
+
     internal bool TryGetConversionEvidence(
         string correlationId,
         out ShadowProjectionConversionEvidence? evidence
@@ -566,6 +737,34 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         return index.CleanupInvalidScreens(isScreenValid, reason);
     }
 
+    /// <summary>
+    /// DIAG-20260809: 取走并清空到期的驱赶补偿（host 在 UpdateOwner 后调用补刷）。
+    /// DIAG-20260810: 延迟 7 秒到期才返回；远离 20 格消失（Far）也计入补偿。
+    /// </summary>
+    internal IReadOnlyList<string> ConsumePendingCompensations()
+    {
+        if (pendingCompensationDueBySpecies.Count == 0)
+            return Array.Empty<string>();
+        var snapshot = new List<string>();
+        foreach (var pair in pendingCompensationDueBySpecies)
+        {
+            if (pair.Value <= accumulatedElapsedMilliseconds)
+                snapshot.Add(pair.Key);
+        }
+        foreach (var speciesId in snapshot)
+            pendingCompensationDueBySpecies.Remove(speciesId);
+        return snapshot.AsReadOnly();
+    }
+
+    /// <summary>DIAG-20260811: 外部登记补偿（切图清投影时调用）——物种在补偿延迟后到期补刷。</summary>
+    internal void RecordCompensation(string speciesId)
+    {
+        if (string.IsNullOrWhiteSpace(speciesId))
+            return;
+        pendingCompensationDueBySpecies[speciesId] =
+            accumulatedElapsedMilliseconds + CompensationDelayMilliseconds;
+    }
+
     private ShadowCreatureProjectionTransitionResult RecordDangerEntry(
         string playerKey,
         long gameMinute
@@ -580,6 +779,15 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         var intentCount = 0;
         foreach (var instance in removed)
         {
+            // DIAG-20260812: 绑定投影代表隐藏的危险实体（已有实体，不参与转化）——
+            // 摘除会导致绑定丢失、隐藏实体被连带清除（0san 强制脱战后直接消失 bug）。
+            // 重置清理标记放回 Index，由低理智恢复（RestoreAllBindings）或绑定流程管理。
+            if (instance.IsBindingProjection)
+            {
+                if (instance.TryRestoreFromCleanup())
+                    index.TryAdd(instance, out _);
+                continue;
+            }
             if (evidenceByCorrelation.ContainsKey(instance.CorrelationId))
                 continue;
 
@@ -587,7 +795,11 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
                 instance.CorrelationId,
                 instance.Owner.PlayerKey,
                 instance.SpeciesId,
-                gameMinute
+                gameMinute,
+                // DIAG-20260812: 携带投影原位——转化请求据此在无害影怪原位置生成
+                // 危险实体（不再瞬移到玩家脚下）。
+                instance.WorldPixel.X,
+                instance.WorldPixel.Y
             );
             ShadowProjectionConversionSubmissionResult submission;
             try
@@ -607,6 +819,17 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
 
             AddEvidence(new ShadowProjectionConversionEvidence(intent, submission));
             intentCount++;
+            if (
+                submission.Status
+                    is ShadowProjectionConversionSubmissionStatus.Failed
+                    or ShadowProjectionConversionSubmissionStatus.Rejected
+            )
+            {
+                // A definitive failed/rejected bridge did not create a hostile replacement. Put
+                // the harmless instance back so a bridge failure cannot make it vanish silently.
+                if (instance.TryRestoreFromCleanup())
+                    index.TryAdd(instance, out _);
+            }
         }
 
         return new ShadowCreatureProjectionTransitionResult(
@@ -620,33 +843,57 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     private int UpdateLocalInstances(
         HarmlessProjectionOwnerContext owner,
         HarmlessProjectionWorldPoint ownerStandingWorldPixel,
-        int elapsedMilliseconds
+        int elapsedMilliseconds,
+        bool advanceMovement
     )
     {
         if (!index.TryGetContextInstances(owner, out var instances) || instances is null)
             return 0;
 
-        List<string>? proximityCleanup = null;
+        // DIAG-20260809: 行为化改造——实例由 AdvanceBehavior 驱动（游荡/驱赶/远离/淡出），
+        // 不再用旧的距离触发即清除逻辑；淡出完成的实例在此移除，被驱赶的记入补偿队列。
+        List<string>? completedCleanup = null;
         foreach (var instance in instances)
         {
             if (instance.IsCleanedUp || !instance.Owner.Matches(owner))
                 continue;
 
-            var deltaX = ownerStandingWorldPixel.X - instance.SpawnWorldPixel.X;
-            var deltaY = ownerStandingWorldPixel.Y - instance.SpawnWorldPixel.Y;
-            if ((deltaX * deltaX) + (deltaY * deltaY) <= OwnerProximitySquared)
+            var behaviorEvent = advanceMovement
+                ? instance.AdvanceBehavior(
+                    elapsedMilliseconds,
+                    ownerStandingWorldPixel
+                )
+                : instance.AdvanceFadeOutOnly(elapsedMilliseconds);
+            if (
+                behaviorEvent
+                != ShadowCreatureHarmlessProjectionInstance
+                    .ShadowCreatureProjectionBehaviorEvent.FadeOutCompleted
+            )
             {
-                proximityCleanup ??= new List<string>();
-                proximityCleanup.Add(instance.CorrelationId);
                 continue;
             }
-            instance.AdvanceFrame(elapsedMilliseconds);
+
+            completedCleanup ??= new List<string>();
+            completedCleanup.Add(instance.CorrelationId);
+            // DIAG-20260810: 驱赶（Flee）与远离 20 格（Far）淡出完成都计入补偿；
+            // 高理智淡出不补偿。补偿延迟 7 秒到期后由宿主补刷。
+            if (
+                instance.FadeOutKind
+                    is ShadowCreatureHarmlessProjectionInstance
+                        .ShadowCreatureProjectionFadeOutKind.Flee
+                    or ShadowCreatureHarmlessProjectionInstance
+                        .ShadowCreatureProjectionFadeOutKind.Far
+            )
+            {
+                pendingCompensationDueBySpecies[instance.SpeciesId] =
+                    accumulatedElapsedMilliseconds + CompensationDelayMilliseconds;
+            }
         }
 
-        if (proximityCleanup is null)
+        if (completedCleanup is null)
             return 0;
         var removed = 0;
-        foreach (var correlationId in proximityCleanup)
+        foreach (var correlationId in completedCleanup)
         {
             if (
                 index.TryRemove(

@@ -96,7 +96,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
 
     [Theory]
     [MemberData(nameof(DensityIds))]
-    public void Fifteen_percent_removes_local_creeper_before_host_spawn_and_reuses_each_shipped_density(
+    public void Fifteen_percent_converts_local_creeper_when_capacity_exists_and_restores_it_when_disabled(
         string intensityId
     )
     {
@@ -116,17 +116,26 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         );
 
         Assert.Contains(danger.Events, IsDangerEnter);
+        Assert.True(harness.Sink.LocalPoolWasEmptyBeforeEverySubmission);
+        var spawn = Assert.Single(harness.Sink.Results);
+        Assert.Equal(policy!.BaseCap, spawn.Cap);
+        Assert.Equal(policy.BaseCap > 0, spawn.Spawned);
+        Assert.Equal(policy.BaseCap > 0 ? 1 : 0, harness.Authority.Count);
+
+        if (policy.BaseCap == 0)
+        {
+            Assert.False(local.IsCleanedUp);
+            Assert.Null(local.CleanupReason);
+            Assert.Equal(1, harness.Index.CountForOwner(OwnerA));
+            return;
+        }
+
         Assert.True(local.IsCleanedUp);
         Assert.Equal(
             HarmlessProjectionCleanupReason.ConversionRequested,
             local.CleanupReason
         );
         Assert.Equal(0, harness.Index.CountForOwner(OwnerA));
-        Assert.True(harness.Sink.LocalPoolWasEmptyBeforeEverySubmission);
-        var spawn = Assert.Single(harness.Sink.Results);
-        Assert.Equal(policy!.BaseCap, spawn.Cap);
-        Assert.Equal(policy.BaseCap > 0, spawn.Spawned);
-        Assert.Equal(policy.BaseCap > 0 ? 1 : 0, harness.Authority.Count);
 
         var budget = harness.Governor.Evaluate(
             OwnerA,
@@ -135,8 +144,6 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         );
         Assert.Equal(policy.IntervalMinutes, budget.IntervalMinutes);
         Assert.Equal(policy.BaseCap, budget.Cap);
-        if (policy.BaseCap == 0)
-            return;
 
         var shared = Assert.Single(harness.Authority.CreateFullSnapshot().Entities);
         Assert.Equal(OwnerA, shared.OwnerPlayerKey);
@@ -176,7 +183,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     }
 
     [Fact]
-    public void Danger_hysteresis_keeps_shared_entity_at_exact_seventeen_point_five_and_cleans_only_above_it()
+    public void Danger_hysteresis_preserves_shared_entity_above_seventeen_point_five_until_retreat()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
         harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
@@ -200,7 +207,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             gameMinute: 21
         );
         Assert.Contains(aboveExit.Events, IsDangerExit);
-        Assert.Equal(0, harness.Authority.Count);
+        Assert.Equal(1, harness.Authority.Count);
         var locked = harness.Coordinator.UpdateOwner(
             harness.GetOwnerContext(OwnerA),
             new HarmlessProjectionWorldPoint(0, 0),
@@ -352,7 +359,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     }
 
     [Fact]
-    public void Owner_off_map_keeps_original_location_retargets_remaining_player_or_idles_until_ttl()
+    public void Owner_off_map_keeps_original_location_retargets_remaining_player_or_idles_without_local_ttl()
     {
         var ownerPresent = EvaluateTargets(
             currentMinute: 30,
@@ -388,7 +395,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         Assert.False(nobodyRemains.NaturalTtlExpired);
         Assert.Equal(HostileShadowStateIds.Idle, nobodyRemains.StateId);
         Assert.Equal(string.Empty, nobodyRemains.TargetPlayerKey);
-        Assert.True(expired.NaturalTtlExpired);
+        Assert.False(expired.NaturalTtlExpired);
     }
 
     [Fact]

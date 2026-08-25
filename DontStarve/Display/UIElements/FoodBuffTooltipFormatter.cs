@@ -1,187 +1,335 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using HungerEatFood = DontStarve.Player.Stats.Hunger.HungerBehaviors.EatFood;
+using SanityEatFood = DontStarve.Player.Stats.Sanity.SanityBehaviors.EatFood;
+using Wearing = DontStarve.Player.Stats.Sanity.SanityBehaviors.Wearing;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.GameData.Buffs;
+using StardewValley.Buffs;
+using SObject = StardewValley.Object;
 
 namespace DontStarve.Display.UIElements;
 
 /// <summary>
-/// 从 Stardew Data/Objects 的 Buff CustomAttributes 生成食物提示行，并按 ItemId 缓存结果。
+/// Generates Hunger/Sanity rows and the extra item-Buff rows which Stardew's legacy tooltip
+/// cannot render itself. All Buff values come from the same runtime aggregation as the vanilla
+/// tooltip so item-specific ModifyItemBuffs adjustments are preserved.
 /// </summary>
-internal sealed class FoodBuffTooltipFormatter
+internal sealed class FoodBuffTooltipFormatter : IDisposable
 {
-    private const double Epsilon = 0.0001;
+    internal const string ExtraMachineConfigUniqueId = "selph.ExtraMachineConfig";
+
+    private const int AttackMultiplierIconSourceX = 120;
+    private const int ImmunityIconSourceX = 150;
+    private const int KnockbackMultiplierIconSourceX = 70;
+    private const int WeaponSpeedMultiplierIconSourceX = 130;
+    private const int CriticalMultiplierIconSourceX = 160;
+    private const int WeaponPrecisionMultiplierIconSourceX = 40;
 
     private readonly IModHelper helper;
-    private readonly Dictionary<string, IReadOnlyList<string>> cache = new();
+    private readonly bool externalExtraMachineConfigLoaded;
+    private CultureInfo culture;
+    private bool disposed;
 
-    public FoodBuffTooltipFormatter(IModHelper helper)
+    internal FoodBuffTooltipFormatter(IModHelper helper)
+        : this(
+            helper,
+            helper.ModRegistry.IsLoaded(ExtraMachineConfigUniqueId)
+        ) { }
+
+    internal FoodBuffTooltipFormatter(
+        IModHelper helper,
+        bool externalExtraMachineConfigLoaded
+    )
     {
-        this.helper = helper;
-        // Content Patcher 或数据重载可能改 Data/Objects，缓存必须跟着失效。
-        helper.Events.Content.AssetsInvalidated += this.OnAssetsInvalidated;
+        this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
+        this.externalExtraMachineConfigLoaded = externalExtraMachineConfigLoaded;
+        this.culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
+        helper.Events.Content.LocaleChanged += this.OnLocaleChanged;
     }
 
-    public IReadOnlyList<string> GetLines(StardewValley.Object item)
+    internal IReadOnlyList<SanityTooltipRow> GetRows(
+        Item? item,
+        bool showSanity,
+        string[]? vanillaBuffIcons = null,
+        FoodBuffTooltipTextMode textMode = FoodBuffTooltipTextMode.Descriptive
+    )
     {
-        if (item == null || string.IsNullOrWhiteSpace(item.ItemId))
-            return Array.Empty<string>();
+        if (item == null || string.IsNullOrWhiteSpace(item.QualifiedItemId))
+            return Array.Empty<SanityTooltipRow>();
 
-        if (this.cache.TryGetValue(item.ItemId, out var cached))
-            return cached;
-
-        var lines = this.BuildLines(item.ItemId);
-        this.cache[item.ItemId] = lines;
-        return lines;
+        var rows = new List<SanityTooltipRow>();
+        AddSurvivalRows(item, showSanity, textMode, rows);
+        AddRows(rows, this.GetExtraMachineConfigRows(item));
+        return SanityTooltipRowFilter.RemoveVanillaDuplicates(rows, vanillaBuffIcons);
     }
 
-    private IReadOnlyList<string> BuildLines(string itemId)
+    internal IReadOnlyList<SanityTooltipRow> GetSurvivalRows(Item? item, bool showSanity)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.QualifiedItemId))
+            return Array.Empty<SanityTooltipRow>();
+
+        var rows = new List<SanityTooltipRow>();
+        AddSurvivalRows(item, showSanity, FoodBuffTooltipTextMode.Descriptive, rows);
+        return rows.Count == 0 ? Array.Empty<SanityTooltipRow>() : rows;
+    }
+
+    internal IReadOnlyList<SanityTooltipRow> GetExtraMachineConfigRows(Item? item)
     {
         if (
-            !Game1.objectData.TryGetValue(itemId, out var objectData)
-            || objectData.Buffs == null
-            || objectData.Buffs.Count == 0
+            this.externalExtraMachineConfigLoaded
+            || item == null
+            || !Game1.objectData.TryGetValue(item.ItemId, out var objectData)
         )
         {
-            return Array.Empty<string>();
+            return Array.Empty<SanityTooltipRow>();
         }
 
-        var values = new FoodBuffAttributeValues();
-        foreach (var buff in objectData.Buffs)
+        // This deliberately mirrors ExtraMachineConfig and the vanilla tooltip path. Reading
+        // ObjectData.CustomAttributes directly misses BuffId resolution and ModifyItemBuffs.
+        var effects = new BuffEffects();
+        foreach (
+            var buff in SObject.TryCreateBuffsFromData(
+                objectData,
+                item.Name,
+                item.DisplayName,
+                1f,
+                item.ModifyItemBuffs
+            )
+        )
         {
-            // 同一食物可以有多个 Buff 条目，显示时把数值字段加总成一组提示。
-            values.Add(buff?.CustomAttributes);
+            effects.Add(buff.effects);
         }
 
-        if (!values.HasAnyValue)
+        var rows = new List<SanityTooltipRow>(7);
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.attack-multiplier",
+            effects.AttackMultiplier.Value,
+            AttackMultiplierIconSourceX
+        );
+        this.AddExternalImmunityRow(rows, effects.Immunity.Value);
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.knockback-multiplier",
+            effects.KnockbackMultiplier.Value,
+            KnockbackMultiplierIconSourceX
+        );
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.weapon-speed-multiplier",
+            effects.WeaponSpeedMultiplier.Value,
+            WeaponSpeedMultiplierIconSourceX
+        );
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.critical-chance-multiplier",
+            effects.CriticalChanceMultiplier.Value,
+            CriticalMultiplierIconSourceX
+        );
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.critical-power-multiplier",
+            effects.CriticalPowerMultiplier.Value,
+            CriticalMultiplierIconSourceX
+        );
+        this.AddExternalMultiplierRow(
+            rows,
+            "food-buff-tooltip.weapon-precision-multiplier",
+            effects.WeaponPrecisionMultiplier.Value,
+            WeaponPrecisionMultiplierIconSourceX
+        );
+
+        return rows.Count == 0 ? Array.Empty<SanityTooltipRow>() : rows;
+    }
+
+    internal IReadOnlyList<string> GetLines(Item? item, bool showSanity)
+    {
+        var rows = this.GetRows(item, showSanity);
+        if (rows.Count == 0)
             return Array.Empty<string>();
 
-        var lines = new List<string>();
-        this.AddNumberLine(lines, "combat-level", values.CombatLevel);
-        this.AddNumberLine(lines, "attack", values.Attack);
-        this.AddNumberLine(lines, "defense", values.Defense);
-        this.AddNumberLine(lines, "immunity", values.Immunity);
-        this.AddPercentLine(lines, "attack-multiplier", values.AttackMultiplier);
-        this.AddPercentLine(lines, "knockback-multiplier", values.KnockbackMultiplier);
-        this.AddPercentLine(lines, "weapon-speed-multiplier", values.WeaponSpeedMultiplier);
-        this.AddPercentLine(lines, "critical-chance-multiplier", values.CriticalChanceMultiplier);
-        this.AddPercentLine(lines, "critical-power-multiplier", values.CriticalPowerMultiplier);
-        this.AddPercentLine(lines, "weapon-precision-multiplier", values.WeaponPrecisionMultiplier);
-
+        var lines = new List<string>(rows.Count);
+        foreach (var row in rows)
+            lines.Add(row.Text);
         return lines;
     }
 
-    private void AddNumberLine(List<string> lines, string labelKey, double value)
+    internal void ClearCache()
     {
-        if (!IsMeaningful(value))
+        // Buffs intentionally have no presentation cache: ModifyItemBuffs can vary by item instance.
+    }
+
+    public void Dispose()
+    {
+        if (this.disposed)
             return;
-
-        lines.Add(
-            this.helper.Translation
-                .Get(
-                    "food-buff-tooltip.line",
-                    new
-                    {
-                        label = this.GetLabel(labelKey),
-                        value = FormatSigned(value)
-                    }
-                )
-                .ToString()
-        );
+        this.disposed = true;
+        this.helper.Events.Content.LocaleChanged -= this.OnLocaleChanged;
     }
 
-    private void AddPercentLine(List<string> lines, string labelKey, double value)
+    private static void AddRows(
+        List<SanityTooltipRow> destination,
+        IReadOnlyList<SanityTooltipRow> source
+    )
     {
-        if (!IsMeaningful(value))
-            return;
-
-        lines.Add(
-            this.helper.Translation
-                .Get(
-                    "food-buff-tooltip.percent-line",
-                    new
-                    {
-                        label = this.GetLabel(labelKey),
-                        value = FormatSigned(value * 100)
-                    }
-                )
-                .ToString()
-        );
+        foreach (var row in source)
+            destination.Add(row);
     }
 
-    private string GetLabel(string key)
+    private void AddSurvivalRows(
+        Item item,
+        bool showSanity,
+        FoodBuffTooltipTextMode textMode,
+        List<SanityTooltipRow> rows
+    )
     {
-        return this.helper.Translation.Get($"food-buff-tooltip.{key}").ToString();
-    }
-
-    private void OnAssetsInvalidated(object sender, AssetsInvalidatedEventArgs e)
-    {
-        foreach (var name in e.NamesWithoutLocale)
+        if (
+            HungerEatFood.FoodHunger is not null
+            && HungerEatFood.FoodHunger.TryGetValue(item.ItemId, out var hungerValue)
+            && this.TryFormatSigned(hungerValue, out var formattedHunger)
+        )
         {
-            if (name.IsEquivalentTo("Data/Objects", true))
-            {
-                // 只在对象数据变化时清缓存，避免每帧重新解析 Data/Objects。
-                this.cache.Clear();
-                return;
-            }
+            rows.Add(
+                new SanityTooltipRow(
+                    SanityTooltipRowKind.Hunger,
+                    this.FormatSurvivalText(
+                        textMode,
+                        "hunger-tooltip",
+                        formattedHunger
+                    ),
+                    SanityTooltipIconKind.HungerIcon,
+                    -1,
+                    -1
+                )
+            );
+        }
+
+        if (!showSanity)
+            return;
+
+        if (
+            SanityEatFood.FoodSanity is not null
+            && SanityEatFood.FoodSanity.TryGetValue(item.ItemId, out var foodSanity)
+            && this.TryFormatSigned(foodSanity, out var formattedFoodSanity)
+        )
+        {
+            rows.Add(
+                new SanityTooltipRow(
+                    SanityTooltipRowKind.Sanity,
+                    this.FormatSurvivalText(
+                        textMode,
+                        "sanity-tooltip.food-once",
+                        formattedFoodSanity,
+                        compactTranslationKey: "sanity-tooltip"
+                    ),
+                    SanityTooltipIconKind.SanityBrain,
+                    -1,
+                    -1
+                )
+            );
+        }
+
+        if (
+            Wearing.TryGetPerMinuteSanity(item, out var equipmentSanity)
+            && this.TryFormatSigned(equipmentSanity, out var formattedEquipmentSanity)
+        )
+        {
+            rows.Add(
+                new SanityTooltipRow(
+                    SanityTooltipRowKind.Sanity,
+                    this.FormatSurvivalText(
+                        textMode,
+                        "sanity-tooltip.equipment-per-minute",
+                        formattedEquipmentSanity
+                    ),
+                    SanityTooltipIconKind.SanityBrain,
+                    -1,
+                    -1
+                )
+            );
         }
     }
 
-    private static bool IsMeaningful(double value)
+    private string FormatSurvivalText(
+        FoodBuffTooltipTextMode textMode,
+        string descriptiveTranslationKey,
+        string formattedValue,
+        string? compactTranslationKey = null
+    )
     {
-        return Math.Abs(value) >= Epsilon;
+        var translationKey = textMode == FoodBuffTooltipTextMode.CompactVanillaTooltip
+            ? compactTranslationKey ?? descriptiveTranslationKey
+            : descriptiveTranslationKey;
+
+        return this.helper.Translation.Get(translationKey, new { value = formattedValue }).ToString();
     }
 
-    private static string FormatSigned(double value)
+    private void AddExternalImmunityRow(List<SanityTooltipRow> rows, float value)
     {
-        var normalized = Math.Round(value, 2);
-        var text = normalized.ToString("0.##", CultureInfo.InvariantCulture);
-        return normalized > 0 ? $"+{text}" : text;
+        if (value == 0f)
+            return;
+
+        rows.Add(
+            new SanityTooltipRow(
+                SanityTooltipRowKind.Buff,
+                this.helper.Translation
+                    .Get(
+                        "food-buff-tooltip.immunity",
+                        new { value = FormatExternalImmunityValue(value) }
+                    )
+                    .ToString(),
+                SanityTooltipIconKind.VanillaCursor,
+                -1,
+                ImmunityIconSourceX
+            )
+        );
     }
 
-    private sealed class FoodBuffAttributeValues
+    private void AddExternalMultiplierRow(
+        List<SanityTooltipRow> rows,
+        string translationKey,
+        float value,
+        int iconSourceX
+    )
     {
-        public double CombatLevel { get; private set; }
-        public double Attack { get; private set; }
-        public double Defense { get; private set; }
-        public double Immunity { get; private set; }
-        public double AttackMultiplier { get; private set; }
-        public double KnockbackMultiplier { get; private set; }
-        public double WeaponSpeedMultiplier { get; private set; }
-        public double CriticalChanceMultiplier { get; private set; }
-        public double CriticalPowerMultiplier { get; private set; }
-        public double WeaponPrecisionMultiplier { get; private set; }
+        if (value == 0f)
+            return;
 
-        public bool HasAnyValue =>
-            IsMeaningful(this.CombatLevel)
-            || IsMeaningful(this.Attack)
-            || IsMeaningful(this.Defense)
-            || IsMeaningful(this.Immunity)
-            || IsMeaningful(this.AttackMultiplier)
-            || IsMeaningful(this.KnockbackMultiplier)
-            || IsMeaningful(this.WeaponSpeedMultiplier)
-            || IsMeaningful(this.CriticalChanceMultiplier)
-            || IsMeaningful(this.CriticalPowerMultiplier)
-            || IsMeaningful(this.WeaponPrecisionMultiplier);
+        rows.Add(
+            new SanityTooltipRow(
+                SanityTooltipRowKind.Buff,
+                this.helper.Translation
+                    .Get(translationKey, new { value = FormatExternalMultiplierValue(value) })
+                    .ToString(),
+                SanityTooltipIconKind.VanillaCursor,
+                -1,
+                iconSourceX
+            )
+        );
+    }
 
-        public void Add(BuffAttributesData attributes)
-        {
-            if (attributes == null)
-                return;
+    private void OnLocaleChanged(object? sender, LocaleChangedEventArgs e)
+    {
+        this.culture = LocalizedValueFormatter.ResolveCulture(e.NewLocale);
+    }
 
-            this.CombatLevel += attributes.CombatLevel;
-            this.Attack += attributes.Attack;
-            this.Defense += attributes.Defense;
-            this.Immunity += attributes.Immunity;
-            this.AttackMultiplier += attributes.AttackMultiplier;
-            this.KnockbackMultiplier += attributes.KnockbackMultiplier;
-            this.WeaponSpeedMultiplier += attributes.WeaponSpeedMultiplier;
-            this.CriticalChanceMultiplier += attributes.CriticalChanceMultiplier;
-            this.CriticalPowerMultiplier += attributes.CriticalPowerMultiplier;
-            this.WeaponPrecisionMultiplier += attributes.WeaponPrecisionMultiplier;
-        }
+    private bool TryFormatSigned(double value, out string formatted)
+    {
+        return LocalizedValueFormatter.TryFormatSigned(value, this.culture, out formatted);
+    }
+
+    private static string FormatExternalMultiplierValue(float value)
+    {
+        return string.Concat(value > 0f ? "+" : string.Empty, Math.Round(value * 100f), "%");
+    }
+
+    private static string FormatExternalImmunityValue(float value)
+    {
+        return string.Concat(value > 0f ? "+" : string.Empty, Math.Round(value, 2));
     }
 }

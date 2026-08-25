@@ -491,9 +491,12 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
 
         cacheMisses++;
         var resources = new List<ISanityPhysicalResource>();
+        var resourcesByCueId = new Dictionary<string, List<ISanityPhysicalResource>>(StringComparer.Ordinal);
         var createdKeys = new List<string>();
         foreach (var cue in definition.Cues)
         {
+            var cueResources = new List<ISanityPhysicalResource>();
+            resourcesByCueId[cue.CueId] = cueResources;
             if (!cue.Enabled)
                 continue;
 
@@ -505,7 +508,8 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
                     SanityPhysicalResourceKind.SoundEffect,
                     clip.Sha256,
                     cue.RequiredForRelease,
-                    cue.IsPlaceholder || clip.IsPlaceholder
+                    cue.IsPlaceholder || clip.IsPlaceholder,
+                    clip.FormatId
                 );
                 if (!load.Success)
                 {
@@ -517,12 +521,19 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
                 }
 
                 resources.Add(load.Resource!);
+                cueResources.Add(load.Resource!);
                 if (load.CreatedCacheKey is not null)
                     createdKeys.Add(load.CreatedCacheKey);
             }
         }
 
-        var runtime = new SanityCueSetRuntimeResource(definition, resources);
+        var cueResourceMap = new Dictionary<string, IReadOnlyList<ISanityPhysicalResource>>(
+            StringComparer.Ordinal
+        );
+        foreach (var pair in resourcesByCueId)
+            cueResourceMap[pair.Key] = pair.Value;
+
+        var runtime = new SanityCueSetRuntimeResource(definition, resources, cueResourceMap);
         cueSets.Add(definition.CueSetId, runtime);
         return CreateCueSetSuccess(runtime, requestedSlot, requestedCue);
     }

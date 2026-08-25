@@ -12,7 +12,7 @@ public sealed class CreeperFearMovementAndAiTests
     private const string LocationId = "Farm";
 
     [Fact]
-    public void Shipped_profile_drives_stats_twenty_tile_boundary_idle_and_two_hour_ttl()
+    public void Shipped_profile_drives_stats_twenty_tile_boundary_idle_and_two_hour_no_target_ttl()
     {
         var profile = RuntimeProfile(ShadowMonsterAssetBindingIds.CreeperFear);
 
@@ -23,7 +23,7 @@ public sealed class CreeperFearMovementAndAiTests
         Assert.Equal(1280d, profile.DetectionRadiusPixels);
         Assert.Equal(2d, profile.AttackRangeTiles);
         Assert.Equal(128d, profile.AttackRangePixels);
-        Assert.Equal(1d, profile.AttackIntervalSeconds);
+        Assert.Equal(1.8d, profile.AttackIntervalSeconds);
         Assert.Equal(2d, profile.NaturalDespawnGameHours);
         Assert.Equal(
             ShadowMonsterProfileContractIds.TauntOrDelayPostAttack,
@@ -40,7 +40,12 @@ public sealed class CreeperFearMovementAndAiTests
             currentMinute: 119,
             new HostileShadowPlayerSample(Owner, LocationId, 1280.001d, 0d)
         );
-        var expired = Evaluate(profile, currentMinute: 120);
+        var expired = EvaluateWithNoTargetTimer(
+            profile,
+            currentMinute: 120,
+            noTargetSinceGameMinute: 0,
+            new HostileShadowPlayerSample(Owner, LocationId, 5000d, 0d, false)
+        );
 
         Assert.Equal(HostileShadowStateIds.Chase, boundary.StateId);
         Assert.Equal(Owner, boundary.TargetPlayerKey);
@@ -110,7 +115,7 @@ public sealed class CreeperFearMovementAndAiTests
         string expectedFacing
     )
     {
-        var presentation = new HostileShadowMovementPresentationState(4, 150);
+        var presentation = new HostileShadowMovementPresentationState(4, 100);
 
         Assert.True(
             presentation.TryAdvance(
@@ -120,7 +125,7 @@ public sealed class CreeperFearMovementAndAiTests
                 standingY: 0d,
                 targetX,
                 targetY,
-                elapsedMilliseconds: 150d,
+                elapsedMilliseconds: 100d,
                 out var changed
             )
         );
@@ -131,7 +136,7 @@ public sealed class CreeperFearMovementAndAiTests
     }
 
     [Fact]
-    public void Move_metadata_exposes_rows_zero_to_three_and_150ms_loop_cadence()
+    public void Move_metadata_exposes_rows_zero_to_three_and_100ms_loop_cadence()
     {
         var metadata = HostileAttackTestFactory.MetadataCatalog();
         Assert.True(
@@ -145,7 +150,7 @@ public sealed class CreeperFearMovementAndAiTests
         >(definition!.Chase);
 
         Assert.Equal(4, chase.FrameCount);
-        Assert.Equal(150, chase.FrameDurationMilliseconds);
+        Assert.Equal(100, chase.FrameDurationMilliseconds);
         AssertDirectionRow(chase, HostileShadowFacingIds.Down, 0);
         AssertDirectionRow(chase, HostileShadowFacingIds.Right, 1);
         AssertDirectionRow(chase, HostileShadowFacingIds.Up, 2);
@@ -163,7 +168,7 @@ public sealed class CreeperFearMovementAndAiTests
                 0d,
                 0d,
                 10d,
-                149d,
+                99d,
                 out _
             )
         );
@@ -189,7 +194,7 @@ public sealed class CreeperFearMovementAndAiTests
                 0d,
                 0d,
                 10d,
-                450d,
+                300d,
                 out _
             )
         );
@@ -207,6 +212,52 @@ public sealed class CreeperFearMovementAndAiTests
             )
         );
         Assert.Equal(0, presentation.FrameIndex);
+    }
+
+    [Fact]
+    public void Wandering_uses_half_speed_for_position_and_animation_clock()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+
+        Assert.Contains("entry.Profile.MovementSpeed * 0.5d", world, StringComparison.Ordinal);
+        Assert.Contains("FixedUpdateSeconds * 1000d * (isWanderingNow ? 0.5d : 1d)", world, StringComparison.Ordinal);
+        Assert.Contains("|| isWanderingNow", world, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Creeper_fear_render_offset_moves_up_one_tile_without_rebasing_collision_geometry()
+    {
+        var source = Contract("HostileShadowMonster.cs").Replace("\r\n", "\n", StringComparison.Ordinal);
+        var spriteSectionStart = source.IndexOf("var spriteScreen", StringComparison.Ordinal);
+        var drawColorStart = source.IndexOf("var drawColor", spriteSectionStart, StringComparison.Ordinal);
+
+        Assert.True(spriteSectionStart >= 0);
+        Assert.True(drawColorStart > spriteSectionStart);
+        var spriteSection = source[spriteSectionStart..drawColorStart];
+        Assert.Contains("? 0f", spriteSection, StringComparison.Ordinal);
+        Assert.Contains(": -64f", spriteSection, StringComparison.Ordinal);
+        Assert.DoesNotContain("? 64f", spriteSection, StringComparison.Ordinal);
+        Assert.Contains("            screen,\n            pivot,", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Creeper_fear_and_terrorbeak_share_the_three_to_five_second_wander_window_but_keep_attack_intervals()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var wanderStart = world.IndexOf("private bool TryAdvanceWander", StringComparison.Ordinal);
+        var wanderEnd = world.IndexOf("private void ResolvePendingLethalDamage", wanderStart, StringComparison.Ordinal);
+
+        Assert.True(wanderStart >= 0);
+        Assert.True(wanderEnd > wanderStart);
+        var wander = world[wanderStart..wanderEnd];
+        Assert.Contains("3000d + (wanderRandom.NextDouble() * 2000d)", wander, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreeperFear", wander, StringComparison.Ordinal);
+        Assert.DoesNotContain("Terrorbeak", wander, StringComparison.Ordinal);
+
+        var creeper = RuntimeProfile(ShadowMonsterAssetBindingIds.CreeperFear);
+        var terrorbeak = RuntimeProfile(ShadowMonsterAssetBindingIds.Terrorbeak);
+        Assert.Equal(1.8d, creeper.AttackIntervalSeconds);
+        Assert.Equal(1.2d, terrorbeak.AttackIntervalSeconds);
     }
 
     [Fact]
@@ -235,8 +286,8 @@ public sealed class CreeperFearMovementAndAiTests
     }
 
     [Theory]
-    [InlineData(0d, true, 0.5d)]
-    [InlineData(0.249999d, true, 0.5d)]
+    [InlineData(0d, true, 1.2d)]
+    [InlineData(0.249999d, true, 1.2d)]
     [InlineData(0.25d, false, 1d)]
     [InlineData(0.999999d, false, 1d)]
     public void Injected_rng_boundary_is_exact_and_duplicate_revision_is_memoized(
@@ -278,7 +329,7 @@ public sealed class CreeperFearMovementAndAiTests
     }
 
     [Theory]
-    [InlineData(0d, true, 500d)]
+    [InlineData(0d, true, 1200d)]
     [InlineData(0.25d, false, 1000d)]
     public void Attack_completion_waits_after_taunt_or_directly_for_profile_interval(
         double sample,
@@ -466,6 +517,36 @@ public sealed class CreeperFearMovementAndAiTests
         params HostileShadowPlayerSample[] players
     )
     {
+        return EvaluateCore(
+            profile,
+            currentMinute,
+            noTargetSinceGameMinute: null,
+            players
+        );
+    }
+
+    private static HostileShadowTargetingDecision EvaluateWithNoTargetTimer(
+        ShadowMonsterRuntimeProfile profile,
+        long currentMinute,
+        long noTargetSinceGameMinute,
+        params HostileShadowPlayerSample[] players
+    )
+    {
+        return EvaluateCore(
+            profile,
+            currentMinute,
+            noTargetSinceGameMinute,
+            players
+        );
+    }
+
+    private static HostileShadowTargetingDecision EvaluateCore(
+        ShadowMonsterRuntimeProfile profile,
+        long currentMinute,
+        long? noTargetSinceGameMinute,
+        params HostileShadowPlayerSample[] players
+    )
+    {
         var index = new HostileShadowLocationPlayerIndex();
         var rebuild = index.Rebuild(players);
         Assert.True(rebuild.Success, rebuild.Reason);
@@ -485,6 +566,7 @@ public sealed class CreeperFearMovementAndAiTests
                 SpawnGameMinute = 0,
                 CurrentGameMinute = currentMinute,
                 NaturalTtlMinutes = (long)(profile.NaturalDespawnGameHours * 60d),
+                NoTargetSinceGameMinute = noTargetSinceGameMinute,
                 ElapsedSeconds = 0d,
             },
             index

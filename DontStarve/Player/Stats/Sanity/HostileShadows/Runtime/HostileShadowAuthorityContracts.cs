@@ -96,6 +96,7 @@ internal enum HostileShadowSpawnOrigin
 {
     Interval,
     OwnerProjectionConversion,
+    DebugCommand,
 }
 
 internal enum HostileShadowSpawnStatus

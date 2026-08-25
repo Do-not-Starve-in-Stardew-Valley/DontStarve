@@ -34,8 +34,8 @@ public sealed class SanityAudioAssetTests
             new[] { "sanity.cue.sanity-change.gain", "sanity.cue.sanity-change.loss" },
             result.DisabledCueIds
         );
-        Assert.Equal(14, result.PlaceholderCueIds.Count);
-        Assert.Equal(17, result.PendingRealMachineCueIds.Count);
+        Assert.Equal(6, result.PlaceholderCueIds.Count);
+        Assert.Equal(22, result.PendingRealMachineCueIds.Count);
 
         var json = File.ReadAllText(MetadataPath);
         Assert.DoesNotContain("references/", json, StringComparison.OrdinalIgnoreCase);
@@ -63,9 +63,9 @@ public sealed class SanityAudioAssetTests
         );
 
         Assert.False(result.Success);
-        Assert.Equal(42, result.Issues.Count(issue => issue.Code == "release.asset-placeholder"));
-        Assert.Equal(19, result.Issues.Count(issue => issue.Code == "release.dev-credit-group"));
-        Assert.Equal(50, result.Issues.Count(issue => issue.Code == "release.credit-placeholder"));
+        Assert.Equal(34, result.Issues.Count(issue => issue.Code == "release.asset-placeholder"));
+        Assert.Equal(11, result.Issues.Count(issue => issue.Code == "release.dev-credit-group"));
+        Assert.Equal(55, result.Issues.Count(issue => issue.Code == "release.credit-placeholder"));
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public sealed class SanityAudioAssetTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(MetadataPath));
         var clips = AllClips(document.RootElement).ToArray();
-        Assert.Equal(35, clips.Length);
-        Assert.Equal(35, clips.Select(clip => clip.GetProperty("ClipId").GetString()).Distinct().Count());
-        Assert.Equal(35, clips.Select(clip => clip.GetProperty("Path").GetString()).Distinct().Count());
+        Assert.Equal(140, clips.Length);
+        Assert.Equal(140, clips.Select(clip => clip.GetProperty("ClipId").GetString()).Distinct().Count());
+        Assert.Equal(140, clips.Select(clip => clip.GetProperty("Path").GetString()).Distinct().Count());
 
         foreach (var clip in clips)
         {
@@ -94,12 +94,12 @@ public sealed class SanityAudioAssetTests
             );
             var inspection = SanityWavInspector.InspectFile(absolutePath);
             Assert.True(inspection.Success, string.Join(Environment.NewLine, inspection.Issues));
-            Assert.Equal(1, inspection.FormatCode);
-            Assert.Equal(2, inspection.Channels);
-            Assert.Equal(44100, inspection.SampleRateHz);
-            Assert.Equal(16, inspection.BitsPerSample);
-            Assert.Equal(4, inspection.BlockAlign);
-            Assert.Equal(176400, inspection.ByteRate);
+            var formatId = clip.GetProperty("FormatId").GetString();
+            Assert.True(
+                SanityWavFormatCatalog.TryGet(formatId, out var expectedFormat),
+                $"Unsupported clip format id '{formatId}'."
+            );
+            Assert.True(expectedFormat.Matches(inspection));
             Assert.Equal(clip.GetProperty("Sha256").GetString(), inspection.Sha256);
             Assert.Equal(clip.GetProperty("DurationFrames").GetInt64(), inspection.Frames);
             Assert.InRange(
@@ -111,14 +111,14 @@ public sealed class SanityAudioAssetTests
     }
 
     [Fact]
-    public void RealSourcesPreserveGainAndDocumentTheFourByteRiffRepair()
+    public void RealSourcesPreserveGainAndDocumentUnmodifiedContainers()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(MetadataPath));
         var clips = AllClips(document.RootElement).ToArray();
         var real = clips.Where(clip => !clip.GetProperty("IsPlaceholder").GetBoolean()).ToArray();
         var placeholders = clips.Where(clip => clip.GetProperty("IsPlaceholder").GetBoolean()).ToArray();
-        Assert.Equal(23, real.Length);
-        Assert.Equal(12, placeholders.Length);
+        Assert.Equal(136, real.Length);
+        Assert.Equal(4, placeholders.Length);
 
         foreach (var clip in real)
         {
@@ -129,8 +129,13 @@ public sealed class SanityAudioAssetTests
             Assert.Equal(2, source.GetProperty("Format").GetProperty("Channels").GetInt32());
             Assert.Equal(16, source.GetProperty("Format").GetProperty("BitsPerSample").GetInt32());
             var container = source.GetProperty("ContainerEvidence");
-            Assert.Equal(4, container.GetProperty("RiffLengthDeltaBytes").GetInt32());
-            Assert.True(container.GetProperty("CanonicalHeaderRebuilt").GetBoolean());
+            var riffLengthDelta = container.GetProperty("RiffLengthDeltaBytes").GetInt32();
+            var canonicalHeaderRebuilt = container.GetProperty("CanonicalHeaderRebuilt").GetBoolean();
+            Assert.True(
+                (riffLengthDelta == 0 && !canonicalHeaderRebuilt)
+                    || (riffLengthDelta == 4 && canonicalHeaderRebuilt),
+                $"Unexpected container evidence for {clip.GetProperty("Path").GetString()}."
+            );
             Assert.Equal(
                 container.GetProperty("DataDeclaredBytes").GetInt32(),
                 container.GetProperty("DataDecodedBytes").GetInt32()

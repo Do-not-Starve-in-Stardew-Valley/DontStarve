@@ -81,11 +81,15 @@ public sealed class SanityGameMusicCoordinatorTests
     }
 
     [Fact]
-    public void Unique_process_winner_drives_suppression_without_a_second_claim_authority()
+    public void Fifty_percent_music_request_drives_suppression_without_a_second_claim_authority()
     {
         using var process = new SanityProcessAudioCoordinator(new NoOpProcessOutput());
-        process.SubmitClaim(Claim("10", 1, 1, 0.1d, danger: true));
-        process.SubmitClaim(Claim("2", 0, 1, 0.1d, danger: true));
+        process.SubmitClaim(
+            Claim("10", 1, 1, 0.5d, ambience: true, whispers: false, musicSuppression: true)
+        );
+        process.SubmitClaim(
+            Claim("2", 0, 1, 0.5d, ambience: true, whispers: false, musicSuppression: true)
+        );
         var adapter = new FakeMusicAdapter();
         using var music = new SanityGameMusicCoordinator(adapter);
 
@@ -100,21 +104,45 @@ public sealed class SanityGameMusicCoordinatorTests
     }
 
     [Fact]
-    public void Winner_outside_danger_releases_suppression()
+    public void Winner_outside_music_suppression_releases_suppression()
     {
         using var process = new SanityProcessAudioCoordinator(new NoOpProcessOutput());
         var adapter = new FakeMusicAdapter();
         using var music = new SanityGameMusicCoordinator(adapter);
-        process.SubmitClaim(Claim("1", 0, 1, 0.1d, danger: true));
+        process.SubmitClaim(
+            Claim("1", 0, 1, 0.5d, ambience: true, whispers: false, musicSuppression: true)
+        );
         music.Reconcile(process.MusicState(), false, false);
 
-        process.SubmitClaim(Claim("1", 0, 2, 0.2d, ambience: true, whispers: true));
+        process.SubmitClaim(Claim("1", 0, 2, 0.51d));
         var released = music.Reconcile(process.MusicState(), false, false);
 
-        Assert.Equal(SanityGameMusicDecisionKind.WinnerOutsideDanger, released.Kind);
+        Assert.Equal(SanityGameMusicDecisionKind.WinnerOutsideMusicSuppression, released.Kind);
         Assert.False(released.WantsSuppression);
         Assert.False(released.SuppressionApplied);
         Assert.Equal(1, adapter.ReleaseCount);
+    }
+
+    [Fact]
+    public void Event_exit_reclaims_a_fifty_percent_music_request_without_danger()
+    {
+        using var process = new SanityProcessAudioCoordinator(new NoOpProcessOutput());
+        process.SubmitClaim(
+            Claim("1", 0, 1, 0.5d, ambience: true, whispers: false, musicSuppression: true)
+        );
+        var adapter = new FakeMusicAdapter();
+        using var music = new SanityGameMusicCoordinator(adapter);
+
+        Assert.Equal(SanityGameMusicDecisionKind.Suppressed, music.Reconcile(process.MusicState(), false, false).Kind);
+
+        process.SetEventSuspended(true);
+        Assert.Equal(SanityGameMusicDecisionKind.EventSuspended, music.Reconcile(process.MusicState(), false, false).Kind);
+
+        process.SetEventSuspended(false);
+        var resumed = music.Reconcile(process.MusicState(), false, false);
+        Assert.Equal(SanityGameMusicDecisionKind.Suppressed, resumed.Kind);
+        Assert.True(resumed.SuppressionApplied);
+        Assert.False(process.Snapshot().DangerActive);
     }
 
     [Fact]
@@ -151,12 +179,13 @@ public sealed class SanityGameMusicCoordinatorTests
     }
 
     [Theory]
-    [InlineData(true, false, (int)SanityGameMusicDecisionKind.ProcessPaused)]
-    [InlineData(false, true, (int)SanityGameMusicDecisionKind.EventSuspended)]
-    public void Global_pause_or_event_suspension_releases_without_dropping_owner(
+    [InlineData(true, false, (int)SanityGameMusicDecisionKind.Suppressed, true)]
+    [InlineData(false, true, (int)SanityGameMusicDecisionKind.EventSuspended, false)]
+    public void Process_pause_keeps_suppression_while_event_suspension_releases_without_dropping_owner(
         bool processPaused,
         bool eventSuspended,
-        int expectedKind
+        int expectedKind,
+        bool expectedSuppression
     )
     {
         using var process = DangerProcess();
@@ -169,7 +198,7 @@ public sealed class SanityGameMusicCoordinatorTests
         var decision = music.Reconcile(process.MusicState(), false, false);
 
         Assert.Equal((SanityGameMusicDecisionKind)expectedKind, decision.Kind);
-        Assert.False(decision.SuppressionApplied);
+        Assert.Equal(expectedSuppression, decision.SuppressionApplied);
         Assert.NotNull(decision.Winner);
         Assert.Single(process.Snapshot().Claims);
     }
@@ -345,7 +374,7 @@ public sealed class SanityGameMusicCoordinatorTests
     private static SanityProcessAudioCoordinator DangerProcess()
     {
         var process = new SanityProcessAudioCoordinator(new NoOpProcessOutput());
-        process.SubmitClaim(Claim("1", 0, 1, 0.1d, danger: true));
+        process.SubmitClaim(Claim("1", 0, 1, 0.1d, danger: true, musicSuppression: true));
         return process;
     }
 
@@ -356,8 +385,18 @@ public sealed class SanityGameMusicCoordinatorTests
         double ratio,
         bool ambience = true,
         bool whispers = true,
-        bool danger = false
-    ) => new(playerKey, screenId, revision, ratio, ambience, whispers, danger);
+        bool danger = false,
+        bool musicSuppression = false
+    ) => new(
+        playerKey,
+        screenId,
+        revision,
+        ratio,
+        ambience,
+        whispers,
+        danger,
+        musicSuppression
+    );
 
     private static string ReadSource(string folder, string fileName)
     {

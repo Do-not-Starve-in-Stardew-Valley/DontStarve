@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Monsters;
@@ -38,7 +39,7 @@ internal class NearMonster : ITimeRelatedBehavior
         if (location == null)
             return;
 
-        var playerPosition = player.Tile;
+        var playerCenter = player.GetBoundingBox().Center;
         var value = 0.0;
 
         // 每分钟只扫当前地点 characters，避免跨地点或全局 NPC 扫描进入高频路径。
@@ -47,7 +48,13 @@ internal class NearMonster : ITimeRelatedBehavior
             if (npc is not Monster monster)
                 continue;
 
-            var monsterPosition = monster.Tile;
+            // DIAG-20260807: 用 GetBoundingBox().Center（世界像素中心）而非 monster.Tile
+            // （左上角格坐标）做距离检测——影怪等自定义怪物的受击框中心已按贴图锚点
+            // 校准（ActorOriginSourcePx），靠近掉 san 依赖的“怪物真正位置”以中心为准；
+            // 对所有原版怪物同样更准确（中心对中心）。
+            var monsterCenter = monster.GetBoundingBox().Center;
+            var playerPosition = new Vector2(playerCenter.X, playerCenter.Y);
+            var monsterPosition = new Vector2(monsterCenter.X, monsterCenter.Y);
             var distance = Util.Distance(playerPosition, monsterPosition);
             value += SanityBehaviorRules.CalculateMonsterLoss(
                 monsterSanity.GetValueOrDefault(monster.Name, 0),

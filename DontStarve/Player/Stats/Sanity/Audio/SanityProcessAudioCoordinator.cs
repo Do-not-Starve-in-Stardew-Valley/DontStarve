@@ -18,7 +18,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     private const int MaximumDiagnosticCodes = 32;
 
     private readonly Dictionary<SanityAudioClaimKey, SanityAudioOwnerClaim> claims = new();
-    // A removed warp/location claim keeps its last accepted revision until the day/session is
+    // A removed owner/screen claim keeps its last accepted revision until the day/session is
     // cleared. This prevents an old tier snapshot from immediately resurrecting stale audio.
     private readonly Dictionary<SanityAudioClaimKey, long> revisionReceipts = new();
     // Local menus remove only their owner from physical eligibility. Claims and tier-edge
@@ -733,6 +733,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return "audio.claim.whispers-without-ambience";
         if (claim.DangerActive && (!claim.AmbienceActive || !claim.WhispersActive))
             return "audio.claim.danger-without-parent-lanes";
+        if (claim.MusicSuppressionRequested && !claim.AmbienceActive)
+            return "audio.claim.music-without-ambience";
         return null;
     }
 

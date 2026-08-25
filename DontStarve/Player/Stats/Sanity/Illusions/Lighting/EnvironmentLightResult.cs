@@ -169,6 +169,6 @@ internal static class EnvironmentLightReasonIds
         "environment-light.final-visibility-dim-confirmed";
     internal const string FinalVisibilityPitchBlackConfirmed =
         "environment-light.final-visibility-pitch-black-confirmed";
-    internal const string FinalVisibilityPitchBlackLocationUnsafe =
-        "environment-light.final-visibility-pitch-black-location-unsafe";
+    internal const string FinalVisibilityPitchBlackAuthorizationDenied =
+        "environment-light.final-visibility-pitch-black-authorization-denied";
 }

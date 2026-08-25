@@ -22,7 +22,7 @@ public sealed class SanityRuntimeResourceLoaderTests
 
         Assert.Equal(1, first.ManifestParseCount);
         Assert.Equal(1, second.ManifestParseCount);
-        Assert.Equal(42, first.PlaceholderSlotIds.Count);
+        Assert.Equal(34, first.PlaceholderSlotIds.Count);
         Assert.Empty(first.DisabledOptionalSlotIds);
         Assert.Equal(0, factory.TotalCreates);
         Assert.Contains(first.Diagnostics, value => value.Code == "asset.placeholder-pending");
@@ -137,10 +137,10 @@ public sealed class SanityRuntimeResourceLoaderTests
         Assert.True(result.Success, result.Diagnostic.Reason);
         var preview = Assert.IsType<SanityVisualPreviewDefinition>(result.VisualPreview);
         Assert.Equal(SanityVisualPreviewKind.AnimationFrame, preview.Kind);
-        Assert.Equal(new SanityResourceRectangle(128, 256, 64, 64), preview.SourceRectangle);
+        Assert.Equal(new SanityResourceRectangle(128, 384, 64, 96), preview.SourceRectangle);
         Assert.Equal(new SanityResourcePoint(32, 48), preview.PivotSourcePx);
         Assert.Equal(new SanityResourceRectangle(4, 48, 56, 48), preview.HurtBoxSourcePx);
-        Assert.Equal(new SanityResourceRectangle(-8, 56, 80, 80), preview.AttackBoxSourcePx);
+        Assert.Equal(new SanityResourceRectangle(0, 64, 64, 64), preview.AttackBoxSourcePx);
         Assert.True(preview.IsProvisional);
 
         var outOfRange = loader.LoadSlot("sanity.animation.creeper-fear.attack", frameIndex: 4);
@@ -269,7 +269,7 @@ public sealed class SanityRuntimeResourceLoaderTests
         var factory = new FakeFactory();
         using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
 
-        var attack = loader.LoadSlot("sanity.cue.creeper-fear.attack");
+        var attack = loader.LoadSlot("sanity.cue.creeper-fear.attack-dull");
         var hurt = loader.LoadSlot("sanity.cue.creeper-fear.hurt");
         var bySet = loader.LoadCueSet("sanity.cue.creeper-fear");
         var optional = loader.LoadSlot("sanity.cue.sanity-change.gain");
@@ -281,8 +281,8 @@ public sealed class SanityRuntimeResourceLoaderTests
         Assert.Same(attack.CueSet, hurt.CueSet);
         Assert.Same(attack.CueSet, bySet.CueSet);
         Assert.Equal("sanity.cue.creeper-fear", attack.CueSet!.Definition.CueSetId);
-        Assert.Equal(4, attack.CueSet.PhysicalResources.Count);
-        Assert.Equal(4, factory.SoundCreates);
+        Assert.Equal(50, attack.CueSet.PhysicalResources.Count);
+        Assert.Equal(50, factory.SoundCreates);
         Assert.Equal("PendingRealMachine", attack.Cue!.ListeningStatus);
         Assert.True(attack.Diagnostic.IsPlaceholder);
         Assert.Equal(SanityResourceCapabilityStatus.DisabledOptional, optional.Diagnostic.Status);

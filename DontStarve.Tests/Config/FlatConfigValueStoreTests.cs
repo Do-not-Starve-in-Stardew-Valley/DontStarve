@@ -29,7 +29,7 @@ public sealed class FlatConfigValueStoreTests
         Assert.True(saved.Success, saved.Reason);
         Assert.Equal(1, file.WriteCount);
         using var document = JsonDocument.Parse(Assert.IsType<string>(file.LastWritten));
-        Assert.Equal(8, document.RootElement.EnumerateObject().Count());
+        Assert.Equal(11, document.RootElement.EnumerateObject().Count());
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class FlatConfigValueStoreTests
             Assert.Equal(1, nested[0].GetInt32());
             Assert.True(nested[1].GetBoolean());
             Assert.Equal("keep", nested[2].GetString());
-            Assert.Equal(8, root.EnumerateObject().Count(property => ConfigKeys.IsFrozen(property.Name)));
+            Assert.Equal(11, root.EnumerateObject().Count(property => ConfigKeys.IsFrozen(property.Name)));
         }
 
         var reloaded = FlatConfigValueStore.Load(registry, file);
@@ -266,7 +266,7 @@ public sealed class FlatConfigValueStoreTests
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
             Assert.Equal(
-                8,
+                11,
                 document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 )

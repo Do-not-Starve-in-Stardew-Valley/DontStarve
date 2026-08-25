@@ -60,6 +60,39 @@
       "Order": 30
     },
     {
+      "Key": "EnableLowSanityScreenDistortion",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-low-sanity-screen-distortion.name",
+      "TooltipI18n": "config.enable-low-sanity-screen-distortion.tooltip",
+      "Order": 32
+    },
+    {
+      "Key": "EnableSanityVignette",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-sanity-vignette.name",
+      "TooltipI18n": "config.enable-sanity-vignette.tooltip",
+      "Order": 35
+    },
+    {
+      "Key": "EnableNaturalDarkness",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-natural-darkness.name",
+      "TooltipI18n": "config.enable-natural-darkness.tooltip",
+      "Order": 38
+    },
+    {
       "Key": "DarknessDamageMode",
       "Type": "Enum",
       "Default": "Default",

@@ -26,8 +26,8 @@ internal static class DisplayManager
             {
                 new HungerBar(),
                 new SanityBar(sanitySystemState),
-                new FoodTooltip(sanitySystemState),
             };
+        // 保留 FoodTooltip 源码作为可逆的旧实现，但当前属性只由原版集中 tooltip 显示。
         foreach (var e in nonTimeRelatedUIElements)
             e.Init(helper);
         foreach (var e in timeRelatedUIElements)
@@ -39,7 +39,11 @@ internal static class DisplayManager
                 return;
 
             // RenderingHud 使用 UI viewport 坐标；不要混用世界坐标或 Game1.viewport。
-            var uiContext = new UIRenderContext(helper, e);
+            var uiContext = new UIRenderContext(
+                helper,
+                e,
+                sanitySystemState.IsEnabled
+            );
             foreach (var el in nonTimeRelatedUIElements)
                 el.Render(e, uiContext);
             foreach (var el in timeRelatedUIElements)

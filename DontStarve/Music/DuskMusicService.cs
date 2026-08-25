@@ -83,7 +83,7 @@ internal static class DuskMusicService
             var newTime = e.NewTime;
             var triggerTime = GetSeasonTriggerTime();
 
-            // 用 old < trigger <= new 判断跨越，避免 20:00 之后读档或重复 TimeChanged 多次播放。
+            // 用 old < trigger <= new 判断跨越，避免黄昏之后读档或重复 TimeChanged 多次播放。
             if (
                 !_suppressed
                 && oldTime < triggerTime
@@ -125,13 +125,8 @@ internal static class DuskMusicService
 
     private static int GetSeasonTriggerTime()
     {
-        // 与夜晚理智损耗使用同一季节边界：秋 19:00，冬 18:00，其余 20:00。
-        return Game1.currentSeason switch
-        {
-            "fall" => 1900,
-            "winter" => 1800,
-            _ => 2000,
-        };
+        // 黄昏 cue 跟随原版“开始变暗”，而非两小时后的真正天黑。
+        return Game1.getStartingToGetDarkTime(Game1.currentLocation);
     }
 
     private static bool IsInDungeon()

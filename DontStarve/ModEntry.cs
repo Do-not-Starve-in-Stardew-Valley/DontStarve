@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using DontStarve.Buff;
 using DontStarve.Config;
+using DontStarve.Debug;
 using DontStarve.Display;
 using DontStarve.Display.UIElements;
 using DontStarve.Music;
@@ -39,6 +40,7 @@ internal class ModEntry : Mod
     private SanitySmapiAudioService _sanityAudio;
     private SanitySmapiEventService _sanityEvents;
     private SanitySmapiVisualService _sanityVisual;
+    private SanityVignetteOverlayService _sanityVignette;
     private SmapiHarmlessProjectionHost _harmlessProjectionHost;
     private SmapiForageVisualProjectionService _forageVisualProjection;
     private SmapiForagePickupReplacementService _foragePickupReplacement;
@@ -49,6 +51,8 @@ internal class ModEntry : Mod
     private SmapiDarkHandLeaseCoordinatorService _darkHandLeaseCoordinator;
     private SmapiHostileShadowHost _hostileShadowHost;
     private SmapiEnvironmentLightFinalVisibilitySampler _environmentLightSampler;
+    private SmapiNaturalDarknessLightmapService _naturalDarknessLightmap;
+    private SmapiNpcFlashlightService _npcFlashlights;
     private EnvironmentLightService _environmentLightService;
     private SmapiEnvironmentLightMultiplayerCoordinator
         _environmentLightMultiplayer;
@@ -60,6 +64,12 @@ internal class ModEntry : Mod
     private SmapiEnvironmentLightDebugOverlay _environmentLightDebugOverlay;
     private bool _sanitySystemEnabled = true;
     private bool _sanityVisualEffectsEnabled = true;
+    private bool _lowSanityScreenDistortionEnabled = true;
+    private bool _sanityVignetteEnabled = true;
+    private bool _naturalDarknessEnabled = true;
+
+    private bool IsNaturalDarknessRuntimeEnabled =>
+        _sanitySystemEnabled && _naturalDarknessEnabled;
 
     // schema 或配置根读坏时保持 fail-closed：允许本次用安全默认值运行，但不覆盖原文件。
     private bool _canWriteConfig;
@@ -94,7 +104,8 @@ internal class ModEntry : Mod
         _vanillaSanityTooltip = new SmapiVanillaSanityTooltipService(
             helper,
             Monitor,
-            ModManifest.UniqueID
+            ModManifest.UniqueID,
+            _sanityLifecycle
         );
         // Sanity.Init 已先完成 registry/tier/budget/cleanup 注册；这里才应用真实总开关。
         _sanityLifecycle.ApplyConfiguredState(_sanitySystemEnabled);
@@ -131,7 +142,18 @@ internal class ModEntry : Mod
             _sanityLifecycle,
             _sanityResources,
             _sanityEvents.EffectiveSanityProvider,
-            _sanityVisualEffectsEnabled
+            _sanityVisualEffectsEnabled,
+            _lowSanityScreenDistortionEnabled
+        );
+        // 暗角是 HUD 覆盖层，独立于 world-only 低理智滤镜。即使滤镜关闭，它仍可依据
+        // 专用配置显示 basic；只有滤镜开启且低于 15% 时才改为 insane 动画。
+        _sanityVignette = new SanityVignetteOverlayService(
+            helper,
+            Monitor,
+            _sanityLifecycle,
+            _sanityEvents.EffectiveSanityProvider,
+            _sanityVisualEffectsEnabled,
+            _sanityVignetteEnabled
         );
         // Location 规则只在启动时读取一次；加载失败时 catalog 自身 fail closed，光照服务
         // 仍可提供有 reason 的 Dim/Fallback 诊断，而不会猜测地点或授权 PitchBlack。
@@ -139,6 +161,41 @@ internal class ModEntry : Mod
         _environmentLightSampler = new SmapiEnvironmentLightFinalVisibilitySampler(
             helper,
             Monitor
+        );
+        IDarknessDamageModeResolver darknessDamageModeResolver = _canWriteConfig
+            ? new TypedDarknessDamageModeResolver(_configurationRuntime.Resolver)
+            : new UnavailableDarknessDamageModeResolver();
+        IJunimoBlessingResolver junimoBlessingResolver = _canWriteConfig
+            ? new TypedJunimoBlessingResolver(_configurationRuntime.Resolver)
+            : new UnavailableJunimoBlessingResolver();
+        var darknessAttackLocationAuthorization =
+            new DarknessAttackLocationAuthorizationPolicy(() =>
+            {
+                var blessing = junimoBlessingResolver.Resolve();
+                return new EnvironmentLightJunimoBlessingState(
+                    blessing.HasValue,
+                    blessing.Enabled
+                );
+            });
+        // 地点计划通过原版 outdoorLight、ambientLight 或 MineShaft 的每层光色进入同一张
+        // DrawLighting lightmap。祝尼魔保护与黑暗袭击复用同一地点语义，局部火把仍由原版随后绘制。
+        _naturalDarknessLightmap = new SmapiNaturalDarknessLightmapService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            IsNaturalDarknessRuntimeEnabled,
+            environmentLightLocationRules,
+            darknessAttackLocationAuthorization
+        );
+        // NPC flashlight pairs consume only the already-owned natural-darkness scene state. They
+        // do not perform one final-lightmap readback per NPC, so crowded maps keep the existing
+        // owner-foot sampling budget intact.
+        _npcFlashlights = new SmapiNpcFlashlightService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            IsNaturalDarknessRuntimeEnabled,
+            _naturalDarknessLightmap.GetSceneStateForScreen
         );
         // 阶段 03 的无伤害光照服务先于需要消费其只读结果的物种创建；分类和 15-tick
         // cache 仍由该服务唯一拥有，DarkHand/Watcher 不建立第二套扫描或危险光照规则。
@@ -148,15 +205,9 @@ internal class ModEntry : Mod
                 environmentLightLocationRules,
                 _environmentLightSampler
             ),
-            new EnvironmentLightClassifier(),
+            new EnvironmentLightClassifier(darknessAttackLocationAuthorization),
             () => Game1.ticks
         );
-        IDarknessDamageModeResolver darknessDamageModeResolver = _canWriteConfig
-            ? new TypedDarknessDamageModeResolver(_configurationRuntime.Resolver)
-            : new UnavailableDarknessDamageModeResolver();
-        IJunimoBlessingResolver junimoBlessingResolver = _canWriteConfig
-            ? new TypedJunimoBlessingResolver(_configurationRuntime.Resolver)
-            : new UnavailableJunimoBlessingResolver();
         _environmentLightMultiplayer =
             new SmapiEnvironmentLightMultiplayerCoordinator(
                 helper,
@@ -167,6 +218,7 @@ internal class ModEntry : Mod
                 _sanityLifecycle,
                 _environmentLightService,
                 environmentLightLocationRules,
+                darknessAttackLocationAuthorization,
                 _sanityAudio,
                 () =>
                 {
@@ -307,6 +359,20 @@ internal class ModEntry : Mod
             _sanityResources,
             _hostileShadowHost
         );
+        // DIAG-20260809: 脱战绑定系统——危险影怪隐藏态与无害投影外观互相绑定。
+        // 必须在两个 host 都构造完成后注入（投影 host 已持有 hostile host 引用）。
+        if (
+            !_hostileShadowHost.BindProjectionHost(
+                _harmlessProjectionHost,
+                out var bindingHostReason
+            )
+        )
+        {
+            Monitor.Log(
+                $"Hostile shadow binding host injection failed ({bindingHostReason}).",
+                LogLevel.Error
+            );
+        }
         var mrSkittsBehavior = new MrSkittsProjectionBehavior();
         if (
             !_harmlessProjectionHost.RegisterSpecies(
@@ -404,6 +470,79 @@ internal class ModEntry : Mod
             Monitor.Log(
                 $"Shadow harmless projection registration failed closed (species={policy.SpeciesId}, reason={shadowRegistrationReason}).",
                 LogLevel.Error
+            );
+        }
+        // DIAG-20260804: 测试辅助控制台命令（ds_sanity/ds_spawn/ds_boxes）。
+        // 在所有 species 注册完成后创建，保证 ds_spawn 可访问全部投影与影怪物种。
+        // 全限定名避免与 StardewValley.DebugCommands 冲突。
+        new DontStarve.Debug.DebugCommands(
+            Monitor,
+            _hostileShadowHost,
+            _harmlessProjectionHost,
+            _sanityLifecycle
+        ).Register(helper);
+        // DIAG-20260807: LookupAnything 显示欺骗——影怪攻击力显示跟随配置档位
+        // （Lookup 读 DamageToFarmer 实例字段；该字段本体置 0 禁接触伤害）。
+        DontStarve.Debug.LookupAnythingDisplayFake.TryPatch(Monitor);
+        // DIAG-20260812: 守卫影怪（恐吓/脱战隐藏）受击跳字拦截——1.6.15 原版
+        // damageMonster 在 takeDamage 返回 0 时仍飘出“0”伤害数字（守卫只挡扣血、
+        // 挡不住跳字）。prefix 检测攻击范围：全部命中目标都是守卫影怪时直接跳过
+        // 整个受击处理（不扣血、不跳字、无命中音效/反馈）。
+        try
+        {
+            var combatHarmony = new HarmonyLib.Harmony(
+                ModManifest.UniqueID + ".combat"
+            );
+            var damagePrefix = HarmonyLib.AccessTools.Method(
+                typeof(HostileShadowDamageMonsterPatch),
+                nameof(HostileShadowDamageMonsterPatch.Prefix)
+            );
+            // DIAG-20260812: 同样遍历全部 damageMonster 重载逐个 patch——固定
+            // 4 参签名若与 1.6.15 实际签名不一致会导致 target not found、跳字 0
+            // 拦截完全未生效（用户实测脱战无敌状态下仍飘 0）。
+            var combatPatched = 0;
+            foreach (
+                var candidate in HarmonyLib.AccessTools.GetDeclaredMethods(
+                    typeof(GameLocation)
+                )
+            )
+            {
+                if (
+                    !string.Equals(
+                        candidate.Name,
+                        nameof(GameLocation.damageMonster),
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+                combatHarmony.Patch(
+                    candidate,
+                    prefix: new HarmonyLib.HarmonyMethod(damagePrefix)
+                );
+                combatPatched++;
+            }
+            if (combatPatched == 0)
+            {
+                Monitor.Log(
+                    "Hostile shadow damage patch target not found; guarded hit numbers remain.",
+                    LogLevel.Warn
+                );
+            }
+            else
+            {
+                Monitor.Log(
+                    $"Hostile shadow damage patch applied to {combatPatched} overload(s).",
+                    LogLevel.Trace
+                );
+            }
+        }
+        catch (Exception exception)
+        {
+            Monitor.Log(
+                $"Hostile shadow damage patch failed ({exception.GetType().Name}: {exception.Message}).",
+                LogLevel.Warn
             );
         }
         // The forage presentation remains private to the current owner screen. Its shared startup
@@ -532,6 +671,51 @@ internal class ModEntry : Mod
                 );
             }
 
+            var lowSanityScreenDistortion = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableLowSanityScreenDistortion
+            );
+            if (lowSanityScreenDistortion.HasValue)
+            {
+                _lowSanityScreenDistortionEnabled = lowSanityScreenDistortion.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableLowSanityScreenDistortion is unavailable ({lowSanityScreenDistortion.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var sanityVignette = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableSanityVignette
+            );
+            if (sanityVignette.HasValue)
+            {
+                _sanityVignetteEnabled = sanityVignette.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableSanityVignette is unavailable ({sanityVignette.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var naturalDarkness = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableNaturalDarkness
+            );
+            if (naturalDarkness.HasValue)
+            {
+                _naturalDarknessEnabled = naturalDarkness.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableNaturalDarkness is unavailable ({naturalDarkness.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
             LogFingerprint();
             return config;
         }
@@ -653,6 +837,22 @@ internal class ModEntry : Mod
             );
         }
 
+        var savedNaturalDarkness = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableNaturalDarkness
+        );
+        if (savedNaturalDarkness.HasValue)
+        {
+            _naturalDarknessEnabled = savedNaturalDarkness.Value;
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableNaturalDarkness remains unavailable after GMCM save ({savedNaturalDarkness.Reason}); the active natural darkness state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+        ApplyNaturalDarknessRuntimeState();
+
         var savedSanityVisualEffects = _configurationRuntime.Resolver.GetBoolean(
             ConfigKeys.EnableSanityVisualEffects
         );
@@ -660,6 +860,9 @@ internal class ModEntry : Mod
         {
             _sanityVisualEffectsEnabled = savedSanityVisualEffects.Value;
             _sanityVisual?.SetEnabled(savedSanityVisualEffects.Value);
+            _sanityVignette?.SetLowSanityFilterEnabled(
+                savedSanityVisualEffects.Value
+            );
         }
         else
         {
@@ -668,6 +871,47 @@ internal class ModEntry : Mod
                 LogLevel.Warn
             );
         }
+
+        var savedLowSanityScreenDistortion = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableLowSanityScreenDistortion
+        );
+        if (savedLowSanityScreenDistortion.HasValue)
+        {
+            _lowSanityScreenDistortionEnabled = savedLowSanityScreenDistortion.Value;
+            _sanityVisual?.SetScreenDistortionEnabled(
+                savedLowSanityScreenDistortion.Value
+            );
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableLowSanityScreenDistortion remains unavailable after GMCM save ({savedLowSanityScreenDistortion.Reason}); the active screen-distortion state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedSanityVignette = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableSanityVignette
+        );
+        if (savedSanityVignette.HasValue)
+        {
+            _sanityVignetteEnabled = savedSanityVignette.Value;
+            _sanityVignette?.SetVignetteEnabled(savedSanityVignette.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableSanityVignette remains unavailable after GMCM save ({savedSanityVignette.Reason}); the active vignette state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+    }
+
+    private void ApplyNaturalDarknessRuntimeState()
+    {
+        var enabled = IsNaturalDarknessRuntimeEnabled;
+        _naturalDarknessLightmap?.SetEnabled(enabled);
+        _npcFlashlights?.SetEnabled(enabled);
     }
 
     private void LogFingerprint()

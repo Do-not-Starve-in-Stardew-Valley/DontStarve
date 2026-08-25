@@ -2,21 +2,172 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Text;
 
 namespace DontStarve.Display.UIElements;
 
-internal enum SanityTooltipEffectKind
+internal enum SanityTooltipRowKind
 {
-    FoodOnce,
-    EquipmentPerMinute,
+    Hunger,
+    Sanity,
+    Buff,
 }
 
-internal readonly record struct SanityTooltipEffect(
-    SanityTooltipEffectKind Kind,
-    double Value
+internal enum SanityTooltipIconKind
+{
+    HungerIcon,
+    SanityBrain,
+    VanillaCursor,
+}
+
+/// <summary>
+/// Controls wording only. The compact vanilla Tooltip keeps its icon-led rows short while
+/// other surfaces retain the complete localized Hunger/Sanity descriptions.
+/// </summary>
+internal enum FoodBuffTooltipTextMode
+{
+    Descriptive,
+    CompactVanillaTooltip,
+}
+
+internal readonly record struct SanityTooltipRow(
+    SanityTooltipRowKind Kind,
+    string Text,
+    SanityTooltipIconKind IconKind,
+    int VanillaLegacyIndex,
+    int VanillaCursorSourceX
 );
+
+internal static class SanityTooltipLayoutContract
+{
+    internal const int CustomRowHeight = 39;
+    internal const int CustomSectionPadding = 4;
+    // Stardew's vanilla tooltip uses a 10x10 cursor region with a 3x draw scale.
+    // TooltipIconPixels is the resulting on-screen target size, not either source texture size.
+    internal const int VanillaTooltipIconSourcePixels = 10;
+    internal const int VanillaTooltipIconScale = 3;
+    internal const int TooltipIconPixels = VanillaTooltipIconSourcePixels * VanillaTooltipIconScale;
+    internal const int VanillaBuffDurationLegacyIndex = 12;
+
+    internal const int CombatLegacyIndex = 3;
+    internal const int DefenseLegacyIndex = 10;
+    internal const int AttackLegacyIndex = 11;
+
+    internal static readonly IReadOnlyList<string> SupportedItemCategories =
+        Array.AsReadOnly(
+            new[]
+            {
+                "Food",
+                "Hat",
+                "Shirt",
+                "Pants",
+                "Boots",
+                "Ring",
+                "Trinket",
+                "MeleeWeapon",
+                "Tool",
+                "Other",
+            }
+        );
+
+    internal static readonly IReadOnlyList<string> SupportedBuffAttributes =
+        Array.AsReadOnly(
+            new[]
+            {
+                "CombatLevel",
+                "AttackMultiplier",
+                "Immunity",
+                "KnockbackMultiplier",
+                "WeaponSpeedMultiplier",
+                "CriticalChanceMultiplier",
+                "CriticalPowerMultiplier",
+                "WeaponPrecisionMultiplier",
+            }
+        );
+
+    internal static int GetAdditionalHeight(int rowCount)
+    {
+        return GetAdditionalHeight(rowCount, 0);
+    }
+
+    internal static int GetAdditionalHeight(int survivalRowCount, int extraBuffRowCount)
+    {
+        // The vanilla Buff section already owns its four-pixel section padding when present.
+        return GetAdditionalHeight(survivalRowCount, extraBuffRowCount, vanillaBuffSectionPresent: true);
+    }
+
+    internal static int GetAdditionalHeight(
+        int survivalRowCount,
+        int extraBuffRowCount,
+        bool vanillaBuffSectionPresent
+    )
+    {
+        var survivalHeight = survivalRowCount <= 0
+            ? 0
+            : checked(CustomSectionPadding + survivalRowCount * CustomRowHeight);
+        var extraBuffHeight = extraBuffRowCount <= 0
+            ? 0
+            : checked(
+                extraBuffRowCount * CustomRowHeight
+                + (vanillaBuffSectionPresent ? 0 : CustomSectionPadding)
+            );
+        return checked(survivalHeight + extraBuffHeight);
+    }
+
+    internal static bool NeedsExtraBuffFallback(string[]? vanillaBuffIcons)
+    {
+        if (vanillaBuffIcons is null)
+            return false;
+
+        if (vanillaBuffIcons.Length <= VanillaBuffDurationLegacyIndex)
+            return true;
+
+        var durationValue = vanillaBuffIcons[VanillaBuffDurationLegacyIndex];
+        return string.IsNullOrEmpty(durationValue) || string.Equals(durationValue, "0", StringComparison.Ordinal);
+    }
+}
+
+/// <summary>
+/// The final row sequence used by tooltip measurement and drawing. Keeping the category counts
+/// beside the sequence prevents the survival-section separator from being counted for Buff rows.
+/// </summary>
+internal sealed class SanityTooltipRowLayout
+{
+    internal static readonly SanityTooltipRowLayout Empty = new(
+        Array.Empty<SanityTooltipRow>()
+    );
+
+    internal SanityTooltipRowLayout(IReadOnlyList<SanityTooltipRow> rows)
+    {
+        this.Rows = rows ?? throw new ArgumentNullException(nameof(rows));
+        var survivalRowCount = 0;
+        var extraBuffRowCount = 0;
+        foreach (var row in rows)
+        {
+            if (row.Kind == SanityTooltipRowKind.Buff)
+                extraBuffRowCount++;
+            else
+                survivalRowCount++;
+        }
+
+        this.SurvivalRowCount = survivalRowCount;
+        this.ExtraBuffRowCount = extraBuffRowCount;
+    }
+
+    internal IReadOnlyList<SanityTooltipRow> Rows { get; }
+
+    internal int SurvivalRowCount { get; }
+
+    internal int ExtraBuffRowCount { get; }
+
+    internal int GetAdditionalHeight(bool vanillaBuffSectionPresent)
+    {
+        return SanityTooltipLayoutContract.GetAdditionalHeight(
+            this.SurvivalRowCount,
+            this.ExtraBuffRowCount,
+            vanillaBuffSectionPresent
+        );
+    }
+}
 
 internal static class SanityTooltipCoverageContract
 {
@@ -35,98 +186,49 @@ internal static class SanityTooltipCoverageContract
     internal const bool ThirdPartyFullyCustomDrawingCovered = false;
 }
 
-/// <summary>
-/// Pure per-frame/reentrant guard for the final vanilla drawHoverText overload. Builder identity
-/// is included so two distinct tooltips for the same item in one frame both remain complete.
-/// </summary>
-internal sealed class SanityTooltipDedupeGate
+internal static class SanityTooltipRowFilter
 {
-    private readonly record struct SeenEntry(object Item, object Builder);
-
-    internal const int MaximumEntriesPerFrame = 32;
-
-    private readonly List<SeenEntry> seen = new(MaximumEntriesPerFrame);
-    private long frame = long.MinValue;
-
-    internal bool TryEnter(long currentFrame, object itemReference, object builderReference)
-    {
-        ArgumentNullException.ThrowIfNull(itemReference);
-        ArgumentNullException.ThrowIfNull(builderReference);
-        if (frame != currentFrame)
-        {
-            frame = currentFrame;
-            seen.Clear();
-        }
-
-        foreach (var entry in seen)
-        {
-            if (
-                ReferenceEquals(entry.Item, itemReference)
-                && ReferenceEquals(entry.Builder, builderReference)
-            )
-            {
-                return false;
-            }
-        }
-        if (seen.Count >= MaximumEntriesPerFrame)
-            return false;
-
-        seen.Add(new SeenEntry(itemReference, builderReference));
-        return true;
-    }
-
-    internal void Clear()
-    {
-        frame = long.MinValue;
-        seen.Clear();
-    }
-}
-
-internal static class SanityTooltipTextAppender
-{
-    internal static bool TryAppendLine(StringBuilder text, string line)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-        if (string.IsNullOrWhiteSpace(line) || ContainsExactLine(text, line))
-            return false;
-
-        if (text.Length > 0 && text[text.Length - 1] != '\n')
-            text.Append('\n');
-        text.Append(line);
-        return true;
-    }
-
-    internal static bool TryFormatValue(
-        double value,
-        CultureInfo culture,
-        out string formatted
+    internal static IReadOnlyList<SanityTooltipRow> RemoveVanillaDuplicates(
+        IReadOnlyList<SanityTooltipRow> rows,
+        string[]? vanillaBuffIcons
     )
     {
-        return LocalizedValueFormatter.TryFormatSigned(value, culture, out formatted);
+        if (rows.Count == 0 || vanillaBuffIcons is null || vanillaBuffIcons.Length == 0)
+            return rows;
+
+        List<SanityTooltipRow>? filtered = null;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var isDuplicate =
+                row.VanillaLegacyIndex >= 0
+                && row.VanillaLegacyIndex < vanillaBuffIcons.Length
+                && IsVanillaBuffDisplayed(vanillaBuffIcons[row.VanillaLegacyIndex]);
+            if (isDuplicate)
+            {
+                filtered ??= CopyRowsBefore(rows, index);
+                continue;
+            }
+
+            filtered?.Add(row);
+        }
+
+        return filtered ?? rows;
     }
 
-    private static bool ContainsExactLine(StringBuilder text, string line)
+    private static List<SanityTooltipRow> CopyRowsBefore(
+        IReadOnlyList<SanityTooltipRow> rows,
+        int count
+    )
     {
-        var lineStart = 0;
-        for (var index = 0; index <= text.Length; index++)
-        {
-            if (index < text.Length && text[index] != '\n')
-                continue;
-            if (index - lineStart == line.Length)
-            {
-                var matches = true;
-                for (var offset = 0; offset < line.Length; offset++)
-                {
-                    if (text[lineStart + offset] == line[offset])
-                        continue;
-                    matches = false;
-                    break;
-                }
-                if (matches)
-                    return true;
-            }
-            lineStart = index + 1;
-        }
-        return false;
+        var copied = new List<SanityTooltipRow>(rows.Count);
+        for (var index = 0; index < count; index++)
+            copied.Add(rows[index]);
+        return copied;
+    }
+
+    private static bool IsVanillaBuffDisplayed(string? value)
+    {
+        return !string.IsNullOrEmpty(value) && !string.Equals(value, "0", StringComparison.Ordinal);
     }
 }

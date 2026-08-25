@@ -5,7 +5,7 @@ namespace DontStarve.Tests.Player.Stats.Sanity;
 
 public sealed class EnvironmentLightClassificationRuleTests
 {
-    private static readonly EnvironmentLightClassifier Classifier = new();
+    private static readonly EnvironmentLightClassifier Classifier = new(CreatePolicy());
 
     private static string ShippedRulesPath =>
         Path.Combine(
@@ -18,31 +18,120 @@ public sealed class EnvironmentLightClassificationRuleTests
         );
 
     [Fact]
-    public void ShippedVersionTwoCatalogLoadsOnceAndKeepsSafetySemanticsSeparate()
+    public void ShippedVersionFourCatalogLoadsOnceAndKeepsIndependentSemanticsSeparate()
     {
         var load = LoadShipped();
 
         Assert.True(load.IsAvailable, load.Reason);
-        Assert.Equal(2, load.Catalog.ContractVersion);
-        Assert.Equal(21, load.Catalog.Count);
+        Assert.Equal(4, load.Catalog.ContractVersion);
+        Assert.Equal(44, load.Catalog.Count);
 
         var farm = load.Catalog.Resolve(Location("StardewValley.Farm", "Farm", outdoors: true));
         Assert.Equal(EnvironmentLightLocationRuleStatus.Matched, farm.Status);
         Assert.Equal("vanilla.farm", farm.RuleId);
         Assert.Equal(EnvironmentLightLocationLightProfile.OpaqueWhiteBase, farm.LightProfile);
         Assert.False(farm.TwoAmSpecialDeathSafe);
-        Assert.True(farm.DarknessAttackSafe);
         Assert.False(farm.HostileShadowSafe);
         Assert.True(farm.JunimoBlessingEligible);
+        Assert.Equal(NaturalDarknessProfile.NightThreeSeconds, farm.NaturalDarknessProfile);
 
         var cellar = load.Catalog.Resolve(
             Location("StardewValley.Locations.Cellar", "Cellar")
         );
         Assert.Equal("vanilla.cellar", cellar.RuleId);
         Assert.False(cellar.TwoAmSpecialDeathSafe);
-        Assert.False(cellar.DarknessAttackSafe);
         Assert.False(cellar.HostileShadowSafe);
-        Assert.False(cellar.JunimoBlessingEligible);
+        Assert.True(cellar.JunimoBlessingEligible);
+        Assert.Equal(NaturalDarknessProfile.FullDark, cellar.NaturalDarknessProfile);
+
+        var lewisBasement = load.Catalog.Resolve(
+            Location("StardewValley.GameLocation", "LewisBasement")
+        );
+        Assert.Equal("vanilla.lewis-basement", lewisBasement.RuleId);
+        Assert.False(lewisBasement.TwoAmSpecialDeathSafe);
+        Assert.False(lewisBasement.HostileShadowSafe);
+        Assert.False(lewisBasement.JunimoBlessingEligible);
+        Assert.Equal(NaturalDarknessProfile.FullDark, lewisBasement.NaturalDarknessProfile);
+    }
+
+    [Theory]
+    [InlineData(
+        "StardewValley.Locations.Mine",
+        "Mine",
+        "vanilla.mine-entrance"
+    )]
+    [InlineData(
+        "StardewValley.GameLocation",
+        "SkullCave",
+        "vanilla.skull-cave-entrance"
+    )]
+    public void MineEntranceMapsUseTheNightThreeSecondsPlan(
+        string runtimeType,
+        string internalName,
+        string expectedRuleId
+    )
+    {
+        var resolution = LoadShipped().Catalog.Resolve(Location(runtimeType, internalName));
+
+        Assert.Equal(EnvironmentLightLocationRuleStatus.Matched, resolution.Status);
+        Assert.Equal(expectedRuleId, resolution.RuleId);
+        Assert.Equal(NaturalDarknessProfile.NightThreeSeconds, resolution.NaturalDarknessProfile);
+        Assert.False(resolution.TwoAmSpecialDeathSafe);
+        Assert.False(resolution.HostileShadowSafe);
+        Assert.False(resolution.JunimoBlessingEligible);
+    }
+
+    [Theory]
+    [InlineData("StardewValley.Farm", "Default", "Farm", true, true)]
+    [InlineData("StardewValley.Locations.FarmHouse", "Default", "FarmHouse", false, true)]
+    [InlineData("StardewValley.Locations.IslandFarmHouse", "Island", "IslandFarmHouse", false, true)]
+    [InlineData("StardewValley.Locations.CommunityCenter", "Default", "CommunityCenter", false, true)]
+    [InlineData("StardewValley.Locations.MineShaft", "Default", "UndergroundMine", false, false)]
+    [InlineData("StardewValley.Locations.Cellar", "Default", "Cellar", false, true)]
+    [InlineData("StardewValley.Locations.FarmCave", "Default", "FarmCave", false, true)]
+    [InlineData("StardewValley.Locations.AbandonedJojaMart", "Default", "AbandonedJojaMart", false, true)]
+    [InlineData("StardewValley.GameLocation", "Default", "Greenhouse", false, true)]
+    public void ShippedJunimoBlessingEligibilityIsExplicitForEveryRequestedCoreInterior(
+        string runtimeType,
+        string contextId,
+        string internalName,
+        bool outdoors,
+        bool expectedEligible
+    )
+    {
+        var resolution = LoadShipped().Catalog.Resolve(
+            Location(runtimeType, internalName, outdoors, contextId: contextId)
+        );
+
+        Assert.Equal(expectedEligible, resolution.JunimoBlessingEligible);
+    }
+
+    [Fact]
+    public void PlayerBuiltInteriorRulesAreJunimoEligibleWithoutChangingTheirOtherSemantics()
+    {
+        var cabin = LoadShipped().Catalog.Resolve(
+            Location(
+                "StardewValley.Locations.Cabin",
+                "Cabin0001",
+                contextId: "Default",
+                parentBuildingType: "Cabin"
+            )
+        );
+        var coop = LoadShipped().Catalog.Resolve(
+            Location(
+                "StardewValley.AnimalHouse",
+                "Coop0001",
+                contextId: "Default",
+                parentBuildingType: "Coop"
+            )
+        );
+
+        Assert.True(cabin.JunimoBlessingEligible);
+        Assert.True(coop.JunimoBlessingEligible);
+        Assert.True(cabin.TwoAmSpecialDeathSafe);
+        Assert.True(coop.TwoAmSpecialDeathSafe);
+        Assert.Equal(NaturalDarknessProfile.NightThreeSeconds, cabin.NaturalDarknessProfile);
+        Assert.Equal(NaturalDarknessProfile.NightThreeSeconds, coop.NaturalDarknessProfile);
     }
 
     [Theory]
@@ -63,9 +152,9 @@ public sealed class EnvironmentLightClassificationRuleTests
 
         Assert.Equal(EnvironmentLightLocationRuleStatus.Unmatched, resolution.Status);
         Assert.False(resolution.TwoAmSpecialDeathSafe);
-        Assert.False(resolution.DarknessAttackSafe);
         Assert.False(resolution.HostileShadowSafe);
         Assert.False(resolution.JunimoBlessingEligible);
+        Assert.Equal(NaturalDarknessProfile.Unchanged, resolution.NaturalDarknessProfile);
     }
 
     [Fact]
@@ -79,7 +168,6 @@ public sealed class EnvironmentLightClassificationRuleTests
         Assert.Equal(EnvironmentLightLocationRuleIds.Unmatched, resolution.RuleId);
         Assert.Equal(EnvironmentLightLocationLightProfile.FallbackOnly, resolution.LightProfile);
         Assert.False(resolution.TwoAmSpecialDeathSafe);
-        Assert.False(resolution.DarknessAttackSafe);
         Assert.False(resolution.HostileShadowSafe);
         Assert.False(resolution.JunimoBlessingEligible);
         Assert.Equal(
@@ -92,7 +180,7 @@ public sealed class EnvironmentLightClassificationRuleTests
     public void CustomFieldsAreExactStructuralEvidenceAndExposeOnlyConfiguredKeys()
     {
         const string json = @"{
-          ""SchemaVersion"": 2,
+          ""SchemaVersion"": 4,
           ""Rules"": [
             {
               ""Id"": ""mod.structured"",
@@ -103,8 +191,8 @@ public sealed class EnvironmentLightClassificationRuleTests
                 ""ContextCustomFields"": { ""Example/Context"": ""Underground"" }
               },
               ""LightProfile"": ""FallbackOnly"",
+              ""NaturalDarknessProfile"": ""FullDark"",
               ""TwoAmSpecialDeathSafe"": false,
-              ""DarknessAttackSafe"": true,
               ""HostileShadowSafe"": false,
               ""JunimoBlessingEligible"": false
             }
@@ -129,8 +217,6 @@ public sealed class EnvironmentLightClassificationRuleTests
             )
         );
         Assert.True(matched.IsMatched);
-        Assert.True(matched.DarknessAttackSafe);
-
         var wrongCase = load.Catalog.Resolve(
             new EnvironmentLightLocationSnapshot(
                 "Example.Mod.Location",
@@ -162,19 +248,19 @@ public sealed class EnvironmentLightClassificationRuleTests
         Assert.Equal(EnvironmentLightLocationRuleStatus.Ambiguous, ambiguous.Status);
         Assert.Equal(EnvironmentLightLocationRuleIds.Ambiguous, ambiguous.RuleId);
         Assert.False(ambiguous.TwoAmSpecialDeathSafe);
-        Assert.False(ambiguous.DarknessAttackSafe);
         Assert.False(ambiguous.HostileShadowSafe);
         Assert.False(ambiguous.JunimoBlessingEligible);
     }
 
     [Fact]
-    public void AggregateSafetyFieldIsRejected()
+    public void RetiredDarknessAttackSafeFieldIsRejected()
     {
         var json = string.Concat(
-            "{\"SchemaVersion\":2,\"Rules\":[{",
+            "{\"SchemaVersion\":4,\"Rules\":[{",
             "\"Id\":\"bad\",\"Priority\":1,",
             "\"Match\":{\"RuntimeType\":\"Example.Location\"},",
             "\"LightProfile\":\"FallbackOnly\",",
+            "\"NaturalDarknessProfile\":\"Unchanged\",",
             "\"TwoAmSpecialDeathSafe\":false,\"DarknessAttackSafe\":false,",
             "\"HostileShadowSafe\":false,\"JunimoBlessingEligible\":false,",
             "\"Safe\":true",
@@ -274,18 +360,25 @@ public sealed class EnvironmentLightClassificationRuleTests
     }
 
     [Fact]
-    public void UnmatchedLocationAlwaysStaysFallbackAndUnauthorized()
+    public void UnmatchedLocationWithConfirmedFinalLightmapCanAuthorizeWhenUnprotected()
     {
         var unknownLocation = Location("Example.Mod.Location", "ModRoom");
         var rule = LoadShipped().Catalog.Resolve(unknownLocation);
         var result = Classifier.Classify(
-            Snapshot(rule, White(), location: unknownLocation, locationName: "ModRoom")
+            Snapshot(
+                rule,
+                White(),
+                nightVision: NightVision("1", 0, "ModRoom", 10, false),
+                location: unknownLocation,
+                locationName: "ModRoom",
+                finalVisibility: FinalVisibility("ModRoom", score: 0.10d)
+            )
         );
 
-        Assert.Equal(EnvironmentLightLevel.Dim, result.Level);
-        Assert.Equal(EnvironmentLightEvidenceStatus.Fallback, result.EvidenceStatus);
-        Assert.Equal(EnvironmentLightReasonIds.LocationRuleUnmatched, result.Reason);
-        Assert.False(result.PitchBlackAuthorized);
+        Assert.Equal(EnvironmentLightLevel.PitchBlack, result.Level);
+        Assert.Equal(EnvironmentLightEvidenceStatus.Confirmed, result.EvidenceStatus);
+        Assert.Equal(EnvironmentLightReasonIds.FinalVisibilityPitchBlackConfirmed, result.Reason);
+        Assert.True(result.PitchBlackAuthorized);
     }
 
     [Fact]
@@ -347,7 +440,8 @@ public sealed class EnvironmentLightClassificationRuleTests
         EnvironmentLightNightVisionSnapshot? nightVision = null,
         IReadOnlyList<EnvironmentLightCandidateSnapshot>? candidates = null,
         EnvironmentLightLocationSnapshot? location = null,
-        string locationName = "Farm"
+        string locationName = "Farm",
+        EnvironmentLightFinalVisibilitySnapshot? finalVisibility = null
     )
     {
         candidates ??= Array.Empty<EnvironmentLightCandidateSnapshot>();
@@ -380,7 +474,8 @@ public sealed class EnvironmentLightClassificationRuleTests
             candidates,
             600,
             100,
-            1
+            1,
+            finalVisibility
         );
     }
 
@@ -440,12 +535,48 @@ public sealed class EnvironmentLightClassificationRuleTests
                     rule.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     ",\"Match\":{\"RuntimeType\":\"Example.Location\"},",
                     "\"LightProfile\":\"FallbackOnly\",",
-                    "\"TwoAmSpecialDeathSafe\":false,\"DarknessAttackSafe\":false,",
+                    "\"NaturalDarknessProfile\":\"Unchanged\",",
+                    "\"TwoAmSpecialDeathSafe\":false,",
                     "\"HostileShadowSafe\":false,\"JunimoBlessingEligible\":false}"
                 )
             )
         );
-        return "{\"SchemaVersion\":2,\"Rules\":[" + entries + "]}";
+        return "{\"SchemaVersion\":4,\"Rules\":[" + entries + "]}";
+    }
+
+    private static EnvironmentLightFinalVisibilitySnapshot FinalVisibility(
+        string locationName,
+        double score
+    )
+    {
+        return EnvironmentLightFinalVisibilitySnapshot.Confirmed(
+            "1",
+            0,
+            locationName,
+            10,
+            score,
+            0.5d,
+            0.5d,
+            0.5d,
+            standardLightingDrawn: true,
+            rainOverlayApplied: false,
+            lightingQuality: 2,
+            zoomLevel: 1d,
+            useUnscaledLighting: false,
+            capturedAtTick: 100,
+            rendererRevision: 1,
+            "environment-light.final-visibility-owner-foot-lightmap"
+        );
+    }
+
+    private static DarknessAttackLocationAuthorizationPolicy CreatePolicy()
+    {
+        return new DarknessAttackLocationAuthorizationPolicy(
+            () => new EnvironmentLightJunimoBlessingState(
+                IsAvailable: true,
+                IsEnabled: false
+            )
+        );
     }
 
     private static EnvironmentLightColor White() => new(255, 255, 255, 255);

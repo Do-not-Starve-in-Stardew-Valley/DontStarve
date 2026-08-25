@@ -94,25 +94,25 @@ internal static class ModConfigMenuRegistrar
             api.Register(manifest, reset, save);
         }
 
-        public void AddSection(string sectionId, string text)
+        public void AddSection(string sectionId, Func<string> getText)
         {
-            api.AddSectionTitle(manifest, () => text);
+            api.AddSectionTitle(manifest, getText);
         }
 
         public void AddBoolean(
             string fieldId,
             Func<bool> getValue,
             Action<bool> setValue,
-            string name,
-            string tooltip
+            Func<string> getName,
+            Func<string> getTooltip
         )
         {
             api.AddBoolOption(
                 manifest,
                 getValue,
                 setValue,
-                () => name,
-                () => tooltip,
+                getName,
+                getTooltip,
                 fieldId
             );
         }
@@ -121,8 +121,8 @@ internal static class ModConfigMenuRegistrar
             string fieldId,
             Func<string> getValue,
             Action<string> setValue,
-            string name,
-            string tooltip,
+            Func<string> getName,
+            Func<string> getTooltip,
             string[] allowedValues,
             Func<string, string> formatAllowedValue
         )
@@ -131,8 +131,8 @@ internal static class ModConfigMenuRegistrar
                 manifest,
                 getValue,
                 setValue,
-                () => name,
-                () => tooltip,
+                getName,
+                getTooltip,
                 allowedValues,
                 formatAllowedValue,
                 fieldId

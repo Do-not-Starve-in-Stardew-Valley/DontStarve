@@ -105,8 +105,8 @@ public sealed class HostileAttackMetadataAndBoundaryTests
                 out var box
             )
         );
-        Assert.Equal(-12d, box.X, precision: 8);
-        Assert.Equal(200d, box.Y, precision: 8);
+        Assert.Equal(116d, box.X, precision: 8);
+        Assert.Equal(392d, box.Y, precision: 8);
         Assert.Equal(224d, box.Width, precision: 8);
         Assert.Equal(192d, box.Height, precision: 8);
     }

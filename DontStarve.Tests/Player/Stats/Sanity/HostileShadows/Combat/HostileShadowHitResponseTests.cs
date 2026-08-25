@@ -340,6 +340,36 @@ public sealed class HostileShadowHitResponseTests
     }
 
     [Fact]
+    public void Natural_no_target_dying_has_no_settlement_and_removes_only_after_the_full_animation()
+    {
+        var machine = HostileAttackTestFactory.StartAttack().Machine;
+        var controller = new HostileShadowHitResponseController(machine);
+
+        var dying = controller.BeginNaturalDying(100d, 200d);
+
+        Assert.True(dying.Valid, dying.Reason);
+        Assert.Equal(HostileShadowStateIds.Dying, dying.StateId);
+        Assert.Null(dying.Receipt);
+
+        var active = controller.Advance(
+            dying.PositionX,
+            dying.PositionY,
+            399d,
+            hasTarget: false
+        );
+        Assert.False(active.RemovalRequested);
+
+        var removed = controller.Advance(
+            active.PositionX,
+            active.PositionY,
+            1d,
+            hasTarget: false
+        );
+        Assert.True(removed.RemovalRequested);
+        Assert.Null(removed.Receipt);
+    }
+
+    [Fact]
     public void Lifecycle_receipts_dedupe_exact_replay_and_reject_kind_confusion()
     {
         var store = new HostileShadowLifecycleReceiptStore();

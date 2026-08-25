@@ -116,7 +116,7 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
-    public void Only_one_conversion_wins_each_danger_epoch_even_when_cap_has_room()
+    public void Each_distinct_projection_can_convert_during_one_danger_epoch_until_cap()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.Insane);
         EnterDanger(fixture, OwnerA, revision: 10);
@@ -125,12 +125,8 @@ public sealed class HostileShadowAuthorityTests
         var raced = fixture.Authority.TrySpawn(Conversion("conversion-b", OwnerA, 0));
 
         Assert.True(first.Spawned);
-        Assert.Equal(HostileShadowSpawnStatus.Rejected, raced.Status);
-        Assert.Equal(
-            "hostile-shadow.conversion-epoch-unavailable-or-consumed",
-            raced.Reason
-        );
-        Assert.Equal(1, fixture.Authority.Count);
+        Assert.True(raced.Spawned, raced.Reason);
+        Assert.Equal(2, fixture.Authority.Count);
     }
 
     [Fact]
@@ -147,6 +143,33 @@ public sealed class HostileShadowAuthorityTests
         Assert.Equal(HostileShadowSpawnStatus.Duplicate, duplicate.Status);
         Assert.Equal(first.EntityId, duplicate.EntityId);
         Assert.Equal(1, fixture.Authority.Revision);
+        Assert.Equal(1, fixture.Authority.Count);
+    }
+
+    [Fact]
+    public void Debug_command_bypasses_danger_budget_and_natural_density()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.None);
+
+        var result = fixture.Authority.TrySpawn(
+            new HostileShadowSpawnCommand(
+                "debug-command",
+                HostileShadowSpawnOrigin.DebugCommand,
+                OwnerA,
+                "Farm",
+                128d,
+                256d,
+                gameMinute: 0,
+                RuntimeProfile(),
+                "hostile-shadow.spawn.debug-command"
+            )
+        );
+
+        Assert.True(result.Spawned, result.Reason);
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            result.BudgetStatus
+        );
         Assert.Equal(1, fixture.Authority.Count);
     }
 
@@ -229,18 +252,18 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
-    public void Danger_exit_event_override_disconnect_day_and_title_have_stable_cleanup()
+    public void Danger_exit_preserves_entities_while_explicit_lifecycle_paths_clean_up()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.Insane);
 
         EnterDanger(fixture, OwnerA, revision: 1);
         Assert.True(fixture.Authority.TrySpawn(Conversion("danger", OwnerA, 0)).Spawned);
         ExitTier(fixture, OwnerA, SanityTierIds.Danger, revision: 2);
-        Assert.Equal(0, fixture.Authority.Count);
+        Assert.Equal(1, fixture.Authority.Count);
 
         EnterDanger(fixture, OwnerA, revision: 3);
         Assert.True(fixture.Authority.TrySpawn(Conversion("event", OwnerA, 30)).Spawned);
-        Assert.Equal(1, fixture.Authority.SetEventOverride(OwnerA, true));
+        Assert.Equal(2, fixture.Authority.SetEventOverride(OwnerA, true));
         Assert.Equal(
             HostileShadowSpawnStatus.Inactive,
             fixture.Authority.TrySpawn(Interval("blocked", OwnerA, 60)).Status

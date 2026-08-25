@@ -63,6 +63,64 @@ public sealed class SanityWorldCompositionTests
     }
 
     [Fact]
+    public void Low_sanity_colour_and_motion_use_the_full_bounded_quadratic_curve()
+    {
+        var atSeventyFive = Plan(
+            ratio: 0.75d,
+            SanityVisualLayerMask.LowSaturation,
+            totalSeconds: 1d
+        );
+        var atFifteen = Plan(
+            ratio: 0.15d,
+            SanityVisualLayerMask.LowSaturation,
+            totalSeconds: 1d
+        );
+        var atZero = Plan(
+            ratio: 0d,
+            SanityVisualLayerMask.LowSaturation,
+            totalSeconds: 1d
+        );
+
+        Assert.InRange(atSeventyFive.DistortionAmount, 0.0468f, 0.0470f);
+        Assert.InRange(atFifteen.DistortionAmount, 0.5418f, 0.5420f);
+        Assert.InRange(atSeventyFive.InsanityColourBlend, 0.0624f, 0.0626f);
+        Assert.InRange(atFifteen.InsanityColourBlend, 0.7224f, 0.7226f);
+        Assert.Equal(
+            SanityWorldCompositionPlanner.MaximumDistortionAmount,
+            atZero.DistortionAmount
+        );
+        Assert.Equal(1f, atZero.InsanityColourBlend);
+        Assert.NotEqual(0f, atFifteen.DistortionPhase);
+    }
+
+    [Fact]
+    public void Disabling_screen_distortion_preserves_low_sanity_colour_without_motion()
+    {
+        var parameters = Plan(
+            ratio: 0.15d,
+            SanityVisualLayerMask.LowSaturation | SanityVisualLayerMask.ViewShake,
+            totalSeconds: 1d,
+            screenDistortionEnabled: false
+        );
+
+        Assert.InRange(parameters.InsanityColourBlend, 0.7224f, 0.7226f);
+        Assert.Equal(0f, parameters.DistortionAmount);
+        Assert.Equal(0f, parameters.DistortionPhase);
+        Assert.Equal(0f, parameters.OffsetX);
+        Assert.Equal(0f, parameters.OffsetY);
+        Assert.Equal(1, parameters.OverscanPixels);
+    }
+
+    [Fact]
+    public void Motion_frequencies_are_half_speed_and_independent_of_sanity_strength()
+    {
+        Assert.Equal(0.11d, SanityWorldCompositionPlanner.DriftCyclesPerSecond);
+        Assert.Equal(1.55d, SanityWorldCompositionPlanner.ShakeXCyclesPerSecond);
+        Assert.Equal(1.35d, SanityWorldCompositionPlanner.ShakeYCyclesPerSecond);
+        Assert.Equal(25d, SanityWorldCompositionPlanner.DistortionRadiansPerSecond);
+    }
+
+    [Fact]
     public void Same_owner_seed_and_time_are_deterministic_and_other_screen_isolated()
     {
         var firstSeed = SanityWorldCompositionPlanner.CreateStableSeed(
@@ -188,7 +246,7 @@ public sealed class SanityWorldCompositionTests
     }
 
     [Fact]
-    public void Embedded_effect_is_open_gl_mgfx_v9_and_preserves_source_alpha()
+    public void Embedded_effect_uses_localized_edge_distortion_and_relative_material_colour_grade()
     {
         var bytes = SanityWorldEffectBytecode.Bytes;
         Assert.Equal("MGFX", Encoding.ASCII.GetString(bytes, 0, 4));
@@ -197,6 +255,27 @@ public sealed class SanityWorldCompositionTests
         Assert.Contains("uniform sampler2D ps_s0", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
         Assert.Contains("vFrontColor.a", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
         Assert.Contains("source.a", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("smoothstep(0.315, 0.5, radius)", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec2 shiftedUv", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("mix(source.rgb, distorted.rgb, amount)", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float insanityBlend", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec3 ApplyInsanityColourGrade", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float chroma = maximum - minimum", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec3 sourceChroma = worldColor - vec3(luma)", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float redDominance", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float greenDominance", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float blueDominance", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float yellowDominance", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("float lumaExposure", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec3 phaseTint", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec3 materialBias", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("vec3 relativeColour", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("return clamp(relativeColour, vec3(0.0), vec3(1.0))", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("ApplyInsanityColourGrade(worldColor, sanityPhase)", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.Contains("mix(worldColor, insanityColor, insanityBlend)", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.DoesNotContain("dayChromaNeutral", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.DoesNotContain("RedTarget", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
+        Assert.DoesNotContain("saturation", SanityWorldEffectBytecode.FragmentShader, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("discard", SanityWorldEffectBytecode.FragmentShader, StringComparison.Ordinal);
 
         using var reader = new BinaryReader(new MemoryStream(bytes), Encoding.UTF8);
@@ -233,7 +312,8 @@ public sealed class SanityWorldCompositionTests
     private static SanityWorldCompositionParameters Plan(
         double ratio,
         SanityVisualLayerMask layers,
-        double totalSeconds
+        double totalSeconds,
+        bool screenDistortionEnabled = true
     )
     {
         Assert.True(
@@ -241,6 +321,7 @@ public sealed class SanityWorldCompositionTests
                 Snapshot(ratio, layers, screenId: 0),
                 totalSeconds,
                 12345u,
+                screenDistortionEnabled,
                 out var parameters
             )
         );

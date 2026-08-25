@@ -100,7 +100,7 @@ internal static class HostileShadowTeleportSeed
 internal sealed class HostileShadowTeleportPointSelector
 {
     internal const int MinimumDistanceTiles = 4;
-    internal const int MaximumDistanceTiles = 8;
+    internal const int MaximumDistanceTiles = 16;
     internal const int MaximumAttempts = 16;
 
     internal HostileShadowTeleportSelectionResult Select(

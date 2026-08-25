@@ -38,6 +38,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
     private SanityVisualPreviewDefinition? dangerBorderPreview;
     private bool dangerBorderLoadAttempted;
     private bool enabled;
+    private bool screenDistortionEnabled;
     private bool disposed;
 
     internal SanitySmapiVisualService(
@@ -47,7 +48,8 @@ internal sealed class SanitySmapiVisualService : IDisposable
         SanitySystemLifecycleCoordinator lifecycle,
         SanitySmapiResourceService resources,
         ISanityEffectiveSanityProvider effectiveSanity,
-        bool enabled
+        bool enabled,
+        bool screenDistortionEnabled
     )
     {
         this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
@@ -57,6 +59,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
         this.effectiveSanity = effectiveSanity
             ?? throw new ArgumentNullException(nameof(effectiveSanity));
         this.enabled = enabled;
+        this.screenDistortionEnabled = screenDistortionEnabled;
         controller.SetEnabled(enabled);
         worldComposition = new SanityWorldCompositionRuntimeAdapter(
             manifestId,
@@ -93,6 +96,17 @@ internal sealed class SanitySmapiVisualService : IDisposable
         worldComposition.SetEnabled(value);
         ownersByScreen.Clear();
         ReleaseBorrowedDangerBorder(resetLoadAttempt: true);
+    }
+
+    internal void SetScreenDistortionEnabled(bool value)
+    {
+        if (disposed || screenDistortionEnabled == value)
+            return;
+
+        screenDistortionEnabled = value;
+        // Do not leave a stale geometry transform in the final-composition adapter between
+        // a GMCM save and the next owner snapshot; the color-only parameters rebuild next tick.
+        worldComposition.Clear();
     }
 
     public void Dispose()
@@ -300,6 +314,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
                 snapshot,
                 Game1.currentGameTime.TotalGameTime.TotalSeconds,
                 binding.StableSeed,
+                screenDistortionEnabled,
                 out var composition
             )
         )

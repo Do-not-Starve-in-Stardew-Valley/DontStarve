@@ -608,9 +608,9 @@ internal sealed class SmapiEnvironmentLightSnapshotProvider
         Add(ref hash, locationRule.RuleId);
         Add(ref hash, (int)locationRule.LightProfile);
         Add(ref hash, locationRule.TwoAmSpecialDeathSafe ? 1 : 0);
-        Add(ref hash, locationRule.DarknessAttackSafe ? 1 : 0);
         Add(ref hash, locationRule.HostileShadowSafe ? 1 : 0);
         Add(ref hash, locationRule.JunimoBlessingEligible ? 1 : 0);
+        Add(ref hash, (int)locationRule.NaturalDarknessProfile);
         Add(ref hash, locationRule.TwoAmSpecialDeathReason);
         Add(ref hash, locationRule.Reason);
         Add(ref hash, BitConverter.DoubleToInt64Bits(standing.X));

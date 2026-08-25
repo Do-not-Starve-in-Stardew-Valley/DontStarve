@@ -13,6 +13,8 @@ internal static class TextureLoader
     private static Texture2D _hungerFiller;
     public static Texture2D SanityContainer { get; private set; } = null!;
     public static Texture2D HungerContainer { get; private set; } = null!;
+    public static Texture2D SanityBrain { get; private set; } = null!;
+    public static Texture2D HungerIcon { get; private set; } = null!;
     private static Color? sanityCache;
     private static Color? hungerCache;
     public const int ContainerScale = 4;
@@ -72,6 +74,8 @@ internal static class TextureLoader
 
         SanityContainer = helper.ModContent.Load<Texture2D>("Asset/Sanity/container.png");
         HungerContainer = helper.ModContent.Load<Texture2D>("Asset/Hunger/container.png");
+        SanityBrain = helper.ModContent.Load<Texture2D>("Asset/Sanity/sanity.png");
+        HungerIcon = helper.ModContent.Load<Texture2D>("Asset/Hunger/hunger.png");
 
         _sanityFiller = new Texture2D(Game1.graphics.GraphicsDevice, 1, 1);
         _hungerFiller = new Texture2D(Game1.graphics.GraphicsDevice, 1, 1);

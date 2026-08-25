@@ -14,22 +14,22 @@ internal interface IConfigMenuRegistrationApi
 {
     void Register(Action reset, Action save);
 
-    void AddSection(string sectionId, string text);
+    void AddSection(string sectionId, Func<string> getText);
 
     void AddBoolean(
         string fieldId,
         Func<bool> getValue,
         Action<bool> setValue,
-        string name,
-        string tooltip
+        Func<string> getName,
+        Func<string> getTooltip
     );
 
     void AddEnum(
         string fieldId,
         Func<string> getValue,
         Action<string> setValue,
-        string name,
-        string tooltip,
+        Func<string> getName,
+        Func<string> getTooltip,
         string[] allowedValues,
         Func<string, string> formatAllowedValue
     );
@@ -205,7 +205,14 @@ internal static class SchemaDrivenConfigMenuRegistrar
                 currentSection = option.SectionI18n;
                 try
                 {
-                    menu.AddSection(option.SectionI18n, section);
+                    menu.AddSection(
+                        option.SectionI18n,
+                        CreateTranslationGetter(
+                            translations,
+                            option.SectionI18n,
+                            section
+                        )
+                    );
                 }
                 catch (Exception)
                 {
@@ -221,8 +228,16 @@ internal static class SchemaDrivenConfigMenuRegistrar
                         option.Key,
                         () => editSession.GetBoolean(option),
                         value => editSession.SetBoolean(option, value),
-                        name,
-                        tooltip
+                        CreateTranslationGetter(
+                            translations,
+                            option.NameI18n,
+                            name
+                        ),
+                        CreateTranslationGetter(
+                            translations,
+                            option.TooltipI18n,
+                            tooltip
+                        )
                     );
                 }
                 else if (option.Type == ConfigOptionType.Enum)
@@ -232,13 +247,31 @@ internal static class SchemaDrivenConfigMenuRegistrar
                         option.Key,
                         () => editSession.GetEnum(option),
                         value => editSession.SetEnum(option, value),
-                        name,
-                        tooltip,
+                        CreateTranslationGetter(
+                            translations,
+                            option.NameI18n,
+                            name
+                        ),
+                        CreateTranslationGetter(
+                            translations,
+                            option.TooltipI18n,
+                            tooltip
+                        ),
                         allowedValues,
                         value =>
-                            enumDisplayValues.TryGetValue(value, out var display)
+                        {
+                            var fallback = enumDisplayValues.TryGetValue(
+                                value,
+                                out var display
+                            )
                                 ? display
-                                : value
+                                : value;
+                            return GetTranslationOrFallback(
+                                translations,
+                                GetEnumValueI18nKey(option, value),
+                                fallback
+                            );
+                        }
                     );
                 }
                 else
@@ -334,6 +367,35 @@ internal static class SchemaDrivenConfigMenuRegistrar
 
         enumDisplayValues = new ReadOnlyDictionary<string, string>(displays);
         return true;
+    }
+
+    private static Func<string> CreateTranslationGetter(
+        IConfigMenuTranslationProvider translations,
+        string key,
+        string fallback
+    )
+    {
+        // SMAPI can select the game locale after GameLaunched registers this page.
+        return () => GetTranslationOrFallback(translations, key, fallback);
+    }
+
+    private static string GetTranslationOrFallback(
+        IConfigMenuTranslationProvider translations,
+        string key,
+        string fallback
+    )
+    {
+        try
+        {
+            return translations.TryGet(key, out var value)
+                && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : fallback;
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
     }
 
     private static string[] CopyAllowedValues(IReadOnlyList<string> values)

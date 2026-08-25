@@ -13,6 +13,7 @@ public sealed class GameplayConfigFingerprintTests
             "{\"EnableSanitySystem\":true,"
             + "\"SanityMonsterIntensity\":\"Default\","
             + "\"DarkHandMode\":\"FireThief\","
+            + "\"EnableNaturalDarkness\":true,"
             + "\"DarknessDamageMode\":\"Default\","
             + "\"MonsterDifficultyProfile\":\"Compatible\","
             + "\"EnableJunimoBlessing\":false,"
@@ -24,6 +25,7 @@ public sealed class GameplayConfigFingerprintTests
             + "\"EnableJunimoBlessing\":false,"
             + "\"MonsterDifficultyProfile\":\"Compatible\","
             + "\"DarknessDamageMode\":\"Default\","
+            + "\"EnableNaturalDarkness\":true,"
             + "\"DarkHandMode\":\"FireThief\","
             + "\"SanityMonsterIntensity\":\"Default\","
             + "\"EnableSanitySystem\":true}";
@@ -38,7 +40,7 @@ public sealed class GameplayConfigFingerprintTests
         Assert.Equal(left.FullHash[..12], left.PublicIdentifier);
         Assert.Equal(64, left.FullHash.Length);
         Assert.Equal(
-            "67A45EF3D61E63A8AB00FF08EE201387C04B95542F7003A32BCCECAD7A30D9B6",
+            "8A699C9C87B825F64199B81698CD6D0CAA9072145B2ECEB2CFBDF95901503B3C",
             left.FullHash
         );
         Assert.Equal(
@@ -46,6 +48,7 @@ public sealed class GameplayConfigFingerprintTests
                 + "DarkHandMode=FireThief\n"
                 + "DarknessDamageMode=Default\n"
                 + "EnableJunimoBlessing=false\n"
+                + "EnableNaturalDarkness=true\n"
                 + "EnableSanitySystem=true\n"
                 + "MonsterDifficultyProfile=Compatible\n"
                 + "SanityMonsterIntensity=Default\n",
@@ -53,15 +56,14 @@ public sealed class GameplayConfigFingerprintTests
         );
     }
 
-    [Fact]
-    public void WorldStateValueChangeChangesFingerprint()
+    [Theory]
+    [InlineData("{\"DarknessDamageMode\":\"Off\"}")]
+    [InlineData("{\"EnableNaturalDarkness\":false}")]
+    public void WorldStateValueChangeChangesFingerprint(string changedJson)
     {
         var registry = ConfigTestData.LoadShippedRegistry();
         var baseline = Fingerprint(registry, "{}");
-        var changed = Fingerprint(
-            registry,
-            "{\"DarknessDamageMode\":\"Off\"}"
-        );
+        var changed = Fingerprint(registry, changedJson);
 
         Assert.True(baseline.IsAvailable);
         Assert.True(changed.IsAvailable);
@@ -70,6 +72,8 @@ public sealed class GameplayConfigFingerprintTests
 
     [Theory]
     [InlineData("{\"EnableSanityVisualEffects\":false}")]
+    [InlineData("{\"EnableLowSanityScreenDistortion\":false}")]
+    [InlineData("{\"EnableSanityVignette\":false}")]
     [InlineData("{\"EnableDawnDuskMusic\":false}")]
     [InlineData("{\"UnknownLegacy\":123}")]
     public void LocalOrUnknownValueDoesNotChangeFingerprint(string changedJson)

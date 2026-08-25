@@ -49,14 +49,10 @@ internal class SanityBar : INonTimeRelatedUIElement
         var sanity = player.GetSanity();
         var maxSanity = player.GetMaxSanity();
 
-        // 右下角锚点已在 UIRenderContext 中根据原版生命 HUD 让位。
-        var hudAnchor = uiContext.ViewportBottomRightAnchor;
         var containerTexture = TextureLoader.SanityContainer;
         if (
             !HudDisplayRules.TryCreateSanityFrame(
-                new HudPoint((int)hudAnchor.X, (int)hudAnchor.Y),
-                TextureLoader.SanityContainerScaledWidth,
-                TextureLoader.SanityContainerScaledHeight,
+                uiContext.HudLayout.SanityBounds,
                 TextureLoader.FillerWidthMultiplier * Game1.pixelZoom,
                 sanity,
                 maxSanity,
@@ -111,8 +107,12 @@ internal class SanityBar : INonTimeRelatedUIElement
                 )
                 .ToString();
             var textSize = Game1.dialogueFont.MeasureString(information);
-            var posX = hudAnchor.X;
-            var posY = containerBounds.Y - textSize.Y + 116;
+            var posX = containerBounds.X;
+            var posY =
+                containerBounds.Y
+                + containerBounds.Height / 2f
+                + 4f
+                - textSize.Y;
 
             spriteBatch.DrawString(
                 Game1.dialogueFont,

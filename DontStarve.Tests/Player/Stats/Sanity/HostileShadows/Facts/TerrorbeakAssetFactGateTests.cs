@@ -15,7 +15,7 @@ public sealed class TerrorbeakAssetFactGateTests
     private const string SpriteSlotId = "sanity.asset.terrorbeak.sprite";
     private const string SpritePath = "Asset/Sanity/Sprites/Monsters/terrorbeak.png";
     private const string SpriteSha256 =
-        "E1D8805044ED3E8C692D46530A9AAEE94E9C968DB03D9D4770A7F3D6ADB3E3CF";
+        "8E487C1DD941BBEADD444DE47140316C350232A1D21DBE034707A602E66DBD8A";
 
     private static readonly string[] AnimationSlotIds =
     {
@@ -118,9 +118,13 @@ public sealed class TerrorbeakAssetFactGateTests
 
         var sheet = PngRgbaImage.Decode(ResolveShippedPath(SpritePath));
         Assert.Equal(192, sheet.Width);
-        Assert.Equal(768, sheet.Height);
-        Assert.Equal(45155, sheet.CountNonTransparentPixels(0, 0, sheet.Width, sheet.Height));
-        for (var row = 0; row < 12; row++)
+        Assert.Equal(832, sheet.Height);
+        Assert.InRange(
+            sheet.CountNonTransparentPixels(0, 0, sheet.Width, sheet.Height),
+            1,
+            (192 * 832) - 1
+        );
+        for (var row = 0; row < 13; row++)
         {
             for (var frame = 0; frame < 4; frame++)
             {
@@ -188,11 +192,11 @@ public sealed class TerrorbeakAssetFactGateTests
         Assert.Equal(SpriteSlotId, profile.GetProperty("TextureSlotId").GetString());
         Assert.Equal(48, profile.GetProperty("FrameWidth").GetInt32());
         Assert.Equal(64, profile.GetProperty("FrameHeight").GetInt32());
-        Assert.Equal(12, profile.GetProperty("SheetRows").GetInt32());
+        Assert.Equal(13, profile.GetProperty("SheetRows").GetInt32());
         Assert.Equal("FourWayRows", profile.GetProperty("DirectionMode").GetString());
         Assert.True(profile.GetProperty("IsPlaceholder").GetBoolean());
         Assert.Equal("ART-06", profile.GetProperty("CreditGroup").GetString());
-        AssertPoint(profile.GetProperty("ActorOriginSourcePx"), 0, 0);
+        AssertPoint(profile.GetProperty("ActorOriginSourcePx"), 24, 40);
 
         var collision = profile.GetProperty("Collision");
         Assert.Equal(
@@ -200,7 +204,7 @@ public sealed class TerrorbeakAssetFactGateTests
             collision.GetProperty("CoordinateSpace").GetString()
         );
         AssertRectangle(collision.GetProperty("HurtBoxSourcePx"), 8, 32, 32, 32);
-        AssertRectangle(collision.GetProperty("AttackBoxSourcePx"), -16, 8, 80, 80);
+        AssertRectangle(collision.GetProperty("AttackBoxSourcePx"), -8, 16, 64, 64);
         Assert.Equal(
             new[] { 3, 4 },
             collision
@@ -226,10 +230,13 @@ public sealed class TerrorbeakAssetFactGateTests
         );
         Assert.Equal(new[] { 0, 4, 8, 9, 10, 11 }, states.Select(StateRow));
         Assert.Equal(new[] { true, false, false, false, true, false }, states.Select(StateLoops));
+        Assert.Equal(
+            new[] { 100, 100, 100, 100, 200, 300 },
+            states.Select(state => state.GetProperty("FrameDurationMs").GetInt32())
+        );
         Assert.All(states, state =>
         {
             Assert.Equal(4, state.GetProperty("FrameCount").GetInt32());
-            Assert.Equal(100, state.GetProperty("FrameDurationMs").GetInt32());
             AssertPoint(state.GetProperty("PivotSourcePx"), 24, 48);
             Assert.Equal(4d, state.GetProperty("DrawScale").GetDouble());
             Assert.Equal("Actor", state.GetProperty("SortLayer").GetString());
@@ -273,10 +280,10 @@ public sealed class TerrorbeakAssetFactGateTests
         var preview = Assert.IsType<SanityVisualPreviewDefinition>(selection.Result.VisualPreview);
         Assert.Equal(SanityVisualPreviewKind.AnimationFrame, preview.Kind);
         Assert.Equal(new SanityResourceRectangle(96, 256, 48, 64), preview.SourceRectangle);
-        Assert.Equal(new SanityResourcePoint(0, 0), preview.ActorOriginSourcePx);
+        Assert.Equal(new SanityResourcePoint(24, 40), preview.ActorOriginSourcePx);
         Assert.Equal(new SanityResourcePoint(24, 48), preview.PivotSourcePx);
         Assert.Equal(new SanityResourceRectangle(8, 32, 32, 32), preview.HurtBoxSourcePx);
-        Assert.Equal(new SanityResourceRectangle(-16, 8, 80, 80), preview.AttackBoxSourcePx);
+        Assert.Equal(new SanityResourceRectangle(-8, 16, 64, 64), preview.AttackBoxSourcePx);
         Assert.Equal(4d, preview.DrawScale);
         Assert.False(preview.OwnerLocalOnly);
         Assert.True(preview.IsProvisional);

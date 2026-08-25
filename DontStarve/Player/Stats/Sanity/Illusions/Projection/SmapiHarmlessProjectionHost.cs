@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using DontStarve.Interface;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using DontStarve.Resource.Sanity;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -45,6 +46,9 @@ internal sealed class SmapiHarmlessProjectionHost
     private readonly IHarmlessProjectionResourceProvider resourceProvider;
     private readonly HarmlessProjectionScheduler scheduler;
     private readonly ShadowCreatureHarmlessProjectionCoordinator shadowCoordinator;
+    // DIAG-20260809: 影怪无害投影 correlation 来源提为字段，供调度与调试召唤共用同一序号源。
+    private readonly IShadowProjectionCorrelationSource correlationSource =
+        new SessionShadowProjectionCorrelationSource();
     private readonly HarmlessProjectionSpawnPointSelector spawnPointSelector = new();
     private readonly IHarmlessProjectionRandom random = new SystemHarmlessProjectionRandom();
     private readonly Dictionary<string, IHarmlessProjectionWorldRenderer>
@@ -82,7 +86,7 @@ internal sealed class SmapiHarmlessProjectionHost
             new ShadowCreatureHarmlessProjectionIndex(),
             lifecycle,
             conversionIntentSink,
-            new SessionShadowProjectionCorrelationSource()
+            correlationSource
         );
 
         lifecycle.StateEventPublished += OnStateEventPublished;
@@ -190,6 +194,733 @@ internal sealed class SmapiHarmlessProjectionHost
             hook,
             out resultReason
         );
+    }
+
+    /// <summary>
+    /// DIAG-20260804: 测试命令 ds_spawn 专用。在指定世界坐标直接生成无害幻觉投影
+    /// （mr-skitts/dark-hand/dark-watcher/eyes），绕过调度器与选点器；仍走完整视觉加载/TTL。
+    /// </summary>
+    internal string DebugSpawnProjectionAt(
+        string speciesId,
+        float positionX,
+        float positionY
+    )
+    {
+        if (disposed)
+            return "projection.host-disposed";
+        if (!TryGetCurrentOwner(
+                out _, out var currentLocation, out var currentContext
+            ))
+        {
+            return "spawn.owner-context-invalid";
+        }
+        HarmlessProjectionPolicy? policy = null;
+        foreach (var candidate in scheduler.Policies)
+        {
+            if (
+                string.Equals(
+                    candidate.SpeciesId,
+                    speciesId,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                policy = candidate;
+                break;
+            }
+        }
+        if (policy is null)
+            return "spawn.species-not-registered";
+        if (
+            spawnGatesBySpecies.TryGetValue(
+                policy.SpeciesId,
+                out var spawnGate
+            )
+            && !spawnGate.CanSpawn(
+                new HarmlessProjectionSpawnRequest(
+                    currentContext,
+                    policy,
+                    new HarmlessProjectionWorldPoint(
+                        positionX,
+                        positionY
+                    ),
+                    timeApi.Time
+                ),
+                out var gateReason
+            )
+        )
+        {
+            return string.IsNullOrWhiteSpace(gateReason)
+                ? "spawn.species-gate-rejected"
+                : gateReason;
+        }
+        if (
+            !TryLoadSpawnVisuals(
+                policy,
+                out var resource,
+                out var visualStateResources,
+                out var visualFailure
+            )
+        )
+        {
+            return visualFailure;
+        }
+
+        long expiresAtMinute;
+        try
+        {
+            expiresAtMinute = checked(timeApi.Time + policy.HardTtlMinutes);
+        }
+        catch (OverflowException)
+        {
+            return "spawn.ttl-deadline-overflow";
+        }
+        scheduler.Index.TryAdd(
+            new HarmlessProjectionInstance(
+                currentContext,
+                policy,
+                new HarmlessProjectionWorldPoint(positionX, positionY),
+                timeApi.Time,
+                expiresAtMinute,
+                policy.InitialStateId,
+                resource,
+                visualStateResources
+            ),
+            out _
+        );
+        return "spawn.debug-spawned";
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 测试命令 ds_spawn harmless 专用。在指定世界坐标请求影怪的
+    /// 非危险形态（无害投影，creeper-fear/terrorbeak）。位置可指定；调试生成绕过自然
+    /// 预算、刷新计时、共享上限和转换锁，供测试命令稳定生成目标。
+    /// </summary>
+    internal string DebugSpawnShadowProjectionAt(
+        string speciesId,
+        float positionX,
+        float positionY
+    )
+    {
+        if (disposed)
+            return "shadow-projection.host-disposed";
+        if (!lifecycle.IsEnabled)
+            return "shadow-projection.system-disabled";
+        if (!TryGetCurrentOwner(out _, out _, out var currentContext))
+        {
+            return "spawn.owner-context-invalid";
+        }
+        return SpawnShadowProjectionCore(
+            currentContext,
+            speciesId,
+            positionX,
+            positionY
+        );
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 无害投影指定位置生成核心。调试召唤绕过自然预算、刷新计时、
+    /// 共享上限和转换锁，但仍经过宿主、物种、资源和索引完整性检查；驱赶补偿仍使用
+    /// 独立的补偿通道，不经过此方法。
+    /// </summary>
+    private string SpawnShadowProjectionCore(
+        HarmlessProjectionOwnerContext owner,
+        string speciesId,
+        float positionX,
+        float positionY
+    )
+    {
+        ShadowCreatureHarmlessProjectionPolicy? policy = null;
+        foreach (var candidate in shadowCoordinator.Policies)
+        {
+            if (
+                string.Equals(
+                    candidate.SpeciesId,
+                    speciesId,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                policy = candidate;
+                break;
+            }
+        }
+        if (policy is null)
+            return "spawn.species-not-registered";
+
+        if (
+            !TryLoadShadowProjectionVisuals(
+                policy,
+                out var resource,
+                out var spawnResource,
+                out var moveResource,
+                out var visualReason
+            )
+        )
+        {
+            return visualReason;
+        }
+
+        string correlationId;
+        try
+        {
+            correlationId = correlationSource.Next(
+                owner.PlayerKey,
+                policy.SpeciesId
+            );
+        }
+        catch (Exception exception)
+        {
+            LogFailureOnce(
+                "shadow-projection.debug-correlation-threw",
+                $"Shadow harmless projection debug correlation failed closed ({exception.GetType().Name}: {exception.Message})."
+            );
+            return "shadow-projection.correlation-threw";
+        }
+        if (
+            string.IsNullOrWhiteSpace(correlationId)
+            || shadowCoordinator.Index.ContainsCorrelation(correlationId)
+        )
+        {
+            return "shadow-projection.correlation-invalid-or-duplicate";
+        }
+
+        var instance = new ShadowCreatureHarmlessProjectionInstance(
+            correlationId,
+            owner,
+            policy,
+            new HarmlessProjectionWorldPoint(positionX, positionY),
+            timeApi.Time,
+            resource,
+            spawnResource,
+            moveResource
+        );
+        if (
+            !shadowCoordinator.TryRegisterDebugProjection(
+                owner,
+                instance,
+                out var registrationReason
+            )
+        )
+        {
+            return registrationReason;
+        }
+        return "spawn.debug-spawned";
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 驱赶补偿——被驱赶消失的影怪立即在玩家附近 4-16 格补刷一只，
+    /// 防止玩家反复驱赶导致场上无影怪（补偿不占预算 60 分钟 timer）。
+    /// </summary>
+    private void TrySpawnCompensationProjection(
+        HarmlessProjectionOwnerContext owner,
+        HarmlessProjectionWorldPoint ownerStandingWorldPixel,
+        string speciesId
+    )
+    {
+        if (disposed || Game1.player is null || Game1.player.currentLocation is null)
+            return;
+        // DIAG-20260811: 影怪总数达到上限后驱赶不补偿（超限部分由宿主每 10 分钟
+        // 50% 消失处理，不再无限补刷）。投影侧计数近似（多人下危险实体占用未计入）。
+        if (
+            lifecycle.TryGetShadowBudgetTotalCap(
+                owner.PlayerKey,
+                out var totalCap
+            )
+            && totalCap > 0
+            && shadowCoordinator.Index.CountForOwner(owner.PlayerKey) >= totalCap
+        )
+        {
+            return;
+        }
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var angle = Random.Shared.NextDouble() * Math.PI * 2d;
+            var distancePixels = (4d * 64d) + (Random.Shared.NextDouble() * 12d * 64d);
+            var worldX = ownerStandingWorldPixel.X
+                + (float)(Math.Cos(angle) * distancePixels);
+            var worldY = ownerStandingWorldPixel.Y
+                + (float)(Math.Sin(angle) * distancePixels);
+            if (
+                !Game1.player.currentLocation.isTileOnMap(
+                    (int)Math.Floor(worldX / 64f),
+                    (int)Math.Floor(worldY / 64f)
+                )
+            )
+            {
+                continue;
+            }
+            var reason = SpawnShadowProjectionCore(
+                owner,
+                speciesId,
+                (float)worldX,
+                (float)worldY
+            );
+            if (string.Equals(reason, "spawn.debug-spawned", StringComparison.Ordinal))
+                return;
+            LogFailureOnce(
+                string.Concat("shadow-compensation|", speciesId),
+                $"Shadow compensation spawn failed closed ({reason})."
+            );
+            return;
+        }
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 测试命令 ds_spawn clear 专用。清理所有影怪无害投影（无 TTL，
+    /// 只能靠此命令/切图/跨天清理）；保留档位相位与转换证据，便于继续测试。
+    /// </summary>
+    internal int DebugClearShadowProjections()
+    {
+        if (disposed)
+            return 0;
+        return shadowCoordinator.CleanupAll(
+            HarmlessProjectionCleanupReason.OwnerInvalidated,
+            clearOwnerPhases: false,
+            clearConversionEvidence: false
+        );
+    }
+
+    // DIAG-20260809: 绑定投影（危险实体隐藏态的外观）按 correlation 登记，
+    // 供位置查询与解除绑定删除；与协调器 Index 保持同步（Index 清理后自动移除）。
+    private readonly Dictionary<string, ShadowCreatureHarmlessProjectionInstance>
+        bindingProjections = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// DIAG-20260809: 生成绑定投影（危险实体隐藏态的外观）。位置=实体当前位置，
+    /// 朝向=实体隐藏前朝向；correlationId 由宿主生成并返回，供解除绑定时删除。
+    /// </summary>
+    internal bool TrySpawnBindingProjection(
+        HarmlessProjectionOwnerContext owner,
+        string speciesId,
+        double positionX,
+        double positionY,
+        string facingId,
+        out string correlationId,
+        out string reason
+    )
+    {
+        correlationId = string.Empty;
+        if (disposed)
+        {
+            reason = "shadow-projection.host-disposed";
+            return false;
+        }
+        if (owner is null)
+        {
+            reason = "spawn.owner-context-invalid";
+            return false;
+        }
+
+        ShadowCreatureHarmlessProjectionPolicy? policy = null;
+        foreach (var candidate in shadowCoordinator.Policies)
+        {
+            if (
+                string.Equals(
+                    candidate.SpeciesId,
+                    speciesId,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                policy = candidate;
+                break;
+            }
+        }
+        if (policy is null)
+        {
+            reason = "spawn.species-not-registered";
+            return false;
+        }
+        if (
+            !TryLoadShadowProjectionVisuals(
+                policy,
+                out var resource,
+                out var spawnResource,
+                out var moveResource,
+                out var visualReason
+            )
+        )
+        {
+            reason = visualReason;
+            return false;
+        }
+
+        string generated;
+        try
+        {
+            generated = correlationSource.Next(
+                owner.PlayerKey,
+                policy.SpeciesId
+            );
+        }
+        catch (Exception exception)
+        {
+            LogFailureOnce(
+                "shadow-projection.binding-correlation-threw",
+                $"Shadow harmless projection binding correlation failed closed ({exception.GetType().Name}: {exception.Message})."
+            );
+            reason = "shadow-projection.correlation-threw";
+            return false;
+        }
+        if (
+            string.IsNullOrWhiteSpace(generated)
+            || shadowCoordinator.Index.ContainsCorrelation(generated)
+        )
+        {
+            reason = "shadow-projection.correlation-invalid-or-duplicate";
+            return false;
+        }
+
+        var instance = new ShadowCreatureHarmlessProjectionInstance(
+            generated,
+            owner,
+            policy,
+            new HarmlessProjectionWorldPoint(positionX, positionY),
+            timeApi.Time,
+            resource,
+            spawnResource,
+            moveResource
+        );
+        instance.SetFacingId(facingId);
+        // DIAG-20260811: 绑定投影 10 秒驱赶保护期（玩家能看到投影稳定出现）；
+        // 保护期内静止且豁免近距驱赶，之后恢复正常行为（可游荡/可驱赶）。
+        // SetBindingProjection 同时把动画状态切到静息——绑定投影不播生成动画
+        // （危险影怪恐吓→消失→立刻出现非危险形态，无生成过渡）。
+        instance.SetBindingProjection(10000);
+        if (!shadowCoordinator.Index.TryAdd(instance, out var addReason))
+        {
+            reason = addReason;
+            return false;
+        }
+        bindingProjections[generated] = instance;
+        correlationId = generated;
+        reason = "shadow-projection.binding-spawned";
+        return true;
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 删除绑定投影（低理智恢复/连带清除时解除外观）。
+    /// </summary>
+    internal bool TryRemoveBindingProjection(
+        string correlationId,
+        out string reason
+    )
+    {
+        if (disposed || string.IsNullOrWhiteSpace(correlationId))
+        {
+            reason = "shadow-projection.binding-remove-invalid";
+            return false;
+        }
+        bindingProjections.Remove(correlationId);
+        if (
+            !shadowCoordinator.Index.TryRemove(
+                correlationId,
+                HarmlessProjectionCleanupReason.OwnerInvalidated,
+                out _
+            )
+        )
+        {
+            reason = "shadow-projection.binding-remove-failed";
+            return false;
+        }
+        reason = "shadow-projection.binding-removed";
+        return true;
+    }
+
+    /// <summary>
+    /// DIAG-20260810: 高理智场景——绑定投影生成后立即进入高理智淡出
+    /// （危险影怪先脱战→隐藏→绑定投影，再走无害投影消失链条一起消失）。
+    /// </summary>
+    internal bool BeginBindingFadeOut(string correlationId)
+    {
+        if (
+            disposed
+            || !bindingProjections.TryGetValue(
+                correlationId,
+                out var instance
+            )
+            || instance is null
+            || instance.IsCleanedUp
+        )
+        {
+            return false;
+        }
+        instance.BeginFadeOut(
+            ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds,
+            ShadowCreatureHarmlessProjectionInstance
+                .ShadowCreatureProjectionFadeOutKind.HighSan
+        );
+        return true;
+    }
+
+    /// <summary>DIAG-20260810: 指定 owner 的在册无害投影数（统一上限池超限清理用）。</summary>
+    internal int CountShadowProjectionsForOwner(string playerKey)
+    {
+        return shadowCoordinator.Index.CountForOwner(playerKey);
+    }
+
+    /// <summary>
+    /// DIAG-20260810: 对指定 owner 的无害投影逐只按 50% 概率移除（超限清理），
+    /// 最多移除 maxToRemove 只；返回实际移除数。含指令生成（ds_spawn harmless）。
+    /// </summary>
+    internal int TrimShadowProjectionsForOwner(
+        string playerKey,
+        int maxToRemove,
+        Random random
+    )
+    {
+        if (disposed || maxToRemove <= 0)
+            return 0;
+        if (
+            !TryGetCurrentOwner(out _, out _, out var currentContext)
+            || !string.Equals(
+                currentContext.PlayerKey,
+                playerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return 0;
+        }
+        if (
+            !shadowCoordinator.Index.TryGetContextInstances(
+                currentContext,
+                out var instances
+            )
+            || instances is null
+        )
+        {
+            return 0;
+        }
+        var removed = 0;
+        foreach (var instance in instances)
+        {
+            if (removed >= maxToRemove)
+                break;
+            if (instance.IsCleanedUp)
+                continue;
+            if (random.NextDouble() >= 0.5d)
+                continue;
+            if (
+                shadowCoordinator.Index.TryRemove(
+                    instance.CorrelationId,
+                    HarmlessProjectionCleanupReason.OwnerInvalidated,
+                    out _
+                )
+            )
+            {
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 读取绑定投影当前位置（危险实体低频对齐用）。
+    /// </summary>
+    internal bool TryGetBindingProjectionPosition(
+        string correlationId,
+        out double positionX,
+        out double positionY
+    )
+    {
+        positionX = 0d;
+        positionY = 0d;
+        if (
+            disposed
+            || !bindingProjections.TryGetValue(
+                correlationId,
+                out var instance
+            )
+            || instance is null
+            || instance.IsCleanedUp
+        )
+        {
+            return false;
+        }
+        positionX = instance.WorldPixel.X;
+        positionY = instance.WorldPixel.Y;
+        return true;
+    }
+
+    /// <summary>DIAG-20260809: 绑定投影存活检查——被协调器清掉的绑定投影同步移除登记。</summary>
+    private void PruneDeadBindingProjections()
+    {
+        if (bindingProjections.Count == 0)
+            return;
+        List<string>? removed = null;
+        foreach (var pair in bindingProjections)
+        {
+            if (!shadowCoordinator.Index.ContainsCorrelation(pair.Key))
+            {
+                removed ??= new List<string>();
+                removed.Add(pair.Key);
+            }
+        }
+        if (removed is null)
+            return;
+        foreach (var correlationId in removed)
+            bindingProjections.Remove(correlationId);
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 加载影怪无害投影全部动画槽。主用三槽（spawn/move/idle）必须成功
+    /// 且通过契约校验（fail-closed）；taunt/death 已登记为休眠动作，额外槽位只加载以防
+    /// 意外状态请求，失败仅记录不阻断无害投影生成。
+    /// </summary>
+    private bool TryLoadShadowProjectionVisuals(
+        ShadowCreatureHarmlessProjectionPolicy policy,
+        out SanitySlotResourceResult? idleResource,
+        out SanitySlotResourceResult? spawnResource,
+        out SanitySlotResourceResult? moveResource,
+        out string reason
+    )
+    {
+        idleResource = null;
+        spawnResource = null;
+        moveResource = null;
+        if (
+            !TryLoadShadowProjectionSlot(
+                policy,
+                policy.IdleVisualSlotId,
+                out idleResource,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+        if (
+            !TryLoadShadowProjectionSlot(
+                policy,
+                policy.SpawnVisualSlotId,
+                out spawnResource,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+        if (
+            !TryLoadShadowProjectionSlot(
+                policy,
+                policy.MoveVisualSlotId,
+                out moveResource,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+
+        foreach (var slotId in policy.AllVisualSlotIds)
+        {
+            if (IsAppliedShadowProjectionSlot(policy, slotId))
+            {
+                continue;
+            }
+            SanitySlotResourceResult auxiliary;
+            try
+            {
+                auxiliary = resourceProvider.LoadVisualSlot(slotId, frameIndex: 0);
+            }
+            catch (Exception exception)
+            {
+                LogFailureOnce(
+                    string.Concat("shadow-aux-resource|", slotId),
+                    $"Shadow harmless projection auxiliary resource threw (slot={slotId}, {exception.GetType().Name}: {exception.Message})."
+                );
+                continue;
+            }
+            if (!auxiliary.Success)
+            {
+                if (IsRegisteredDormantActionSlot(policy, slotId))
+                {
+                    LogFailureOnce(
+                        string.Concat("shadow-dormant-action-resource|", slotId),
+                        $"Shadow harmless dormant action resource is unavailable but remains registered (slot={slotId}, code={auxiliary.Diagnostic.Code})."
+                    );
+                }
+                else
+                {
+                    LogUnavailableResource(slotId, auxiliary);
+                }
+            }
+        }
+
+        reason = "shadow-projection.visuals-ready";
+        return true;
+    }
+
+    private static bool IsAppliedShadowProjectionSlot(
+        ShadowCreatureHarmlessProjectionPolicy policy,
+        string slotId
+    )
+    {
+        foreach (var appliedSlotId in policy.AppliedVisualSlotIds)
+        {
+            if (string.Equals(appliedSlotId, slotId, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsRegisteredDormantActionSlot(
+        ShadowCreatureHarmlessProjectionPolicy policy,
+        string slotId
+    )
+    {
+        foreach (var dormantSlotId in policy.RegisteredDormantActionVisualSlotIds)
+        {
+            if (string.Equals(dormantSlotId, slotId, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool TryLoadShadowProjectionSlot(
+        ShadowCreatureHarmlessProjectionPolicy policy,
+        string slotId,
+        out SanitySlotResourceResult? resource,
+        out string reason
+    )
+    {
+        resource = null;
+        SanitySlotResourceResult loaded;
+        try
+        {
+            loaded = resourceProvider.LoadVisualSlot(slotId, frameIndex: 0);
+        }
+        catch (Exception exception)
+        {
+            LogFailureOnce(
+                "sanity.resource.consumer-facade-unavailable",
+                $"Shadow harmless projection resource facade failed closed ({exception.GetType().Name}: {exception.Message})."
+            );
+            reason = "sanity.resource.consumer-facade-unavailable";
+            return false;
+        }
+        if (!policy.TryValidateResource(loaded, slotId, out var visualReason))
+        {
+            if (!loaded.Success)
+                LogUnavailableResource(slotId, loaded);
+            else
+            {
+                LogFailureOnce(
+                    string.Concat("shadow-resource-contract|", slotId),
+                    $"Shadow harmless projection visual failed closed (profile={policy.VisualProfileId}, slot={slotId}, reason={visualReason})."
+                );
+            }
+            reason = visualReason;
+            return false;
+        }
+        resource = loaded;
+        reason = "shadow-projection.slot-ready";
+        return true;
     }
 
     public HarmlessProjectionSpawnResult TrySpawn(
@@ -312,39 +1043,19 @@ internal sealed class SmapiHarmlessProjectionHost
             return ShadowCreatureHarmlessProjectionSpawnResult.Failed(permitReason);
         }
 
-        SanitySlotResourceResult resource;
-        try
+        if (
+            !TryLoadShadowProjectionVisuals(
+                request.Policy,
+                out var resource,
+                out var spawnResource,
+                out var moveResource,
+                out var visualReason
+            )
+        )
         {
-            resource = resourceProvider.LoadVisualSlot(
-                request.Policy.IdleVisualSlotId,
-                frameIndex: 0
-            );
-        }
-        catch (Exception exception)
-        {
-            LogFailureOnce(
-                "sanity.resource.consumer-facade-unavailable",
-                $"Shadow harmless projection resource facade failed closed ({exception.GetType().Name}: {exception.Message})."
-            );
             return ShadowCreatureHarmlessProjectionSpawnResult.Failed(
-                "sanity.resource.consumer-facade-unavailable"
+                visualReason
             );
-        }
-        if (!request.Policy.TryValidateResource(resource, out var visualReason))
-        {
-            if (!resource.Success)
-                LogUnavailableResource(request.Policy.IdleVisualSlotId, resource);
-            else
-            {
-                LogFailureOnce(
-                    string.Concat(
-                        "shadow-resource-contract|",
-                        request.Policy.IdleVisualSlotId
-                    ),
-                    $"Shadow harmless projection visual failed closed (profile={request.Policy.VisualProfileId}, reason={visualReason})."
-                );
-            }
-            return ShadowCreatureHarmlessProjectionSpawnResult.Failed(visualReason);
         }
 
         var point = spawnPointSelector.Select(
@@ -363,7 +1074,9 @@ internal sealed class SmapiHarmlessProjectionHost
                 request.Policy,
                 point.WorldPixel.Value,
                 request.GameMinute,
-                resource
+                resource,
+                spawnResource,
+                moveResource
             )
         );
     }
@@ -496,10 +1209,35 @@ internal sealed class SmapiHarmlessProjectionHost
                 owner.PlayerKey,
                 HarmlessProjectionCleanupReason.OwnerWarped
             );
+            // DIAG-20260811: 切图清影怪无害投影计入驱赶补偿（切图后新地图按同样物种
+            // 补刷）；绑定投影除外（连带清除隐藏实体，不补偿）。绑定投影带“已有实体”
+            // 标签，切图时实体随投影消失链条连带清除。
+            if (
+                shadowCoordinator.Index.TryGetContextInstances(
+                    owner,
+                    out var warpInstances
+                )
+                && warpInstances is not null
+            )
+            {
+                foreach (var instance in warpInstances)
+                {
+                    if (
+                        instance.IsCleanedUp
+                        || instance.IsBindingProjection
+                    )
+                    {
+                        continue;
+                    }
+                    shadowCoordinator.RecordCompensation(instance.SpeciesId);
+                }
+            }
+            // DIAG-20260809: 切图只清投影表现、保留档位相位（与“切图不清 tier 状态机”裁定一致）；
+            // 否则相位删除后没有事件能重建，非危险形态影怪切图后永久不刷。
             shadowCoordinator.CleanupOwner(
                 owner.PlayerKey,
                 HarmlessProjectionCleanupReason.OwnerWarped,
-                forgetOwnerPhase: true
+                forgetOwnerPhase: false
             );
             ownerContextByScreen.Remove(owner.ScreenId);
         }
@@ -572,6 +1310,24 @@ internal sealed class SmapiHarmlessProjectionHost
         if (disposed)
             return;
 
+        if (
+            HostileShadowGameplayPausePolicy.IsBehaviorFrozen(
+                Game1.activeClickableMenu is not null,
+                Game1.IsMultiplayer,
+                Game1.paused,
+                Game1.game1.IsActive
+            )
+        )
+        {
+            return;
+        }
+
+        var elapsedMilliseconds = (int)Math.Min(
+            int.MaxValue,
+            Math.Max(0d, Game1.currentGameTime.ElapsedGameTime.TotalMilliseconds)
+        );
+
+        PruneDeadBindingProjections();
         if (e.IsMultipleOf(60))
             CleanupInvalidScreens();
         if (
@@ -609,10 +1365,6 @@ internal sealed class SmapiHarmlessProjectionHost
             timeApi.Time,
             this
         );
-        var elapsedMilliseconds = (int)Math.Min(
-            int.MaxValue,
-            Math.Max(0d, Game1.currentGameTime.ElapsedGameTime.TotalMilliseconds)
-        );
         var shadowUpdate = shadowCoordinator.UpdateOwner(
             currentOwner,
             standingWorldPixel,
@@ -625,6 +1377,17 @@ internal sealed class SmapiHarmlessProjectionHost
             LogFailureOnce(
                 string.Concat("shadow-scheduler|", shadowUpdate.Reason),
                 $"Shadow harmless projection scheduler failed closed ({shadowUpdate.Reason})."
+            );
+        }
+        // DIAG-20260809: 驱赶补偿——被驱赶消失的影怪立即在玩家附近 4-16 格补刷一只，
+        // 防止玩家反复驱赶无害影怪导致场上无影怪（补偿走独立通道，不占预算 timer）。
+        var compensations = shadowCoordinator.ConsumePendingCompensations();
+        foreach (var compensationSpeciesId in compensations)
+        {
+            TrySpawnCompensationProjection(
+                currentOwner,
+                standingWorldPixel,
+                compensationSpeciesId
             );
         }
         UpdateSpeciesBehaviors(
@@ -811,8 +1574,8 @@ internal sealed class SmapiHarmlessProjectionHost
             }
 
             var worldPixel = new Vector2(
-                (float)instance.SpawnWorldPixel.X,
-                (float)instance.SpawnWorldPixel.Y
+                (float)instance.WorldPixel.X,
+                (float)instance.WorldPixel.Y
             );
             var screenPixel = Game1.GlobalToLocal(Game1.viewport, worldPixel);
             try
@@ -910,6 +1673,16 @@ internal sealed class SmapiHarmlessProjectionHost
             location.NameOrUniqueName
         );
         ownerContextByScreen[screenId] = owner;
+        return true;
+    }
+
+    /// <summary>DIAG-20260809: 供影怪宿主读取当前绑定 owner 上下文（生成绑定投影用）。</summary>
+    internal bool TryGetBindingOwner(out HarmlessProjectionOwnerContext owner)
+    {
+        owner = null!;
+        if (disposed || !TryGetCurrentOwner(out _, out _, out var current))
+            return false;
+        owner = current;
         return true;
     }
 

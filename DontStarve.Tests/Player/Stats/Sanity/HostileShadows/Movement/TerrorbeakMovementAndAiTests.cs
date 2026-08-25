@@ -22,7 +22,7 @@ public sealed class TerrorbeakMovementAndAiTests
         Assert.Equal(1280d, profile.DetectionRadiusPixels);
         Assert.Equal(2d, profile.AttackRangeTiles);
         Assert.Equal(128d, profile.AttackRangePixels);
-        Assert.Equal(0.7d, profile.AttackIntervalSeconds);
+        Assert.Equal(1.2d, profile.AttackIntervalSeconds);
         Assert.Equal(2d, profile.NaturalDespawnGameHours);
         Assert.Equal(
             ShadowMonsterProfileContractIds.TauntOrDelayPostAttack,
@@ -116,10 +116,10 @@ public sealed class TerrorbeakMovementAndAiTests
     }
 
     [Theory]
-    [InlineData(0d, true, 0.5d)]
-    [InlineData(0.249999d, true, 0.5d)]
-    [InlineData(0.25d, false, 0.7d)]
-    [InlineData(0.999999d, false, 0.7d)]
+    [InlineData(0d, true, 0.6d)]
+    [InlineData(0.249999d, true, 0.6d)]
+    [InlineData(0.25d, false, 1.2d)]
+    [InlineData(0.999999d, false, 1.2d)]
     public void Injected_rng_boundary_is_exact_and_same_revision_is_memoized(
         double sample,
         bool expectedTaunt,
@@ -138,10 +138,10 @@ public sealed class TerrorbeakMovementAndAiTests
         );
 
         Assert.True(
-            policy.TryResolvePostAttackTransition(context, 0.7d, out var first)
+            policy.TryResolvePostAttackTransition(context, 1.2d, out var first)
         );
         Assert.True(
-            policy.TryResolvePostAttackTransition(context, 0.7d, out var replay)
+            policy.TryResolvePostAttackTransition(context, 1.2d, out var replay)
         );
         Assert.Equal(expectedTaunt, first.EnterTaunt);
         Assert.Equal(expectedDelay, first.NextAttackDelaySeconds);

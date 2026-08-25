@@ -83,11 +83,197 @@ public sealed class HostileShadowTargetingTests
         Assert.Equal(string.Empty, result.TargetPlayerKey);
     }
 
+    [Fact]
+    public void Natural_ttl_starts_when_target_is_lost_and_expires_after_two_hours()
+    {
+        var index = Index(Player(Owner, "Farm", 5000, 0, isDangerActive: false));
+
+        var before = Evaluate(index, currentMinute: 119, noTargetSince: 0);
+        var atLimit = Evaluate(index, currentMinute: 120, noTargetSince: 0);
+
+        Assert.False(before.NaturalTtlExpired);
+        Assert.True(atLimit.NaturalTtlExpired);
+    }
+
+    [Fact]
+    public void Natural_ttl_continues_when_another_player_is_online_on_the_shadow_map()
+    {
+        var index = Index(
+            Player(Owner, "Town", 20, 0, isDangerActive: false),
+            Player(Observer, "Farm", 5000, 0, isDangerActive: false)
+        );
+
+        var result = Evaluate(index, currentMinute: 120, noTargetSince: 0);
+
+        Assert.True(result.NaturalTtlExpired);
+        Assert.Equal(string.Empty, result.TargetPlayerKey);
+    }
+
+    [Fact]
+    public void Ordinary_targeting_does_not_acquire_a_high_sanity_player_without_a_lock()
+    {
+        var index = Index(
+            Player(Owner, "Farm", 20, 0, isDangerActive: false),
+            Player(Observer, "Farm", 30, 0, isDangerActive: false),
+            Player(Attacker, "Farm", 40, 0, isDangerActive: false)
+        );
+
+        var ordinary = Evaluate(index);
+
+        Assert.Equal(string.Empty, ordinary.TargetPlayerKey);
+        Assert.Equal(HostileShadowStateIds.Idle, ordinary.StateId);
+    }
+
+    [Fact]
+    public void Existing_high_sanity_target_is_preserved_and_recent_attacker_still_overrides_it()
+    {
+        var index = Index(
+            Player(Owner, "Farm", 100_000, 0, isDangerActive: false),
+            Player(Observer, "Farm", 30, 0, isDangerActive: true),
+            Player(Attacker, "Farm", 40, 0, isDangerActive: false)
+        );
+
+        var ordinary = Evaluate(index, lockedTarget: Owner);
+        var recentAttacker = Evaluate(
+            index,
+            recentAttacker: Attacker,
+            lockedTarget: Owner
+        );
+
+        Assert.Equal(Owner, ordinary.TargetPlayerKey);
+        Assert.Equal(HostileShadowTargetSource.LockedTarget, ordinary.TargetSource);
+        Assert.Equal(Attacker, recentAttacker.TargetPlayerKey);
+        Assert.Equal(HostileShadowTargetSource.RecentAttacker, recentAttacker.TargetSource);
+    }
+
+    [Fact]
+    public void Natural_ttl_does_not_use_birth_age_when_target_is_still_locked()
+    {
+        var result = Evaluate(
+            Index(Player(Owner, "Farm", 20, 0)),
+            currentMinute: 120,
+            noTargetSince: null
+        );
+
+        Assert.False(result.NaturalTtlExpired);
+        Assert.Equal(Owner, result.TargetPlayerKey);
+    }
+
+    [Fact]
+    public void Natural_ttl_does_not_expire_when_no_player_is_on_the_shadow_map()
+    {
+        var result = Evaluate(
+            Index(Player(Owner, "Town", 20, 0)),
+            currentMinute: 120,
+            noTargetSince: 0
+        );
+
+        Assert.False(result.NaturalTtlExpired);
+        Assert.Equal(string.Empty, result.TargetPlayerKey);
+    }
+
+    [Fact]
+    public void Natural_ttl_expiration_is_based_on_no_target_time_not_birth_time()
+    {
+        var result = Evaluate(
+            Index(Player(Owner, "Farm", 5000, 0, isDangerActive: false)),
+            currentMinute: 130,
+            noTargetSince: 10
+        );
+
+        Assert.True(result.NaturalTtlExpired);
+    }
+
+    [Fact]
+    public void Aggro_lock_targets_a_far_high_sanity_player_without_the_detection_limit()
+    {
+        var result = Evaluate(
+            Index(
+                Player(Owner, "Farm", 20, 0, isDangerActive: false),
+                Player(Attacker, "Farm", 100_000, 0, isDangerActive: false)
+            ),
+            aggroLock: Attacker
+        );
+
+        Assert.Equal(Attacker, result.TargetPlayerKey);
+        Assert.Equal(HostileShadowTargetSource.RecentAttacker, result.TargetSource);
+        Assert.Equal(HostileShadowStateIds.Chase, result.StateId);
+    }
+
+    [Fact]
+    public void Retreat_subject_prefers_the_active_aggro_lock_over_the_snapshot_target()
+    {
+        var subject = HostileShadowRetreatSubjectSelector.Select(
+            activeAggroLockPlayerKey: Attacker,
+            targetPlayerKey: Owner,
+            ownerPlayerKey: Owner
+        );
+
+        Assert.Equal(Attacker, subject);
+    }
+
+    [Fact]
+    public void Retreat_subject_is_empty_when_no_target_is_locked()
+    {
+        Assert.Equal(
+            Owner,
+            HostileShadowRetreatSubjectSelector.Select(
+                activeAggroLockPlayerKey: string.Empty,
+                targetPlayerKey: Owner,
+                ownerPlayerKey: Owner
+            )
+        );
+        Assert.Equal(
+            string.Empty,
+            HostileShadowRetreatSubjectSelector.Select(
+                activeAggroLockPlayerKey: string.Empty,
+                targetPlayerKey: string.Empty,
+                ownerPlayerKey: Owner
+            )
+        );
+    }
+
+    [Fact]
+    public void No_target_timer_starts_at_the_current_minute_after_target_loss()
+    {
+        var index = Index(Player(Owner, "Farm", 5000, 0, isDangerActive: false));
+
+        var justLost = Evaluate(index, currentMinute: 50);
+        var beforeExpiry = Evaluate(
+            index,
+            currentMinute: 169,
+            noTargetSince: 50,
+            noTargetElapsed: 119
+        );
+        var expired = Evaluate(
+            index,
+            currentMinute: 170,
+            noTargetSince: 50,
+            noTargetElapsed: 120
+        );
+
+        Assert.False(justLost.NaturalTtlExpired);
+        Assert.False(beforeExpiry.NaturalTtlExpired);
+        Assert.True(expired.NaturalTtlExpired);
+    }
+
+    [Fact]
+    public void Natural_ttl_does_not_expire_from_birth_age_alone()
+    {
+        var result = Evaluate(
+            Index(Player(Owner, "Farm", 20, 0)),
+            currentMinute: 120
+        );
+
+        Assert.False(result.NaturalTtlExpired);
+    }
+
+    /*
     [Theory]
     [InlineData(119, false)]
     [InlineData(120, true)]
     [InlineData(180, true)]
-    public void Natural_ttl_expires_at_two_game_hours(
+    public void Old_birth_age_ttl_contract(
         long currentMinute,
         bool expired
     )
@@ -95,6 +281,19 @@ public sealed class HostileShadowTargetingTests
         var result = Evaluate(Index(), currentMinute: currentMinute);
 
         Assert.Equal(expired, result.NaturalTtlExpired);
+    }
+    */
+
+    [Fact]
+    public void Targeted_shadow_does_not_expire_from_birth_age_alone()
+    {
+        var result = Evaluate(
+            Index(Player(Owner, "Farm", 20, 0)),
+            currentMinute: 120
+        );
+
+        Assert.False(result.NaturalTtlExpired);
+        Assert.Equal(Owner, result.TargetPlayerKey);
     }
 
     [Fact]
@@ -168,8 +367,12 @@ public sealed class HostileShadowTargetingTests
 
     private static HostileShadowTargetingDecision Evaluate(
         HostileShadowLocationPlayerIndex index,
+        string aggroLock = "",
         string recentAttacker = "",
-        long currentMinute = 0
+        string lockedTarget = "",
+        long currentMinute = 0,
+        long? noTargetSince = null,
+        long? noTargetElapsed = null
     )
     {
         return HostileShadowTargetingEngine.Evaluate(
@@ -178,7 +381,9 @@ public sealed class HostileShadowTargetingTests
                 EntityId = 1,
                 OwnerPlayerKey = Owner,
                 LocationId = "Farm",
+                AggroLockPlayerKey = aggroLock,
                 RecentAttackerPlayerKey = recentAttacker,
+                LockedTargetPlayerKey = lockedTarget,
                 PositionX = 10,
                 PositionY = 20,
                 StandingX = 0,
@@ -189,6 +394,8 @@ public sealed class HostileShadowTargetingTests
                 SpawnGameMinute = 0,
                 CurrentGameMinute = currentMinute,
                 NaturalTtlMinutes = 120,
+                NoTargetSinceGameMinute = noTargetSince,
+                NoTargetElapsedGameMinutes = noTargetElapsed,
                 ElapsedSeconds = 0,
             },
             index
@@ -209,9 +416,10 @@ public sealed class HostileShadowTargetingTests
         string key,
         string location,
         double x,
-        double y
+        double y,
+        bool isDangerActive = true
     )
     {
-        return new HostileShadowPlayerSample(key, location, x, y);
+        return new HostileShadowPlayerSample(key, location, x, y, isDangerActive);
     }
 }

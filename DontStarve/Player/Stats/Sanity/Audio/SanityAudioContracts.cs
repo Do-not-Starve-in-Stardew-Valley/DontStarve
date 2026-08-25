@@ -44,7 +44,8 @@ internal readonly record struct SanityAudioOwnerClaim(
     double EffectiveRatio,
     bool AmbienceActive,
     bool WhispersActive,
-    bool DangerActive
+    bool DangerActive,
+    bool MusicSuppressionRequested
 )
 {
     internal SanityAudioClaimKey Key => new(PlayerKey, ScreenId);

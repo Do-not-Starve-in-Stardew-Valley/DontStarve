@@ -196,6 +196,16 @@ internal sealed class SanityChangeService
         new(StringComparer.Ordinal);
     private long nextClientNonce;
     private bool sanitySystemEnabled = true;
+    // DIAG-20260804: 测试命令 ds_sanity lock 锁定开关；锁定时仅 Administration 源可改值。
+    private bool debugSanityLocked;
+
+    internal bool IsDebugSanityLocked => debugSanityLocked;
+
+    /// <summary>测试命令 ds_sanity lock 用：锁定后非 Administration 源全部拒绝。</summary>
+    internal void SetDebugSanityLocked(bool locked)
+    {
+        debugSanityLocked = locked;
+    }
 
     internal SanityChangeService(
         ISanityMaximumProvider maximumProvider,
@@ -371,6 +381,24 @@ internal sealed class SanityChangeService
         return result;
     }
 
+    internal SanityShadowBudgetEvaluationResult EvaluateShadowBudgetRealTime(
+        string playerKey,
+        long gameMinute,
+        int occupancy,
+        int elapsedMilliseconds
+    )
+    {
+        var result = shadowBudget.EvaluateRealTime(
+            playerKey,
+            gameMinute,
+            occupancy,
+            elapsedMilliseconds
+        );
+        if (result.Status == SanityShadowBudgetEvaluationStatus.Unavailable)
+            ShadowBudgetDiagnosticRaised?.Invoke(result.Reason);
+        return result;
+    }
+
     internal SanityShadowBudgetEvaluationResult EvaluateHostileShadowBudget(
         string playerKey,
         long gameMinute,
@@ -394,12 +422,48 @@ internal sealed class SanityChangeService
         return result;
     }
 
+    internal SanityShadowBudgetEvaluationResult EvaluateHostileShadowBudgetRealTime(
+        string playerKey,
+        long gameMinute,
+        int occupancy,
+        int elapsedMilliseconds,
+        SanityShadowSpecies requestedSpecies
+    )
+    {
+        var result = shadowBudget.EvaluateRealTime(
+            playerKey,
+            gameMinute,
+            occupancy,
+            elapsedMilliseconds,
+            requestedSpecies
+        );
+        if (
+            result.Status is SanityShadowBudgetEvaluationStatus.Unavailable
+                or SanityShadowBudgetEvaluationStatus.SpeciesIneligible
+        )
+        {
+            ShadowBudgetDiagnosticRaised?.Invoke(result.Reason);
+        }
+        return result;
+    }
+
     internal bool TryGetShadowBudgetState(
         string playerKey,
         out SanityShadowBudgetOwnerSnapshot? snapshot
     )
     {
         return shadowBudget.TryGetOwnerState(playerKey, out snapshot);
+    }
+
+    /// <summary>
+    /// DIAG-20260810: 只读查询当前密度档的“统一上限池”容量（超限清理用，无副作用）。
+    /// </summary>
+    internal bool TryGetShadowBudgetTotalCap(
+        string playerKey,
+        out int totalCap
+    )
+    {
+        return shadowBudget.TryGetTotalCap(playerKey, out totalCap);
     }
 
     internal void UpdatePersistenceBase(SanityPersistenceResult persistence)
@@ -461,6 +525,18 @@ internal sealed class SanityChangeService
                     hostSnapshot,
                     false,
                     "sanity-system-disabled",
+                    source
+                );
+            }
+            if (
+                debugSanityLocked
+                && source != SanityChangeSource.Administration
+            )
+            {
+                return SanityChangeResult.Applied(
+                    hostSnapshot,
+                    false,
+                    "sanity-change-locked-by-debug-command",
                     source
                 );
             }
@@ -569,6 +645,18 @@ internal sealed class SanityChangeService
                 snapshot,
                 false,
                 "sanity-system-disabled",
+                source
+            );
+        }
+        if (
+            debugSanityLocked
+            && source != SanityChangeSource.Administration
+        )
+        {
+            return SanityChangeResult.Applied(
+                snapshot,
+                false,
+                "sanity-change-locked-by-debug-command",
                 source
             );
         }

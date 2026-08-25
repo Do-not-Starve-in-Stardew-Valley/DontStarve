@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
-using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -27,7 +26,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
     private Harmony? harmony;
     private MethodInfo? doSleepMethod;
-    private MethodInfo? updatePauseMethod;
+    private MethodInfo? checkForEventsMethod;
     private bool disposed;
 
     internal SmapiPassOutReasonService(
@@ -130,36 +129,36 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             "doSleep",
             Type.EmptyTypes
         );
-        updatePauseMethod = AccessTools.Method(
-            typeof(Game1),
-            nameof(Game1.updatePause),
-            new[] { typeof(GameTime) }
+        checkForEventsMethod = AccessTools.Method(
+            typeof(GameLocation),
+            nameof(GameLocation.checkForEvents),
+            Type.EmptyTypes
         );
         var doSleepPrefix = AccessTools.Method(
             typeof(SmapiPassOutReasonService),
             nameof(DoSleepPrefix)
         );
-        var updatePausePrefix = AccessTools.Method(
+        var checkForEventsPrefix = AccessTools.Method(
             typeof(SmapiPassOutReasonService),
-            nameof(UpdatePausePrefix)
+            nameof(CheckForEventsPrefix)
         );
-        var updatePausePostfix = AccessTools.Method(
+        var checkForEventsPostfix = AccessTools.Method(
             typeof(SmapiPassOutReasonService),
-            nameof(UpdatePausePostfix)
+            nameof(CheckForEventsPostfix)
         );
         if (
             doSleepMethod is null
-            || updatePauseMethod is null
+            || checkForEventsMethod is null
             || doSleepPrefix is null
-            || updatePausePrefix is null
-            || updatePausePostfix is null
+            || checkForEventsPrefix is null
+            || checkForEventsPostfix is null
         )
         {
             doSleepMethod = null;
-            updatePauseMethod = null;
+            checkForEventsMethod = null;
             Log(
                 "passout.reason.patch-signature-unavailable",
-                "Ordinary pass-out reason patches failed closed because GameLocation.doSleep() or Game1.updatePause(GameTime) was unavailable.",
+                "Ordinary pass-out reason patches failed closed because GameLocation.doSleep() or GameLocation.checkForEvents() was unavailable.",
                 LogLevel.Error
             );
             return;
@@ -170,9 +169,9 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             harmony = new Harmony(string.Concat(modId, ".Sanity4.PassOutReason"));
             harmony.Patch(doSleepMethod, prefix: new HarmonyMethod(doSleepPrefix));
             harmony.Patch(
-                updatePauseMethod,
-                prefix: new HarmonyMethod(updatePausePrefix),
-                postfix: new HarmonyMethod(updatePausePostfix)
+                checkForEventsMethod,
+                prefix: new HarmonyMethod(checkForEventsPrefix),
+                postfix: new HarmonyMethod(checkForEventsPostfix)
             );
             activePatchOwner = this;
         }
@@ -180,7 +179,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         {
             harmony = null;
             doSleepMethod = null;
-            updatePauseMethod = null;
+            checkForEventsMethod = null;
             Log(
                 "passout.reason.patch-install-failed",
                 $"Ordinary pass-out reason patches failed closed ({exception.GetType().Name}: {exception.Message}).",
@@ -194,13 +193,13 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         if (harmony is not null)
         {
             TryUnpatch(doSleepMethod);
-            TryUnpatch(updatePauseMethod);
+            TryUnpatch(checkForEventsMethod);
         }
         if (ReferenceEquals(activePatchOwner, this))
             activePatchOwner = null;
         harmony = null;
         doSleepMethod = null;
-        updatePauseMethod = null;
+        checkForEventsMethod = null;
     }
 
     private void TryUnpatch(MethodInfo? method)
@@ -240,12 +239,12 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         }
     }
 
-    private static void UpdatePausePrefix(out bool __state)
+    private static void CheckForEventsPrefix(out bool __state)
     {
         __state = Game1.killScreen;
     }
 
-    private static void UpdatePausePostfix(bool __state)
+    private static void CheckForEventsPostfix(bool __state)
     {
         var owner = activePatchOwner;
         if (owner is null)
@@ -257,8 +256,8 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         catch (Exception exception)
         {
             owner.Log(
-                "passout.reason.health-death-postfix-threw",
-                $"Health-death Sanity recovery failed closed ({exception.GetType().Name}: {exception.Message}).",
+                "passout.reason.health-death-revive-postfix-threw",
+                $"Health-death Sanity recovery after revive failed closed ({exception.GetType().Name}: {exception.Message}).",
                 LogLevel.Error
             );
         }

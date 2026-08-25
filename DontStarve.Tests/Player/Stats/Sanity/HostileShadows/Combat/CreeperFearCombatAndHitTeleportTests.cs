@@ -47,20 +47,18 @@ public sealed class CreeperFearCombatAndHitTeleportTests
             )
         );
         Assert.Equal(
-            new HostileAttackRectangle(-12d, 200d, 224d, 192d),
+            new HostileAttackRectangle(116d, 392d, 224d, 192d),
             hurtBox
         );
     }
 
     [Theory]
-    [InlineData("Down", -60d, 232d)]
-    [InlineData("Right", 196d, -280d)]
-    [InlineData("Up", -316d, -536d)]
-    [InlineData("Left", -572d, -24d)]
-    public void Shipped_source_box_rotates_to_exact_four_way_world_boxes(
-        string facingId,
-        double expectedX,
-        double expectedY
+    [InlineData("Down")]
+    [InlineData("Right")]
+    [InlineData("Up")]
+    [InlineData("Left")]
+    public void Shipped_attack_box_keeps_all_four_facings_centered_on_the_hurt_box(
+        string facingId
     )
     {
         var definition = Definition(RuntimeProfile());
@@ -82,10 +80,37 @@ public sealed class CreeperFearCombatAndHitTeleportTests
                 out var box
             )
         );
-        Assert.Equal(expectedX, box.X, precision: 8);
-        Assert.Equal(expectedY, box.Y, precision: 8);
-        Assert.Equal(320d, box.Width, precision: 8);
-        Assert.Equal(320d, box.Height, precision: 8);
+        Assert.True(
+            HostileAttackCollisionResolver.TryCreateWorldHurtBox(
+                definition,
+                100d,
+                200d,
+                out var hurtBox
+            )
+        );
+
+        var rotated = facing is HostileAttackFacing.Right or HostileAttackFacing.Left;
+        var expectedWidth =
+            (rotated
+                ? definition.AttackBoxSourcePx.Height
+                : definition.AttackBoxSourcePx.Width) * definition.AttackDrawScale;
+        var expectedHeight =
+            (rotated
+                ? definition.AttackBoxSourcePx.Width
+                : definition.AttackBoxSourcePx.Height) * definition.AttackDrawScale;
+
+        Assert.Equal(expectedWidth, box.Width, precision: 8);
+        Assert.Equal(expectedHeight, box.Height, precision: 8);
+        Assert.Equal(
+            hurtBox.X + (hurtBox.Width / 2d),
+            box.X + (box.Width / 2d),
+            precision: 8
+        );
+        Assert.Equal(
+            hurtBox.Y + (hurtBox.Height / 2d),
+            box.Y + (box.Height / 2d),
+            precision: 8
+        );
     }
 
     [Theory]

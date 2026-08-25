@@ -43,7 +43,8 @@ internal readonly record struct SanityEventOwnerCoverageChanged(
 /// </summary>
 internal sealed class SanitySystemLifecycleCoordinator
     : ISanitySystemState,
-        IShadowCreatureProjectionBudgetAuthority
+        IShadowCreatureProjectionBudgetAuthority,
+        ISanityShadowRealTimeBudgetAuthority
 {
     private readonly SanityChangeService service;
     private readonly HashSet<SanityEventCoverageKey> eventCoverage = new();
@@ -120,6 +121,14 @@ internal sealed class SanitySystemLifecycleCoordinator
         return service.Change(playerKey, delta, source);
     }
 
+    // DIAG-20260804: ds_sanity lock/unlock 命令转发。锁定时除 Administration 外全部拒绝。
+    internal bool IsDebugSanityLocked => service.IsDebugSanityLocked;
+
+    internal void SetDebugSanityLocked(bool locked)
+    {
+        service.SetDebugSanityLocked(locked);
+    }
+
     SanityShadowBudgetEvaluationResult
         IShadowCreatureProjectionBudgetAuthority.EvaluateShadowBudget(
             string playerKey,
@@ -128,6 +137,31 @@ internal sealed class SanitySystemLifecycleCoordinator
         )
     {
         return service.EvaluateShadowBudget(playerKey, gameMinute, occupancy);
+    }
+
+    SanityShadowBudgetEvaluationResult
+        ISanityShadowRealTimeBudgetAuthority.EvaluateShadowBudgetRealTime(
+            string playerKey,
+            long gameMinute,
+            int occupancy,
+            int elapsedMilliseconds,
+            SanityShadowSpecies? requestedSpecies
+        )
+    {
+        return requestedSpecies.HasValue
+            ? service.EvaluateHostileShadowBudgetRealTime(
+                playerKey,
+                gameMinute,
+                occupancy,
+                elapsedMilliseconds,
+                requestedSpecies.Value
+            )
+            : service.EvaluateShadowBudgetRealTime(
+                playerKey,
+                gameMinute,
+                occupancy,
+                elapsedMilliseconds
+            );
     }
 
     internal SanityShadowBudgetEvaluationResult EvaluateHostileShadowBudget(
@@ -143,6 +177,49 @@ internal sealed class SanitySystemLifecycleCoordinator
             occupancy,
             requestedSpecies
         );
+    }
+
+    internal SanityShadowBudgetEvaluationResult EvaluateHostileShadowBudgetRealTime(
+        string playerKey,
+        long gameMinute,
+        int occupancy,
+        int elapsedMilliseconds,
+        SanityShadowSpecies requestedSpecies
+    )
+    {
+        return service.EvaluateHostileShadowBudgetRealTime(
+            playerKey,
+            gameMinute,
+            occupancy,
+            elapsedMilliseconds,
+            requestedSpecies
+        );
+    }
+
+    internal SanityShadowBudgetEvaluationResult EvaluateShadowBudgetRealTime(
+        string playerKey,
+        long gameMinute,
+        int occupancy,
+        int elapsedMilliseconds
+    )
+    {
+        return service.EvaluateShadowBudgetRealTime(
+            playerKey,
+            gameMinute,
+            occupancy,
+            elapsedMilliseconds
+        );
+    }
+
+    /// <summary>
+    /// DIAG-20260810: 只读查询当前密度档的“统一上限池”容量（超限清理用，无副作用）。
+    /// </summary>
+    internal bool TryGetShadowBudgetTotalCap(
+        string playerKey,
+        out int totalCap
+    )
+    {
+        return service.TryGetShadowBudgetTotalCap(playerKey, out totalCap);
     }
 
     /// <summary>
@@ -178,7 +255,14 @@ internal sealed class SanitySystemLifecycleCoordinator
         // Projection owners need the specific warp/day reason before the tier state machine emits
         // its generic exited/world-cleanup/re-enter sequence.
         WorldBoundaryStarting?.Invoke(boundary);
-        service.CleanupAndRebuildDerivedState();
+        // DIAG-20260809: 主策划裁定——玩家切图（Warp）不清空 tier 状态机。
+        // 此前 Warp 也走 CleanupAndRebuildDerivedState → tierState.CleanupWorld() →
+        // 对激活 tier（含 Danger）发 TierExited + WorldCleanup 事件 → HostileShadowAuthority
+        // 清空玩家名下真实影怪（违背设计稿“切图不跟随、冻结在原地”）。切图只发
+        // WorldBoundaryStarting 给订阅者（投影/音频自行处理）；DayStarted 跨天仍清理重建
+        // （真实影怪已在 DayEnding 清空，tier 新一天重新评估）。
+        if (boundary == SanityWorldBoundary.DayStarted)
+            service.CleanupAndRebuildDerivedState();
     }
 
     internal bool TrySetEventCoverage(

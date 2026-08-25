@@ -72,6 +72,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackStateMachine.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackStateMachine.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearAttackTransitionPolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearAttackTransitionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearCombatImmunityPolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearCombatImmunityPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowGameplayPausePolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowGameplayPausePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowMovementPresentation.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowMovementPresentation.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackDamage.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackDamage.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowTeleportPointSelector.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowTeleportPointSelector.cs" />
@@ -104,14 +105,22 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Events\SanityEventOverrideCatalog.cs" Link="Player\Stats\Sanity\Events\SanityEventOverrideCatalog.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Events\SanityEffectiveSanityOverlay.cs" Link="Player\Stats\Sanity\Events\SanityEffectiveSanityOverlay.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityAudioContracts.cs" Link="Player\Stats\Sanity\Audio\SanityAudioContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityAudioTierClaimPolicy.cs" Link="Player\Stats\Sanity\Audio\SanityAudioTierClaimPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityProcessAudioCoordinator.cs" Link="Player\Stats\Sanity\Audio\SanityProcessAudioCoordinator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityAudioInstanceLane.cs" Link="Player\Stats\Sanity\Audio\SanityAudioInstanceLane.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSfxContracts.cs" Link="Player\Stats\Sanity\Audio\ShadowCreatureSfxContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSfxPolicy.cs" Link="Player\Stats\Sanity\Audio\ShadowCreatureSfxPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSfxCadence.cs" Link="Player\Stats\Sanity\Audio\ShadowCreatureSfxCadence.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSfxLane.cs" Link="Player\Stats\Sanity\Audio\ShadowCreatureSfxLane.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSfxCoordinator.cs" Link="Player\Stats\Sanity\Audio\ShadowCreatureSfxCoordinator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityGameMusicCoordinator.cs" Link="Player\Stats\Sanity\Audio\SanityGameMusicCoordinator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdleDetector.cs" Link="Player\Stats\Sanity\Visual\SanityIdleDetector.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVisualController.cs" Link="Player\Stats\Sanity\Visual\SanityVisualController.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityWorldComposition.cs" Link="Player\Stats\Sanity\Visual\SanityWorldComposition.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityWorldColourPolicy.cs" Link="Player\Stats\Sanity\Visual\SanityWorldColourPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityWorldEffectBytecode.cs" Link="Player\Stats\Sanity\Visual\SanityWorldEffectBytecode.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVignettePolicy.cs" Link="Player\Stats\Sanity\Visual\SanityVignettePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\LegacySanitySpawnRetirement.cs" Link="Player\Stats\Sanity\LegacySanitySpawnRetirement.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\HarmlessProjectionContracts.cs" Link="Player\Stats\Sanity\Illusions\Projection\HarmlessProjectionContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\HarmlessProjectionIndex.cs" Link="Player\Stats\Sanity\Illusions\Projection\HarmlessProjectionIndex.cs" />
@@ -126,7 +135,12 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\EyesProjectionBehavior.cs" Link="Player\Stats\Sanity\Illusions\Projection\EyesProjectionBehavior.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLocationPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLocationPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\MineWallSconcePolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\MineWallSconcePolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NpcFlashlightPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NpcFlashlightPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightLocationRules.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightLocationRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\DarknessAttackLocationAuthorizationPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\DarknessAttackLocationAuthorizationPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightResult.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightResult.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightClassifier.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightClassifier.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightDiagnostic.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightDiagnostic.cs" />
@@ -203,6 +217,10 @@
     <None Include="..\DontStarve\Asset\Sanity\Overlays\danger-border.png" Link="ShippedMod\Asset\Sanity\Overlays\danger-border.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Asset\Sanity\Overlays\Vignette\**\*">
+      <Link>ShippedMod\Asset\Sanity\Overlays\Vignette\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Asset\Sanity\Sprites\World\beard-rabbit.png" Link="ShippedMod\Asset\Sanity\Sprites\World\beard-rabbit.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -213,6 +231,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Asset\Sanity\Sprites\Monsters\terrorbeak.png" Link="ShippedMod\Asset\Sanity\Sprites\Monsters\terrorbeak.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Asset\Sanity\sanity.png" Link="ShippedMod\Asset\Sanity\sanity.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Asset\Hunger\hunger.png" Link="ShippedMod\Asset\Hunger\hunger.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\manifest.json" Link="Contracts\MainManifest.json">
@@ -374,6 +398,15 @@
     <None Include="..\DontStarve\Display\UIElements\SmapiVanillaSanityTooltipService.cs" Link="Contracts\Tooltip\SmapiVanillaSanityTooltipService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Display\UIElements\FoodBuffTooltipFormatter.cs" Link="Contracts\Tooltip\FoodBuffTooltipFormatter.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Display\UIElements\FoodTooltip.cs" Link="Contracts\Tooltip\FoodTooltip.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Display\DisplayManager.cs" Link="Contracts\Tooltip\DisplayManager.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\SanityBehaviors\Wearing.cs" Link="Contracts\Tooltip\Wearing.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -427,6 +460,13 @@
     <None Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePresentationRuntime.cs" Link="Contracts\VisualRuntime\SanityIdlePresentationRuntime.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- The vignette adapter stays SMAPI-only; tests read these copies for render-path contracts. -->
+    <None Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVignetteRenderer.cs" Link="Contracts\Vignette\SanityVignetteRenderer.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVignetteOverlayService.cs" Link="Contracts\Vignette\SanityVignetteOverlayService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- 06-01 只复制当前 adapter/legacy behavior 作静态事实 probe；不引用本机游戏程序集，也不改变产品行为。 -->
     <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightService.cs" Link="Contracts\EnvironmentLightApiFact\EnvironmentLightService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -444,6 +484,27 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\SmapiEnvironmentLightFinalVisibilitySampler.cs" Link="Contracts\EnvironmentLightApiFact\SmapiEnvironmentLightFinalVisibilitySampler.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\SmapiNaturalDarknessLightmapService.cs" Link="Contracts\NaturalDarkness\SmapiNaturalDarknessLightmapService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLightmapPatch.cs" Link="Contracts\NaturalDarkness\NaturalDarknessLightmapPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLocationPolicy.cs" Link="Contracts\NaturalDarkness\NaturalDarknessLocationPolicy.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\MineWallSconceRenderPatch.cs" Link="Contracts\NaturalDarkness\MineWallSconceRenderPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NpcFlashlightConeLightSource.cs" Link="Contracts\NaturalDarkness\NpcFlashlightConeLightSource.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\SmapiNpcFlashlightService.cs" Link="Contracts\NaturalDarkness\SmapiNpcFlashlightService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\ModEntry.cs" Link="Contracts\NaturalDarkness\ModEntry.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\Damage\NonLethalDamageContracts.cs" Link="Contracts\NonLethalDamage\NonLethalDamageContracts.cs">

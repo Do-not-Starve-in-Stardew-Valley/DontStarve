@@ -12,6 +12,10 @@ internal static class ConfigKeys
     internal const string SanityMonsterIntensity = "SanityMonsterIntensity";
     internal const string DarkHandMode = "DarkHandMode";
     internal const string EnableSanityVisualEffects = "EnableSanityVisualEffects";
+    internal const string EnableLowSanityScreenDistortion =
+        "EnableLowSanityScreenDistortion";
+    internal const string EnableSanityVignette = "EnableSanityVignette";
+    internal const string EnableNaturalDarkness = "EnableNaturalDarkness";
     internal const string DarknessDamageMode = "DarknessDamageMode";
     internal const string MonsterDifficultyProfile = "MonsterDifficultyProfile";
     internal const string EnableJunimoBlessing = "EnableJunimoBlessing";
@@ -24,6 +28,9 @@ internal static class ConfigKeys
             SanityMonsterIntensity,
             DarkHandMode,
             EnableSanityVisualEffects,
+            EnableLowSanityScreenDistortion,
+            EnableSanityVignette,
+            EnableNaturalDarkness,
             DarknessDamageMode,
             MonsterDifficultyProfile,
             EnableJunimoBlessing,

@@ -116,6 +116,45 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
         );
     }
 
+    /// <summary>
+    /// DIAG-20260809: 高理智/远离等场景不立即清除，标记该玩家全部实例进入淡出，
+    /// 由行为 tick 在透明度降到 0 后完成移除（保留实例以便淡出动画播放）。
+    /// </summary>
+    internal int MarkAllFadingOut(
+        string playerKey,
+        int durationMilliseconds,
+        ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionFadeOutKind kind =
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionFadeOutKind.HighSan
+    )
+    {
+        var marked = 0;
+        foreach (var byId in byContext.Values)
+        {
+            foreach (var instance in byId.Values)
+            {
+                if (
+                    !instance.IsCleanedUp
+                    && string.Equals(
+                        instance.Owner.PlayerKey,
+                        playerKey,
+                        StringComparison.Ordinal
+                    )
+                    && (
+                        instance.BehaviorState
+                            != ShadowCreatureHarmlessProjectionInstance
+                                .ShadowCreatureProjectionBehaviorState.FadingOut
+                        || instance.FadeOutKind != kind
+                    )
+                )
+                {
+                    instance.BeginFadeOut(durationMilliseconds, kind);
+                    marked++;
+                }
+            }
+        }
+        return marked;
+    }
+
     internal IReadOnlyList<ShadowCreatureHarmlessProjectionInstance>
         CleanupOwnerWithSnapshot(
             string playerKey,

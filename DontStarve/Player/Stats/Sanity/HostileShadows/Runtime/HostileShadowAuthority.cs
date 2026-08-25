@@ -66,6 +66,14 @@ internal sealed class HostileShadowAuthority
     internal string SessionId { get; private set; } = string.Empty;
     internal long Revision { get; private set; }
     internal int Count => entities.Count;
+
+    /// <summary>DIAG-20260810: 指定 owner 的在册实体数（统一上限池超限清理用）。</summary>
+    internal int CountForOwner(string playerKey)
+    {
+        return entityIdsByOwner.TryGetValue(playerKey, out var ids)
+            ? ids.Count
+            : 0;
+    }
     internal bool IsEnabled => enabled;
     internal bool IsHostSessionActive => hostSessionActive;
 
@@ -156,11 +164,11 @@ internal sealed class HostileShadowAuthority
                     SanityTierIds.Danger,
                     StringComparison.Ordinal
                 ):
+                // DIAG-20260811: 解除危险状态（san>17.5%）不再清空实体——危险影怪继续
+                // 攻击（饥荒原版），由宿主脱战系统接管（每 10 游戏分钟 25% roll）。
+                // 此前直接 CleanupOwner(DangerExited) 会在快速拉高理智时先于恐吓流程
+                // 清掉全部实体，导致“直接消失、无恐吓动画、无绑定投影”。
                 conversionEpochs.Remove(stateEvent.PlayerKey);
-                CleanupOwner(
-                    stateEvent.PlayerKey,
-                    HostileShadowCleanupReasonIds.DangerExited
-                );
                 break;
             case SanityStateEventKind.OwnerInvalidated:
                 ForgetOwner(
@@ -194,7 +202,8 @@ internal sealed class HostileShadowAuthority
     }
 
     internal HostileShadowSpawnResult TrySpawn(
-        HostileShadowSpawnCommand? command
+        HostileShadowSpawnCommand? command,
+        SanityShadowBudgetEvaluationResult? preEvaluatedBudget = null
     )
     {
         if (!TryValidateCommand(command, out var validationReason))
@@ -274,32 +283,52 @@ internal sealed class HostileShadowAuthority
         }
 
         var occupancy = GetOwnerOccupancy(command.OwnerPlayerKey);
+        var isDebugCommand = command.Origin == HostileShadowSpawnOrigin.DebugCommand;
         SanityShadowBudgetEvaluationResult evaluation;
-        try
+        if (isDebugCommand)
         {
-            evaluation = budget.Evaluate(
+            evaluation = new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.PermitGranted,
+                "hostile-shadow.debug-command-authorized",
                 command.OwnerPlayerKey,
-                command.GameMinute,
+                SanityShadowPoolTier.Hostile15,
+                string.Empty,
                 occupancy,
-                requestedSpecies
+                int.MaxValue,
+                0,
+                command.GameMinute,
+                null
             );
         }
-        catch (Exception exception)
+        else
         {
-            return Record(
-                command,
-                Failure(
-                    HostileShadowSpawnStatus.Unavailable,
-                    string.Concat(
-                        "hostile-shadow.budget-threw-",
-                        exception.GetType().Name
-                    ),
-                    occupancy: occupancy
-                )
-            );
+            try
+            {
+                evaluation = preEvaluatedBudget
+                    ?? budget.Evaluate(
+                        command.OwnerPlayerKey,
+                        command.GameMinute,
+                        occupancy,
+                        requestedSpecies
+                    );
+            }
+            catch (Exception exception)
+            {
+                return Record(
+                    command,
+                    Failure(
+                        HostileShadowSpawnStatus.Unavailable,
+                        string.Concat(
+                            "hostile-shadow.budget-threw-",
+                            exception.GetType().Name
+                        ),
+                        occupancy: occupancy
+                    )
+                );
+            }
         }
 
-        if (
+        if (!isDebugCommand &&
             evaluation.PoolTier is not SanityShadowPoolTier.Hostile15
                 and not SanityShadowPoolTier.Hostile10
         )
@@ -313,7 +342,7 @@ internal sealed class HostileShadowAuthority
                 )
             );
         }
-        if (
+        if (!isDebugCommand &&
             evaluation.Status
             == SanityShadowBudgetEvaluationStatus.SpeciesIneligible
         )
@@ -327,7 +356,7 @@ internal sealed class HostileShadowAuthority
                 )
             );
         }
-        if (occupancy >= evaluation.Cap || evaluation.Cap <= 0)
+        if (!isDebugCommand && (occupancy >= evaluation.Cap || evaluation.Cap <= 0))
         {
             var status = evaluation.Status == SanityShadowBudgetEvaluationStatus.Unavailable
                 ? HostileShadowSpawnStatus.Unavailable
@@ -339,13 +368,9 @@ internal sealed class HostileShadowAuthority
 
         if (command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion)
         {
-            if (
-                !conversionEpochs.TryGetValue(
-                    command.OwnerPlayerKey,
-                    out var epoch
-                )
-                || epoch.Consumed
-            )
+            // DIAG-20260812: 转化不再受 epoch 一次性限制——每个 Danger 档期场上存量/新刷
+            // 的每只无害投影都应能 1:1 转化为危险影怪，重复提交由协调器 evidence 去重。
+            if (!conversionEpochs.TryGetValue(command.OwnerPlayerKey, out var epoch))
             {
                 return Record(
                     command,
@@ -367,7 +392,7 @@ internal sealed class HostileShadowAuthority
                 );
             }
         }
-        else if (evaluation.Status != SanityShadowBudgetEvaluationStatus.PermitGranted)
+        else if (!isDebugCommand && evaluation.Status != SanityShadowBudgetEvaluationStatus.PermitGranted)
         {
             return Record(
                 command,
@@ -440,7 +465,9 @@ internal sealed class HostileShadowAuthority
         Revision = nextRevision;
 
         if (command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion)
+        {
             conversionEpochs[command.OwnerPlayerKey].Consumed = true;
+        }
 
         Emit(
             ShadowStateDeltaKind.Spawned,
@@ -560,6 +587,63 @@ internal sealed class HostileShadowAuthority
         Revision = nextRevision;
         Emit(ShadowStateDeltaKind.Updated, current, update.Reason);
         reason = "hostile-shadow.updated";
+        return true;
+    }
+
+    /// <summary>
+    /// DIAG-20260809: 设置实体绑定隐藏状态（脱战隐藏/低理智恢复）。事件性变更，走独立
+    /// 方法与 TryUpdate 分离（不污染常规状态更新）；delta 同步携带隐藏/绑定/朝向字段。
+    /// </summary>
+    internal bool SetBindingState(
+        long entityId,
+        bool isHidden,
+        string correlationId,
+        string facingId,
+        out string reason
+    )
+    {
+        if (
+            !hostSessionActive
+            || !enabled
+            || !entities.TryGetValue(entityId, out var state)
+        )
+        {
+            reason = "hostile-shadow.binding-state-unavailable";
+            return false;
+        }
+        if (
+            state.IsBindingHidden == isHidden
+            && string.Equals(
+                state.BindingCorrelationId,
+                correlationId ?? string.Empty,
+                StringComparison.Ordinal
+            )
+            && string.Equals(
+                state.FacingId,
+                facingId ?? string.Empty,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            reason = "hostile-shadow.binding-state-duplicate";
+            return true;
+        }
+        if (!TryNextRevision(out var nextRevision))
+        {
+            reason = "hostile-shadow.revision-overflow";
+            return false;
+        }
+        state.IsBindingHidden = isHidden;
+        state.BindingCorrelationId = correlationId ?? string.Empty;
+        state.FacingId = facingId ?? string.Empty;
+        state.Revision = nextRevision;
+        Revision = nextRevision;
+        Emit(
+            ShadowStateDeltaKind.Updated,
+            state,
+            "hostile-shadow.binding-state-changed"
+        );
+        reason = "hostile-shadow.binding-state-updated";
         return true;
     }
 

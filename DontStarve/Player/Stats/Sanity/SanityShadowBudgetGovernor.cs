@@ -170,6 +170,12 @@ internal sealed class SanityShadowBudgetGovernor
 
         internal long? NextDueMinute { get; set; }
 
+        internal double RealElapsedMilliseconds { get; set; }
+
+        internal bool RealTimerStarted { get; set; }
+
+        internal long RealIntervalMilliseconds { get; set; }
+
         internal bool WasAtCap { get; set; }
 
         internal SanityShadowPoolTier CurrentPoolTier =>
@@ -276,6 +282,221 @@ internal sealed class SanityShadowBudgetGovernor
     )
     {
         return EvaluateCore(playerKey, gameMinute, occupancy, requestedSpecies);
+    }
+
+    internal SanityShadowBudgetEvaluationResult EvaluateRealTime(
+        string playerKey,
+        long gameMinute,
+        int occupancy,
+        int elapsedMilliseconds,
+        SanityShadowSpecies? requestedSpecies = null
+    )
+    {
+        if (elapsedMilliseconds < 0)
+        {
+            return Unavailable(
+                playerKey,
+                "budget.elapsed-milliseconds-invalid",
+                occupancy
+            );
+        }
+
+        if (!SanityPlayerKey.IsCanonical(playerKey))
+            return Unavailable(playerKey, "budget.player-key-invalid", occupancy);
+        if (gameMinute < 0)
+            return Unavailable(playerKey, "budget.game-minute-invalid", occupancy);
+        if (occupancy < 0)
+            return Unavailable(playerKey, "budget.occupancy-invalid", occupancy);
+        if (!owners.TryGetValue(playerKey, out var owner))
+        {
+            return new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.Inactive,
+                "budget.owner-untracked",
+                playerKey,
+                SanityShadowPoolTier.Inactive,
+                string.Empty,
+                occupancy,
+                0,
+                0,
+                null
+            );
+        }
+
+        owner.Occupancy = occupancy;
+        if (systemEnabled is null)
+        {
+            ResetPolicy(owner);
+            return Unavailable(playerKey, "budget.system-state-unavailable", occupancy);
+        }
+        if (systemEnabled == false)
+        {
+            ResetPolicy(owner);
+            return new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.SystemDisabled,
+                "budget.system-disabled",
+                playerKey,
+                owner.CurrentPoolTier,
+                string.Empty,
+                occupancy,
+                0,
+                0,
+                null
+            );
+        }
+
+        var poolTier = owner.CurrentPoolTier;
+        if (poolTier == SanityShadowPoolTier.Inactive)
+        {
+            ResetPolicy(owner);
+            return new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.Inactive,
+                "budget.tier-inactive",
+                playerKey,
+                poolTier,
+                string.Empty,
+                occupancy,
+                0,
+                0,
+                null
+            );
+        }
+
+        SanityMonsterIntensityResolution intensity;
+        try
+        {
+            intensity = intensityProvider.Resolve();
+        }
+        catch (Exception)
+        {
+            ResetPolicy(owner);
+            return Unavailable(
+                playerKey,
+                "budget.intensity-provider-failed",
+                occupancy,
+                poolTier
+            );
+        }
+        if (!intensity.HasValue)
+        {
+            ResetPolicy(owner);
+            return Unavailable(
+                playerKey,
+                string.Concat("budget.intensity-unavailable:", intensity.Reason),
+                occupancy,
+                poolTier
+            );
+        }
+        if (
+            !SanityShadowBudgetPolicyCatalog.TryGet(intensity.Value, out var policy)
+            || policy is null
+        )
+        {
+            ResetPolicy(owner);
+            return Unavailable(
+                playerKey,
+                "budget.intensity-unknown",
+                occupancy,
+                poolTier,
+                intensity.Value
+            );
+        }
+
+        var cap = policy.GetCap(poolTier);
+        if (
+            requestedSpecies.HasValue
+            && !SanityShadowPoolEligibilityPolicy.TryAuthorize(
+                poolTier,
+                requestedSpecies.Value,
+                out var eligibilityReason
+            )
+        )
+        {
+            return new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.SpeciesIneligible,
+                eligibilityReason,
+                playerKey,
+                poolTier,
+                policy.IntensityId,
+                occupancy,
+                cap,
+                policy.IntervalMinutes,
+                owner.NextDueMinute
+            );
+        }
+
+        var hadPolicy = owner.HasPolicy;
+        var previousPolicyWasFull = hadPolicy
+            && owner.LastCap > 0
+            && occupancy >= owner.LastCap;
+        var policyChanged = !hadPolicy
+            || owner.LastPoolTier != poolTier
+            || !string.Equals(owner.LastIntensityId, policy.IntensityId, StringComparison.Ordinal)
+            || owner.LastCap != cap
+            || owner.RealIntervalMilliseconds != policy.RealIntervalMilliseconds;
+
+        if (cap == 0)
+        {
+            SetPolicy(owner, poolTier, policy, cap);
+            ResetRealTimer(owner);
+            owner.NextDueMinute = null;
+            owner.WasAtCap = false;
+            return new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.Inactive,
+                "budget.intensity-none",
+                playerKey,
+                poolTier,
+                policy.IntensityId,
+                occupancy,
+                cap,
+                policy.IntervalMinutes,
+                null
+            );
+        }
+
+        if (policyChanged)
+        {
+            var shouldFillNewVacancy = owner.WasAtCap || previousPolicyWasFull;
+            SetPolicy(owner, poolTier, policy, cap);
+            ResetRealTimer(owner);
+            owner.RealIntervalMilliseconds = policy.RealIntervalMilliseconds;
+            if (occupancy >= cap)
+                return PauseAtCapRealTime(owner, policy, poolTier);
+            if (shouldFillNewVacancy)
+                return GrantRealTimePermit(owner, policy, poolTier, gameMinute, "budget.permit.vacancy");
+            owner.RealTimerStarted = true;
+            owner.RealElapsedMilliseconds = elapsedMilliseconds;
+            if (owner.RealElapsedMilliseconds >= policy.RealIntervalMilliseconds)
+            {
+                return GrantRealTimePermit(
+                    owner,
+                    policy,
+                    poolTier,
+                    gameMinute,
+                    "budget.permit.real-time-interval-elapsed"
+                );
+            }
+            return WaitingRealTime(owner, policy, poolTier, "budget.timer-started");
+        }
+
+        if (occupancy >= cap)
+            return PauseAtCapRealTime(owner, policy, poolTier);
+        if (owner.WasAtCap)
+            return GrantRealTimePermit(owner, policy, poolTier, gameMinute, "budget.permit.vacancy");
+        owner.RealTimerStarted = true;
+        owner.RealElapsedMilliseconds = Math.Min(
+            double.MaxValue - owner.RealElapsedMilliseconds,
+            owner.RealElapsedMilliseconds + elapsedMilliseconds
+        );
+        if (owner.RealElapsedMilliseconds < policy.RealIntervalMilliseconds)
+            return WaitingRealTime(owner, policy, poolTier, "budget.waiting");
+
+        return GrantRealTimePermit(
+            owner,
+            policy,
+            poolTier,
+            gameMinute,
+            "budget.permit.real-time-interval-elapsed"
+        );
     }
 
     private SanityShadowBudgetEvaluationResult EvaluateCore(
@@ -454,32 +675,20 @@ internal sealed class SanityShadowBudgetGovernor
             && gameMinute < owner.LastGameMinute.Value
         )
         {
+            // DIAG-20260812: 时间回溯（CJB 回拨等）后立即恢复刷新——此前重置计时器
+            // 后返回 Unavailable，NextDueMinute 被置为“回溯点+间隔”，回溯后玩家要
+            // 再等一个完整间隔（如 60 游戏分钟）才看到影怪刷新（用户实测“阈值内
+            // 不再刷出来”）。改为回溯时直接授予许可，恢复刷新节奏；超上限仍由
+            // 调用方 permit 校验（Cap ≤ occupancy）拦截，不会无限制刷怪。
             SetPolicy(owner, poolTier, policy, cap);
             owner.LastGameMinute = gameMinute;
             owner.WasAtCap = false;
-            if (!TrySchedule(owner, gameMinute, policy.IntervalMinutes))
-            {
-                return Unavailable(
-                    playerKey,
-                    "budget.timer-overflow",
-                    occupancy,
-                    poolTier,
-                    policy.IntensityId,
-                    cap,
-                    policy.IntervalMinutes
-                );
-            }
-
-            return new SanityShadowBudgetEvaluationResult(
-                SanityShadowBudgetEvaluationStatus.Unavailable,
-                "budget.time-regressed-restarted",
-                playerKey,
+            return GrantPermit(
+                owner,
+                policy,
                 poolTier,
-                policy.IntensityId,
-                occupancy,
-                cap,
-                policy.IntervalMinutes,
-                owner.NextDueMinute
+                gameMinute,
+                "budget.permit.time-regressed-restarted"
             );
         }
 
@@ -634,6 +843,43 @@ internal sealed class SanityShadowBudgetGovernor
         return true;
     }
 
+    /// <summary>
+    /// DIAG-20260810: 只读查询当前密度档的“统一上限池”容量（BaseCap+TerrorbeakCap，
+    /// 四类影怪合计上限）。不推进预算/计时器，仅用于超限清理判定。
+    /// </summary>
+    internal bool TryGetTotalCap(string playerKey, out int totalCap)
+    {
+        totalCap = 0;
+        if (!SanityPlayerKey.IsCanonical(playerKey) || systemEnabled != true)
+            return false;
+        if (!owners.TryGetValue(playerKey, out var owner))
+            return false;
+        if (owner.CurrentPoolTier == SanityShadowPoolTier.Inactive)
+            return false;
+        SanityMonsterIntensityResolution intensity;
+        try
+        {
+            intensity = intensityProvider.Resolve();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        if (
+            !intensity.HasValue
+            || !SanityShadowBudgetPolicyCatalog.TryGet(
+                intensity.Value,
+                out var policy
+            )
+            || policy is null
+        )
+        {
+            return false;
+        }
+        totalCap = policy.BaseCap + policy.TerrorbeakCap;
+        return true;
+    }
+
     private bool ApplyTierEvent(
         SanityStateEvent stateEvent,
         out string reason
@@ -719,6 +965,98 @@ internal sealed class SanityShadowBudgetGovernor
             policy.GetCap(poolTier),
             policy.IntervalMinutes,
             null
+        );
+    }
+
+    private static SanityShadowBudgetEvaluationResult PauseAtCapRealTime(
+        OwnerState owner,
+        SanityShadowBudgetPolicy policy,
+        SanityShadowPoolTier poolTier
+    )
+    {
+        owner.RealElapsedMilliseconds = 0d;
+        owner.RealTimerStarted = false;
+        owner.NextDueMinute = null;
+        owner.WasAtCap = true;
+        return new SanityShadowBudgetEvaluationResult(
+            SanityShadowBudgetEvaluationStatus.PausedAtCap,
+            "budget.paused-at-cap",
+            owner.PlayerKey,
+            poolTier,
+            policy.IntensityId,
+            owner.Occupancy,
+            policy.GetCap(poolTier),
+            policy.IntervalMinutes,
+            null
+        );
+    }
+
+    private static SanityShadowBudgetEvaluationResult WaitingRealTime(
+        OwnerState owner,
+        SanityShadowBudgetPolicy policy,
+        SanityShadowPoolTier poolTier,
+        string reason
+    )
+    {
+        return new SanityShadowBudgetEvaluationResult(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            reason,
+            owner.PlayerKey,
+            poolTier,
+            policy.IntensityId,
+            owner.Occupancy,
+            policy.GetCap(poolTier),
+            policy.IntervalMinutes,
+            null
+        );
+    }
+
+    private static SanityShadowBudgetEvaluationResult GrantRealTimePermit(
+        OwnerState owner,
+        SanityShadowBudgetPolicy policy,
+        SanityShadowPoolTier poolTier,
+        long gameMinute,
+        string reason
+    )
+    {
+        if (gameMinute == long.MaxValue)
+        {
+            return Unavailable(
+                owner.PlayerKey,
+                "budget.real-time-next-minute-overflow",
+                owner.Occupancy,
+                poolTier,
+                policy.IntensityId,
+                policy.GetCap(poolTier),
+                policy.IntervalMinutes
+            );
+        }
+
+        owner.RealElapsedMilliseconds = 0d;
+        owner.RealTimerStarted = true;
+        owner.WasAtCap = false;
+        var nextDueMinute = gameMinute + 1;
+        var permit = new SanityShadowSpawnPermit(
+            owner.PlayerKey,
+            poolTier,
+            policy.IntensityId,
+            owner.Occupancy,
+            policy.GetCap(poolTier),
+            gameMinute,
+            nextDueMinute,
+            reason
+        );
+        return new SanityShadowBudgetEvaluationResult(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            reason,
+            owner.PlayerKey,
+            poolTier,
+            policy.IntensityId,
+            owner.Occupancy,
+            policy.GetCap(poolTier),
+            policy.IntervalMinutes,
+            nextDueMinute,
+            permit
         );
     }
 
@@ -808,6 +1146,13 @@ internal sealed class SanityShadowBudgetGovernor
         owner.LastGameMinute = null;
         owner.NextDueMinute = null;
         owner.WasAtCap = false;
+        ResetRealTimer(owner);
+    }
+
+    private static void ResetRealTimer(OwnerState owner)
+    {
+        owner.RealElapsedMilliseconds = 0d;
+        owner.RealTimerStarted = false;
     }
 
     private static SanityShadowBudgetEvaluationResult Unavailable(

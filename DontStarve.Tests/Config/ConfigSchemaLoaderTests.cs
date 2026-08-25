@@ -6,7 +6,7 @@ namespace DontStarve.Tests.Config;
 public sealed class ConfigSchemaLoaderTests
 {
     [Fact]
-    public void ShippedSchemaPublishesFrozenEightOptionRegistry()
+    public void ShippedSchemaPublishesFrozenElevenOptionRegistry()
     {
         var result = ConfigSchemaLoader.LoadFromFile(ConfigTestData.ShippedSchemaPath);
 
@@ -15,7 +15,7 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Empty(result.Diagnostics);
         var registry = Assert.IsType<ConfigRegistry>(result.Registry);
         Assert.Equal(1, registry.SchemaVersion);
-        Assert.Equal(8, registry.Options.Count);
+        Assert.Equal(11, registry.Options.Count);
 
         AssertBoolean(registry, ConfigKeys.EnableSanitySystem, true, true, true, 10);
         AssertEnum(
@@ -43,6 +43,30 @@ public sealed class ConfigSchemaLoaderTests
             true,
             false,
             30
+        );
+        AssertBoolean(
+            registry,
+            ConfigKeys.EnableLowSanityScreenDistortion,
+            true,
+            false,
+            false,
+            32
+        );
+        AssertBoolean(
+            registry,
+            ConfigKeys.EnableSanityVignette,
+            true,
+            false,
+            false,
+            35
+        );
+        AssertBoolean(
+            registry,
+            ConfigKeys.EnableNaturalDarkness,
+            true,
+            false,
+            true,
+            38
         );
         AssertEnum(
             registry,

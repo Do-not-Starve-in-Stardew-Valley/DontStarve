@@ -1,6 +1,7 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26430.14
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.8.12023.21 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = ".Common", "Common\.Common.shproj", "{4510AB5A-755B-4828-8198-B2975F8203A2}"
 EndProject
@@ -8,17 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DontStarve", "DontStarve\Do
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DontStarve.Tests", "DontStarve.Tests\DontStarve.Tests.csproj", "{27EFBE1C-2F87-4D5B-9D44-C01570F49437}"
 EndProject
-
 Global
-	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		Common\Common.projitems*{4510AB5A-755B-4828-8198-B2975F8203A2}*SharedItemsImports = 13
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{6C2109EE-9355-4E64-B423-4E93A98A3696}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -29,5 +23,12 @@ Global
 		{27EFBE1C-2F87-4D5B-9D44-C01570F49437}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{27EFBE1C-2F87-4D5B-9D44-C01570F49437}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{27EFBE1C-2F87-4D5B-9D44-C01570F49437}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Common\Common.projitems*{4510ab5a-755b-4828-8198-b2975f8203a2}*SharedItemsImports = 13
+		Common\Common.projitems*{6c2109ee-9355-4e64-b423-4e93a98a3696}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

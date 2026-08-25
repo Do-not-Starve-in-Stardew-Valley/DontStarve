@@ -11,15 +11,15 @@ public sealed class SanityShadowBudgetGovernorTests
     private const string OwnerA = "123456789";
     private const string OwnerB = "223456789";
 
-    public static TheoryData<string, long, int, int> DensityPolicies =>
+    public static TheoryData<string, long, long, int, int> DensityPolicies =>
         new()
         {
-            { SanityMonsterIntensityIds.None, 60, 0, 0 },
-            { SanityMonsterIntensityIds.Less, 120, 1, 1 },
-            { SanityMonsterIntensityIds.Default, 60, 1, 2 },
-            { SanityMonsterIntensityIds.More, 60, 2, 3 },
-            { SanityMonsterIntensityIds.Many, 30, 3, 4 },
-            { SanityMonsterIntensityIds.Insane, 30, 4, 5 },
+            { SanityMonsterIntensityIds.None, 60, 0, 0, 0 },
+            { SanityMonsterIntensityIds.Less, 120, 84_000, 1, 1 },
+            { SanityMonsterIntensityIds.Default, 60, 42_000, 1, 2 },
+            { SanityMonsterIntensityIds.More, 60, 42_000, 2, 3 },
+            { SanityMonsterIntensityIds.Many, 30, 21_000, 3, 4 },
+            { SanityMonsterIntensityIds.Insane, 30, 21_000, 4, 5 },
         };
 
     [Theory]
@@ -27,6 +27,7 @@ public sealed class SanityShadowBudgetGovernorTests
     public void Catalog_freezes_all_six_density_policies(
         string intensity,
         long interval,
+        long realIntervalMilliseconds,
         int baseCap,
         int terrorbeakCap
     )
@@ -36,8 +37,44 @@ public sealed class SanityShadowBudgetGovernorTests
         );
         Assert.NotNull(policy);
         Assert.Equal(interval, policy!.IntervalMinutes);
+        Assert.Equal(realIntervalMilliseconds, policy.RealIntervalMilliseconds);
         Assert.Equal(baseCap, policy.BaseCap);
         Assert.Equal(terrorbeakCap, policy.TerrorbeakCap);
+    }
+
+    [Fact]
+    public void Less_intensity_waits_until_exactly_eighty_four_seconds()
+    {
+        var governor = ReadyGovernor(
+            new MutableIntensityProvider(SanityMonsterIntensityIds.Less),
+            OwnerA
+        );
+
+        var beforeDue = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 100,
+            occupancy: 0,
+            elapsedMilliseconds: 83_999
+        );
+        var due = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 100,
+            occupancy: 0,
+            elapsedMilliseconds: 1
+        );
+
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            beforeDue.Status
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            due.Status
+        );
+        Assert.Equal(
+            "budget.permit.real-time-interval-elapsed",
+            due.Reason
+        );
     }
 
     [Fact]
@@ -360,7 +397,7 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
-    public void Time_regression_restarts_the_interval_without_issuing_backlog()
+    public void Time_regression_grants_one_immediate_refresh_and_restarts_the_interval()
     {
         var governor = ReadyDefaultGovernor(OwnerA);
         governor.Evaluate(OwnerA, 100, 0);
@@ -370,10 +407,11 @@ public sealed class SanityShadowBudgetGovernorTests
         var newDue = governor.Evaluate(OwnerA, 150, 0);
 
         Assert.Equal(
-            SanityShadowBudgetEvaluationStatus.Unavailable,
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
             regressed.Status
         );
-        Assert.Equal("budget.time-regressed-restarted", regressed.Reason);
+        Assert.Equal("budget.permit.time-regressed-restarted", regressed.Reason);
+        Assert.NotNull(regressed.Permit);
         Assert.Equal(150, regressed.NextDueMinute);
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, oldDue.Status);
         Assert.Equal(

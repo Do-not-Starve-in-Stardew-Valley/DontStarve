@@ -32,7 +32,7 @@ internal sealed class ShadowCreatureHarmlessProjectionRenderer
     {
         ArgumentNullException.ThrowIfNull(spriteBatch);
         ArgumentNullException.ThrowIfNull(instance);
-        var resource = instance.VisualResource;
+        var resource = instance.CurrentVisualResource;
         var preview = resource?.VisualPreview;
         if (
             resource?.PhysicalResource is not XnaSanityTextureResource textureResource
@@ -49,9 +49,26 @@ internal sealed class ShadowCreatureHarmlessProjectionRenderer
         }
 
         var baseSource = preview.SourceRectangle;
+        var sourceY = baseSource.Y;
+        if (
+            instance.AnimationState
+                == ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Moving
+        )
+        {
+            // DIAG-20260809: 四方向行走：按朝向选行（Down=0/Right=1/Up=2/Left=3，
+            // 与 animations.json DirectionRows 一致；Left 行为 Baked 预镜像，直接绘制）。
+            var directionRow = instance.FacingId switch
+            {
+                ShadowCreatureHarmlessProjectionCatalog.FacingRight => 1,
+                ShadowCreatureHarmlessProjectionCatalog.FacingUp => 2,
+                ShadowCreatureHarmlessProjectionCatalog.FacingLeft => 3,
+                _ => 0,
+            };
+            sourceY = checked(baseSource.Y + (directionRow * baseSource.Height));
+        }
         var source = new Rectangle(
             checked(baseSource.X + (instance.CurrentFrameIndex * baseSource.Width)),
-            baseSource.Y,
+            sourceY,
             baseSource.Width,
             baseSource.Height
         );
@@ -72,19 +89,36 @@ internal sealed class ShadowCreatureHarmlessProjectionRenderer
         var scale = (float)preview.DrawScale;
         var origin = new Vector2(pivot.X, pivot.Y);
         var layerDepth = Math.Clamp(
-            ((float)instance.SpawnWorldPixel.Y + 64f) / 10000f,
+            ((float)instance.WorldPixel.Y + 64f) / 10000f,
             0f,
             1f
         );
+        // DIAG-20260809: 无害形态默认 25% 透明度（与危险 50% 区分）；淡出时随实例 Alpha 递减。
+        var drawColor = Color.White * instance.Alpha;
+        // DIAG-20260812: 静息贴图只有默认朝右——面朝左时水平镜像（危险影怪转化时
+        // 朝向不跳变；行走四方向行已是 Baked 预镜像，不重复翻转）。
+        var effects = SpriteEffects.None;
+        if (
+            instance.AnimationState
+                != ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Moving
+            && string.Equals(
+                instance.FacingId,
+                ShadowCreatureHarmlessProjectionCatalog.FacingLeft,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            effects = SpriteEffects.FlipHorizontally;
+        }
         spriteBatch.Draw(
             textureResource.Texture,
             screenPixel,
             source,
-            Color.White,
+            drawColor,
             0f,
             origin,
             scale,
-            SpriteEffects.None,
+            effects,
             layerDepth
         );
 

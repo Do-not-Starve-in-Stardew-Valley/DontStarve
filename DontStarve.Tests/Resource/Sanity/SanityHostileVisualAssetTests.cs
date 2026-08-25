@@ -45,9 +45,12 @@ public sealed class SanityHostileVisualAssetTests
         "sanity.animation.creeper-fear.profile",
         "Asset/Sanity/Sprites/Monsters/creeper-fear.png",
         64,
-        64,
+        96,
         32,
-        48
+        48,
+        32,
+        48,
+        13
     )]
     [InlineData(
         "sanity.animation.terrorbeak.profile",
@@ -55,15 +58,21 @@ public sealed class SanityHostileVisualAssetTests
         48,
         64,
         24,
-        48
+        48,
+        24,
+        40,
+        13
     )]
-    public void RuntimeSheetsMatchTheFrozenFourByTwelveGrid(
+    public void RuntimeSheetsMatchTheFrozenFourByThirteenGrid(
         string profileId,
         string deploymentPath,
         int frameWidth,
         int frameHeight,
         int pivotX,
-        int pivotY
+        int pivotY,
+        int actorOriginX,
+        int actorOriginY,
+        int rows
     )
     {
         using var document = ReadAnimationMetadata();
@@ -75,17 +84,17 @@ public sealed class SanityHostileVisualAssetTests
         Assert.Equal(HostileTemplateVersion, profile.GetProperty("TemplateVersion").GetString());
         Assert.Equal(frameWidth, profile.GetProperty("FrameWidth").GetInt32());
         Assert.Equal(frameHeight, profile.GetProperty("FrameHeight").GetInt32());
-        Assert.Equal(12, profile.GetProperty("SheetRows").GetInt32());
+        Assert.Equal(rows, profile.GetProperty("SheetRows").GetInt32());
         Assert.Equal("FourWayRows", profile.GetProperty("DirectionMode").GetString());
         Assert.False(profile.GetProperty("OwnerLocalOnly").GetBoolean());
         Assert.True(profile.GetProperty("IsPlaceholder").GetBoolean());
-        Assert.Equal(0, profile.GetProperty("ActorOriginSourcePx").GetProperty("X").GetInt32());
-        Assert.Equal(0, profile.GetProperty("ActorOriginSourcePx").GetProperty("Y").GetInt32());
+        Assert.Equal(actorOriginX, profile.GetProperty("ActorOriginSourcePx").GetProperty("X").GetInt32());
+        Assert.Equal(actorOriginY, profile.GetProperty("ActorOriginSourcePx").GetProperty("Y").GetInt32());
 
         var image = PngRgbaImage.Decode(ResolveShippedPath(deploymentPath));
         Assert.Equal(frameWidth * 4, image.Width);
-        Assert.Equal(frameHeight * 12, image.Height);
-        for (var row = 0; row < 12; row++)
+        Assert.Equal(frameHeight * rows, image.Height);
+        for (var row = 0; row < rows; row++)
         {
             for (var column = 0; column < 4; column++)
             {
@@ -116,34 +125,55 @@ public sealed class SanityHostileVisualAssetTests
     }
 
     [Fact]
-    public void CreeperLeftRowsAreDeterministicBakedMirrorsOfRightRows()
+    public void CreeperDirectionRowsDoNotRequestRuntimeMirroring()
     {
-        const int frameSize = 64;
-        var image = PngRgbaImage.Decode(
-            ResolveShippedPath("Asset/Sanity/Sprites/Monsters/creeper-fear.png")
+        using var document = ReadAnimationMetadata();
+        var profile = FindById(
+            document.RootElement.GetProperty("AnimationProfiles"),
+            "AnimationProfileId",
+            "sanity.animation.creeper-fear.profile"
         );
-        foreach (var (rightRow, leftRow) in new[] { (1, 3), (5, 7) })
+        foreach (
+            var state in profile.GetProperty("States").EnumerateArray().Where(state =>
+                state.GetProperty("AnimationId").GetString() is
+                    "sanity.animation.creeper-fear.move"
+                    or "sanity.animation.creeper-fear.attack"
+            )
+        )
         {
-            for (var column = 0; column < 4; column++)
-            {
-                Assert.True(
-                    image.RegionsAreHorizontalMirrors(
-                        column * frameSize,
-                        rightRow * frameSize,
-                        column * frameSize,
-                        leftRow * frameSize,
-                        frameSize,
-                        frameSize
-                    ),
-                    $"row {leftRow} frame {column + 1} is not the baked mirror of row {rightRow}."
-                );
-            }
+            var left = Assert.Single(
+                state.GetProperty("DirectionRows").EnumerateArray().Where(direction =>
+                    direction.GetProperty("Direction").GetString() == "Left"
+                )
+            );
+            Assert.Equal("None", left.GetProperty("Mirror").GetString());
         }
     }
 
     [Theory]
-    [InlineData("sanity.animation.creeper-fear.profile", 4, 48, 56, 48, -8, 56, 80, 80)]
-    [InlineData("sanity.animation.terrorbeak.profile", 8, 32, 32, 32, -16, 8, 80, 80)]
+    [InlineData("sanity.binding.creeper-fear")]
+    [InlineData("sanity.binding.terrorbeak")]
+    public void Static_left_facing_uses_the_shared_runtime_flip_rule(string bindingId)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(bindingId));
+        var source = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Contracts",
+                "HostileShadowAuthority",
+                "HostileShadowMonster.cs"
+            )
+        );
+
+        Assert.Contains("ResolveSpriteEffects", source, StringComparison.Ordinal);
+        Assert.Contains("HostileShadowStateIds.Idle", source, StringComparison.Ordinal);
+        Assert.Contains("HostileShadowFacingIds.Left", source, StringComparison.Ordinal);
+        Assert.Contains("SpriteEffects.FlipHorizontally", source, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("sanity.animation.creeper-fear.profile", 4, 48, 56, 48, 0, 64, 64, 64)]
+    [InlineData("sanity.animation.terrorbeak.profile", 8, 32, 32, 32, -8, 16, 64, 64)]
     public void CollisionBoxesStayInActorOriginRelativeSourcePixels(
         string profileId,
         int hurtX,
@@ -188,7 +218,7 @@ public sealed class SanityHostileVisualAssetTests
     }
 
     [Fact]
-    public void CreeperCadenceNormalizesGifTotalsAndTerrorbeakCadenceStaysExplicitlyFallback()
+    public void BothHostileProfilesUseTheSharedExplicitCadenceFallback()
     {
         using var document = ReadAnimationMetadata();
         var profiles = document.RootElement.GetProperty("AnimationProfiles");
@@ -200,17 +230,29 @@ public sealed class SanityHostileVisualAssetTests
                 state => state.GetProperty("FrameDurationMs").GetInt32(),
                 StringComparer.Ordinal
             );
-        Assert.Equal(150, creeperDurations["sanity.animation.creeper-fear.move"]);
-        Assert.Equal(125, creeperDurations["sanity.animation.creeper-fear.attack"]);
+        Assert.Equal(100, creeperDurations["sanity.animation.creeper-fear.move"]);
+        Assert.Equal(100, creeperDurations["sanity.animation.creeper-fear.attack"]);
         Assert.Equal(100, creeperDurations["sanity.animation.creeper-fear.death"]);
-        Assert.Equal(90, creeperDurations["sanity.animation.creeper-fear.spawn"]);
-        Assert.Equal(390, creeperDurations["sanity.animation.creeper-fear.idle"]);
-        Assert.Equal(488, creeperDurations["sanity.animation.creeper-fear.taunt"]);
+        Assert.Equal(100, creeperDurations["sanity.animation.creeper-fear.spawn"]);
+        Assert.Equal(200, creeperDurations["sanity.animation.creeper-fear.idle"]);
+        Assert.Equal(300, creeperDurations["sanity.animation.creeper-fear.taunt"]);
 
         var terrorbeak = FindById(profiles, "AnimationProfileId", "sanity.animation.terrorbeak.profile");
+        var terrorbeakDurations = terrorbeak.GetProperty("States")
+            .EnumerateArray()
+            .ToDictionary(
+                state => state.GetProperty("AnimationId").GetString()!,
+                state => state.GetProperty("FrameDurationMs").GetInt32(),
+                StringComparer.Ordinal
+            );
+        Assert.Equal(100, terrorbeakDurations["sanity.animation.terrorbeak.move"]);
+        Assert.Equal(100, terrorbeakDurations["sanity.animation.terrorbeak.attack"]);
+        Assert.Equal(100, terrorbeakDurations["sanity.animation.terrorbeak.death"]);
+        Assert.Equal(100, terrorbeakDurations["sanity.animation.terrorbeak.spawn"]);
+        Assert.Equal(200, terrorbeakDurations["sanity.animation.terrorbeak.idle"]);
+        Assert.Equal(300, terrorbeakDurations["sanity.animation.terrorbeak.taunt"]);
         Assert.All(terrorbeak.GetProperty("States").EnumerateArray(), state =>
         {
-            Assert.Equal(100, state.GetProperty("FrameDurationMs").GetInt32());
             Assert.Contains(
                 "development fallback",
                 state.GetProperty("ProvisionalReason").GetString(),
@@ -318,7 +360,7 @@ public sealed class SanityHostileVisualAssetTests
         AssertRejected(
             (animations, _) =>
                 FindState(animations, "sanity.animation.creeper-fear.move")["DirectionRows"]!
-                    .AsArray()[0]!["Row"] = 12,
+                    .AsArray()[0]!["Row"] = 13,
             "hostile.animation.row-out-of-range"
         );
         AssertRejected(

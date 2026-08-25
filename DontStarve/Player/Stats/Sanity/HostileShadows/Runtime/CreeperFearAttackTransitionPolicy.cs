@@ -185,13 +185,13 @@ internal abstract class HostileTauntOrDelayAttackTransitionPolicy
 
 /// <summary>
 /// Creeper Fear samples one post-attack decision per entity/target/revision: below 0.25 enters
-/// Taunt then waits 0.5 seconds; otherwise the canonical profile interval is used.
+/// Taunt then waits 1.2 seconds; otherwise the canonical profile interval is used.
 /// </summary>
 internal sealed class CreeperFearAttackTransitionPolicy
     : HostileTauntOrDelayAttackTransitionPolicy
 {
     internal const double TauntProbability = 0.25d;
-    internal const double DelayAfterTauntSeconds = 0.5d;
+    internal const double DelayAfterTauntSeconds = 1.2d;
 
     internal CreeperFearAttackTransitionPolicy(
         long entityId,
@@ -207,14 +207,14 @@ internal sealed class CreeperFearAttackTransitionPolicy
 }
 
 /// <summary>
-/// Terrorbeak owns the same strict probability and post-Taunt delay, while its direct branch uses
-/// the independently validated 0.7-second canonical profile interval.
+/// Terrorbeak owns the same strict probability but a 0.6-second post-Taunt delay; its direct
+/// branch uses the attack interval from the validated difficulty profile.
 /// </summary>
 internal sealed class TerrorbeakAttackTransitionPolicy
     : HostileTauntOrDelayAttackTransitionPolicy
 {
     internal const double TauntProbability = 0.25d;
-    internal const double DelayAfterTauntSeconds = 0.5d;
+    internal const double DelayAfterTauntSeconds = 0.6d;
 
     internal TerrorbeakAttackTransitionPolicy(
         long entityId,

@@ -248,8 +248,8 @@
       "AnimationProfileId": "sanity.animation.creeper-fear.profile",
       "TextureSlotId": "sanity.asset.creeper-fear.sprite",
       "FrameWidth": 64,
-      "FrameHeight": 64,
-      "SheetRows": 12,
+      "FrameHeight": 96,
+      "SheetRows": 13,
       "DirectionMode": "FourWayRows",
       "OwnerLocalOnly": false,
       "IsPlaceholder": true,
@@ -257,8 +257,8 @@
       "TemplateVersion": "sanity-hostile-visuals-v1",
       "CreditGroup": "ART-05",
       "ActorOriginSourcePx": {
-        "X": 0,
-        "Y": 0
+        "X": 32,
+        "Y": 48
       },
       "Collision": {
         "CoordinateSpace": "ActorOriginRelativeSourcePx",
@@ -269,10 +269,10 @@
           "Height": 48
         },
         "AttackBoxSourcePx": {
-          "X": -8,
-          "Y": 56,
-          "Width": 80,
-          "Height": 80
+          "X": 0,
+          "Y": 64,
+          "Width": 64,
+          "Height": 64
         },
         "AttackActiveFrames": [
           3,
@@ -286,7 +286,7 @@
           "AnimationId": "sanity.animation.creeper-fear.move",
           "Row": 0,
           "FrameCount": 4,
-          "FrameDurationMs": 150,
+          "FrameDurationMs": 100,
           "Loop": true,
           "PivotSourcePx": {
             "X": 32,
@@ -314,19 +314,19 @@
             {
               "Direction": "Left",
               "Row": 3,
-              "Mirror": "Baked"
+              "Mirror": "None"
             }
           ],
           "HitFrames": [],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,
-          "ProvisionalReason": "The 600 ms movement preview total is normalized across four runtime keys; game cadence remains provisional."
+          "ProvisionalReason": "ART-05 has no GIF timing evidence; 100 ms matches Terrorbeak's movement fallback."
         },
         {
           "AnimationId": "sanity.animation.creeper-fear.attack",
           "Row": 4,
           "FrameCount": 4,
-          "FrameDurationMs": 125,
+          "FrameDurationMs": 100,
           "Loop": false,
           "PivotSourcePx": {
             "X": 32,
@@ -354,7 +354,7 @@
             {
               "Direction": "Left",
               "Row": 7,
-              "Mirror": "Baked"
+              "Mirror": "None"
             }
           ],
           "HitFrames": [
@@ -363,7 +363,7 @@
           ],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,
-          "ProvisionalReason": "The 440-560 ms directional preview totals are normalized to a 500 ms four-key midpoint; game cadence remains provisional."
+          "ProvisionalReason": "ART-05 has no GIF timing evidence; 100 ms matches Terrorbeak's attack fallback."
         },
         {
           "AnimationId": "sanity.animation.creeper-fear.death",
@@ -388,7 +388,7 @@
           "AnimationId": "sanity.animation.creeper-fear.spawn",
           "Row": 9,
           "FrameCount": 4,
-          "FrameDurationMs": 90,
+          "FrameDurationMs": 100,
           "Loop": false,
           "PivotSourcePx": {
             "X": 32,
@@ -401,13 +401,13 @@
           "HitFrames": [],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,
-          "ProvisionalReason": "The 360 ms appear preview total is normalized across four runtime keys; game cadence remains provisional."
+          "ProvisionalReason": "ART-05 has no GIF timing evidence; 100 ms matches Terrorbeak's spawn fallback."
         },
         {
           "AnimationId": "sanity.animation.creeper-fear.idle",
           "Row": 10,
           "FrameCount": 4,
-          "FrameDurationMs": 390,
+          "FrameDurationMs": 200,
           "Loop": true,
           "PivotSourcePx": {
             "X": 32,
@@ -420,13 +420,13 @@
           "HitFrames": [],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,
-          "ProvisionalReason": "The 1560 ms idle preview total is normalized across four runtime keys; game cadence remains provisional."
+          "ProvisionalReason": "ART-05 has no GIF timing evidence; 200 ms matches Terrorbeak's idle fallback."
         },
         {
           "AnimationId": "sanity.animation.creeper-fear.taunt",
           "Row": 11,
           "FrameCount": 4,
-          "FrameDurationMs": 488,
+          "FrameDurationMs": 300,
           "Loop": false,
           "PivotSourcePx": {
             "X": 32,
@@ -435,11 +435,22 @@
           "DrawScale": 4.0,
           "Mirror": "None",
           "SortLayer": "Actor",
-          "DirectionRows": [],
+          "DirectionRows": [
+            {
+              "Direction": "Right",
+              "Row": 11,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 12,
+              "Mirror": "None"
+            }
+          ],
           "HitFrames": [],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,
-          "ProvisionalReason": "The 1950 ms taunt preview total is rounded to 1952 ms across four runtime keys; game cadence remains provisional."
+          "ProvisionalReason": "ART-05 has no GIF timing evidence; 300 ms matches Terrorbeak's taunt fallback."
         }
       ]
     },
@@ -448,7 +459,7 @@
       "TextureSlotId": "sanity.asset.terrorbeak.sprite",
       "FrameWidth": 48,
       "FrameHeight": 64,
-      "SheetRows": 12,
+      "SheetRows": 13,
       "DirectionMode": "FourWayRows",
       "OwnerLocalOnly": false,
       "IsPlaceholder": true,
@@ -456,8 +467,8 @@
       "TemplateVersion": "sanity-hostile-visuals-v1",
       "CreditGroup": "ART-06",
       "ActorOriginSourcePx": {
-        "X": 0,
-        "Y": 0
+        "X": 24,
+        "Y": 40
       },
       "Collision": {
         "CoordinateSpace": "ActorOriginRelativeSourcePx",
@@ -468,10 +479,10 @@
           "Height": 32
         },
         "AttackBoxSourcePx": {
-          "X": -16,
-          "Y": 8,
-          "Width": 80,
-          "Height": 80
+          "X": -8,
+          "Y": 16,
+          "Width": 64,
+          "Height": 64
         },
         "AttackActiveFrames": [
           3,
@@ -606,7 +617,7 @@
           "AnimationId": "sanity.animation.terrorbeak.idle",
           "Row": 10,
           "FrameCount": 4,
-          "FrameDurationMs": 100,
+          "FrameDurationMs": 200,
           "Loop": true,
           "PivotSourcePx": {
             "X": 24,
@@ -625,7 +636,7 @@
           "AnimationId": "sanity.animation.terrorbeak.taunt",
           "Row": 11,
           "FrameCount": 4,
-          "FrameDurationMs": 100,
+          "FrameDurationMs": 300,
           "Loop": false,
           "PivotSourcePx": {
             "X": 24,
@@ -634,7 +645,18 @@
           "DrawScale": 4.0,
           "Mirror": "None",
           "SortLayer": "Actor",
-          "DirectionRows": [],
+          "DirectionRows": [
+            {
+              "Direction": "Right",
+              "Row": 11,
+              "Mirror": "None"
+            },
+            {
+              "Direction": "Left",
+              "Row": 12,
+              "Mirror": "None"
+            }
+          ],
           "HitFrames": [],
           "AllowedEmptyFrames": [],
           "IsProvisional": true,

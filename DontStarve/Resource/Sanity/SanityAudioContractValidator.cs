@@ -45,11 +45,11 @@ public sealed class SanityAudioContractValidationResult
 public static class SanityAudioContractValidator
 {
     public const string MetadataDeploymentPath = "Asset/Sanity/Audio/audio-cues.json";
-    public const string RuntimeFormatId = "sanity.wav.pcm-s16-stereo-44100-v1";
+    public const string RuntimeFormatId = SanityWavFormatCatalog.PcmS16Stereo44100V1;
 
     private const int ExpectedCueSetCount = 8;
-    private const int ExpectedCueCount = 17;
-    private const int ExpectedPhysicalClipCount = 35;
+    private const int ExpectedCueCount = 22;
+    private const int ExpectedPhysicalClipCount = 140;
 
     private static readonly IReadOnlyDictionary<string, CueSetExpectation> ExpectedCueSets =
         new Dictionary<string, CueSetExpectation>(StringComparer.Ordinal)
@@ -228,15 +228,16 @@ public static class SanityAudioContractValidator
     {
         if (!TryObject(root, "RuntimeFormat", "audio.format.missing", issues, out var format))
             return;
+        SanityWavFormatCatalog.TryGet(RuntimeFormatId, out var runtimeFormat);
         ExpectString(format, "FormatId", RuntimeFormatId, "audio.format.id-mismatch", issues);
         ExpectString(format, "Container", "RIFF", "audio.format.container-mismatch", issues);
         ExpectString(format, "Codec", "PCM", "audio.format.codec-mismatch", issues);
-        ExpectInt(format, "FormatCode", 1, "audio.format.code-mismatch", issues);
-        ExpectInt(format, "Channels", 2, "audio.format.channels-mismatch", issues);
-        ExpectInt(format, "SampleRateHz", 44100, "audio.format.sample-rate-mismatch", issues);
-        ExpectInt(format, "BitsPerSample", 16, "audio.format.bit-depth-mismatch", issues);
-        ExpectInt(format, "BlockAlign", 4, "audio.format.block-align-mismatch", issues);
-        ExpectInt(format, "ByteRate", 176400, "audio.format.byte-rate-mismatch", issues);
+        ExpectInt(format, "FormatCode", runtimeFormat.FormatCode, "audio.format.code-mismatch", issues);
+        ExpectInt(format, "Channels", runtimeFormat.Channels, "audio.format.channels-mismatch", issues);
+        ExpectInt(format, "SampleRateHz", runtimeFormat.SampleRateHz, "audio.format.sample-rate-mismatch", issues);
+        ExpectInt(format, "BitsPerSample", runtimeFormat.BitsPerSample, "audio.format.bit-depth-mismatch", issues);
+        ExpectInt(format, "BlockAlign", runtimeFormat.BlockAlign, "audio.format.block-align-mismatch", issues);
+        ExpectInt(format, "ByteRate", runtimeFormat.ByteRate, "audio.format.byte-rate-mismatch", issues);
     }
 
     private static void ValidateManifest(
@@ -499,7 +500,19 @@ public static class SanityAudioContractValidator
             issues.Add(new("audio.clip.invalid-path", reason));
             return;
         }
-        ExpectString(clip, "FormatId", RuntimeFormatId, "audio.clip.format-id-mismatch", issues);
+        var formatId = RequiredString(clip, "FormatId", "audio.clip.format-id-missing", issues);
+        SanityWavFormatDescriptor? expectedFormat = null;
+        if (!string.IsNullOrWhiteSpace(formatId))
+        {
+            if (!SanityWavFormatCatalog.TryGet(formatId, out var descriptor))
+            {
+                issues.Add(new("audio.clip.unknown-format-id", $"Clip '{path}' declares unsupported format id '{formatId}'."));
+            }
+            else
+            {
+                expectedFormat = descriptor;
+            }
+        }
         ExpectBool(clip, "Loop", false, "audio.clip.loop-mismatch", issues);
         var declaredHash = RequiredString(clip, "Sha256", "audio.clip.hash-missing", issues);
         var declaredFrames = RequiredInt64(clip, "DurationFrames", "audio.clip.duration-frames-missing", issues);
@@ -515,16 +528,14 @@ public static class SanityAudioContractValidator
             issues.Add(new($"audio.clip.{issue.Code}", $"{path}: {issue.Reason}"));
         if (!inspection.Success)
             return;
-        if (
-            inspection.FormatCode != 1
-            || inspection.Channels != 2
-            || inspection.SampleRateHz != 44100
-            || inspection.BitsPerSample != 16
-            || inspection.BlockAlign != 4
-            || inspection.ByteRate != 176400
-        )
+        if (expectedFormat is null || !expectedFormat.Matches(inspection))
         {
-            issues.Add(new("audio.clip.runtime-format-mismatch", $"Clip '{path}' does not match the frozen runtime PCM format."));
+            issues.Add(
+                new(
+                    "audio.clip.runtime-format-mismatch",
+                    $"Clip '{path}' does not match declared format '{formatId}'."
+                )
+            );
         }
         if (!string.Equals(declaredHash, inspection.Sha256, StringComparison.Ordinal))
             issues.Add(new("audio.clip.hash-mismatch", $"Clip '{path}' has a stale SHA-256."));
@@ -593,8 +604,20 @@ public static class SanityAudioContractValidator
             ),
         };
         AddEvents(values, "dark-hand", new[] { "appear", "interact", "disappear" });
-        AddEvents(values, "creeper-fear", new[] { "taunt", "attack", "hurt", "death" });
-        AddEvents(values, "terrorbeak", new[] { "taunt", "attack", "hurt", "death" });
+        AddEvents(
+            values,
+            "creeper-fear",
+            new[] { "idle", "chase", "taunt", "attack-dull", "attack-sharp", "hurt", "death" },
+            new[] { 8, 8, 6, 5, 8, 6, 9 },
+            isPlaceholder: false
+        );
+        AddEvents(
+            values,
+            "terrorbeak",
+            new[] { "idle", "chase", "taunt", "attack", "hurt", "death" },
+            new[] { 16, 14, 10, 6, 6, 11 },
+            isPlaceholder: false
+        );
         foreach (var eventName in new[] { "gain", "loss" })
         {
             values[$"sanity.cue.sanity-change.{eventName}"] = new(
@@ -612,19 +635,24 @@ public static class SanityAudioContractValidator
     private static void AddEvents(
         IDictionary<string, CueExpectation> values,
         string group,
-        IEnumerable<string> events
+        IEnumerable<string> events,
+        IReadOnlyList<int>? clipCounts = null,
+        bool isPlaceholder = true
     )
     {
+        var index = 0;
         foreach (var eventName in events)
         {
+            var clipCount = clipCounts is null ? 1 : clipCounts[index];
             values[$"sanity.cue.{group}.{eventName}"] = new(
                 $"sanity.cue.{group}",
                 "OneShot",
                 true,
                 true,
-                true,
-                1
+                isPlaceholder,
+                clipCount
             );
+            index++;
         }
     }
 

@@ -40,7 +40,8 @@ public static class SanityHostileVisualContractValidator
             "sanity.animation.creeper-fear",
             "sanity.cue.creeper-fear",
             64,
-            64
+            96,
+            13
         ),
         new(
             "sanity.binding.terrorbeak",
@@ -49,7 +50,8 @@ public static class SanityHostileVisualContractValidator
             "sanity.animation.terrorbeak",
             "sanity.cue.terrorbeak",
             48,
-            64
+            64,
+            13
         ),
     };
 
@@ -228,7 +230,7 @@ public static class SanityHostileVisualContractValidator
             profile.GetProperty("TextureSlotId").GetString() != expectation.SlotId
             || profile.GetProperty("FrameWidth").GetInt32() != expectation.FrameWidth
             || profile.GetProperty("FrameHeight").GetInt32() != expectation.FrameHeight
-            || profile.GetProperty("SheetRows").GetInt32() != 12
+            || profile.GetProperty("SheetRows").GetInt32() != expectation.SheetRows
             || profile.GetProperty("DirectionMode").GetString() != "FourWayRows"
             || profile.GetProperty("OwnerLocalOnly").GetBoolean()
             || profile.GetProperty("ContractVersion").GetInt32() != SupportedContractVersion
@@ -306,7 +308,7 @@ public static class SanityHostileVisualContractValidator
                 throw new InvalidOperationException($"State '{pair.Key}' DirectionRows must be an array.");
             if (directionRows.GetArrayLength() == 0)
             {
-                AddRow(row, pair.Key, occupiedRows, issues);
+                AddRow(row, pair.Key, occupiedRows, expectation.SheetRows, issues);
             }
             else
             {
@@ -318,9 +320,13 @@ public static class SanityHostileVisualContractValidator
                     {
                         issues.Add(new("hostile.animation.duplicate-direction", $"State '{pair.Key}' repeats '{direction}'."));
                     }
-                    AddRow(directionRow.GetProperty("Row").GetInt32(), pair.Key, occupiedRows, issues);
+                    AddRow(directionRow.GetProperty("Row").GetInt32(), pair.Key, occupiedRows, expectation.SheetRows, issues);
                 }
-                if (!directions.SetEquals(new[] { "Down", "Right", "Up", "Left" }))
+                if (
+                    // DIAG-20260806: taunt 允许仅左右两方向（恐怖尖喙新图 Row 11=右、Row 12=左）。
+                    !pair.Key.EndsWith(".taunt", StringComparison.Ordinal)
+                    && !directions.SetEquals(new[] { "Down", "Right", "Up", "Left" })
+                )
                 {
                     issues.Add(new("hostile.animation.direction-set-mismatch", $"State '{pair.Key}' is not four-way."));
                 }
@@ -343,12 +349,12 @@ public static class SanityHostileVisualContractValidator
             }
         }
 
-        if (!occupiedRows.SetEquals(Enumerable.Range(0, 12)))
+        if (!occupiedRows.SetEquals(Enumerable.Range(0, expectation.SheetRows)))
         {
             issues.Add(
                 new(
                     "hostile.animation.sheet-row-coverage-mismatch",
-                    $"Profile '{expectation.AnimationProfileId}' must cover rows 0 through 11 exactly once."
+                    $"Profile '{expectation.AnimationProfileId}' must cover rows 0 through {expectation.SheetRows - 1} exactly once."
                 )
             );
         }
@@ -495,12 +501,13 @@ public static class SanityHostileVisualContractValidator
         int row,
         string animationId,
         HashSet<int> occupiedRows,
+        int sheetRows,
         List<SanityHostileVisualContractIssue> issues
     )
     {
-        if (row < 0 || row >= 12)
+        if (row < 0 || row >= sheetRows)
         {
-            issues.Add(new("hostile.animation.row-out-of-range", $"State '{animationId}' points outside rows 0 through 11."));
+            issues.Add(new("hostile.animation.row-out-of-range", $"State '{animationId}' points outside rows 0 through {sheetRows - 1}."));
             return;
         }
         if (!occupiedRows.Add(row))
@@ -528,6 +535,7 @@ public static class SanityHostileVisualContractValidator
         string AnimationIdPrefix,
         string CueSetId,
         int FrameWidth,
-        int FrameHeight
+        int FrameHeight,
+        int SheetRows
     );
 }

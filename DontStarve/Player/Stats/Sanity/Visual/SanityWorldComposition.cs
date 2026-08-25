@@ -100,6 +100,9 @@ internal readonly record struct SanityWorldCompositionParameters(
     long Revision,
     SanityVisualLayerMask WorldLayers,
     float Saturation,
+    float InsanityColourBlend,
+    float DistortionAmount,
+    float DistortionPhase,
     float OffsetX,
     float OffsetY,
     int OverscanPixels
@@ -114,16 +117,21 @@ internal readonly record struct SanityWorldCompositionParameters(
 /// </summary>
 internal static class SanityWorldCompositionPlanner
 {
-    internal const int ConfigurationRevision = 1;
+    internal const int ConfigurationRevision = 2;
     internal const float MinimumProgressiveSaturation = 0.5f;
     internal const float MaximumDriftPixels = 1.25f;
     internal const float MaximumShakePixels = 2f;
     internal const int MaximumOverscanPixels = 5;
+    internal const float MaximumDistortionAmount = 0.75f;
 
     private const double Tau = Math.PI * 2d;
-    private const double DriftCyclesPerSecond = 0.22d;
-    private const double ShakeXCyclesPerSecond = 3.1d;
-    private const double ShakeYCyclesPerSecond = 2.7d;
+    internal const double DriftCyclesPerSecond = 0.11d;
+    internal const double ShakeXCyclesPerSecond = 1.55d;
+    internal const double ShakeYCyclesPerSecond = 1.35d;
+    internal const double DistortionRadiansPerSecond = 25d;
+    // The legacy LowSaturation layer ID remains the compatibility trigger for its existing
+    // drift curve. Saturation is still planned for a future opt-in pass, but rendering now uses
+    // this layer only for the localized edge-distortion curve below.
     private const SanityVisualLayerMask WorldMask =
         SanityVisualLayerMask.LowSaturation
         | SanityVisualLayerMask.ViewShake
@@ -133,6 +141,23 @@ internal static class SanityWorldCompositionPlanner
         SanityVisualOwnerSnapshot snapshot,
         double totalSeconds,
         uint stableSeed,
+        out SanityWorldCompositionParameters parameters
+    )
+    {
+        return TryCreate(
+            snapshot,
+            totalSeconds,
+            stableSeed,
+            screenDistortionEnabled: true,
+            out parameters
+        );
+    }
+
+    internal static bool TryCreate(
+        SanityVisualOwnerSnapshot snapshot,
+        double totalSeconds,
+        uint stableSeed,
+        bool screenDistortionEnabled,
         out SanityWorldCompositionParameters parameters
     )
     {
@@ -148,6 +173,9 @@ internal static class SanityWorldCompositionPlanner
         var phase = SeedPhase(stableSeed);
         var lowSanProgress = Math.Clamp((0.75d - ratio) / 0.65d, 0d, 1d);
         var saturation = 1f;
+        var insanityColourBlend = 0f;
+        var distortionAmount = 0f;
+        var distortionPhase = 0f;
         var driftX = 0f;
         var driftY = 0f;
         if ((worldLayers & SanityVisualLayerMask.LowSaturation) != 0)
@@ -157,25 +185,48 @@ internal static class SanityWorldCompositionPlanner
                 MinimumProgressiveSaturation,
                 0.9d
             );
-            var driftAmplitude =
-                0.35d + ((MaximumDriftPixels - 0.35d) * lowSanProgress);
-            driftX = (float)(
-                Math.Sin((totalSeconds * Tau * DriftCyclesPerSecond) + phase)
-                * driftAmplitude
+            var remainingSanity = 1d - ratio;
+            var insanityBlend = Math.Clamp(
+                remainingSanity * remainingSanity,
+                0d,
+                1d
             );
-            driftY = (float)(
-                Math.Cos(
-                    (totalSeconds * Tau * DriftCyclesPerSecond * 0.73d)
-                    + (phase * 1.31d)
-                )
-                * driftAmplitude
-                * 0.65d
-            );
+            insanityColourBlend = (float)insanityBlend;
+            if (screenDistortionEnabled)
+            {
+                var driftAmplitude =
+                    0.35d + ((MaximumDriftPixels - 0.35d) * lowSanProgress);
+                driftX = (float)(
+                    Math.Sin((totalSeconds * Tau * DriftCyclesPerSecond) + phase)
+                    * driftAmplitude
+                );
+                driftY = (float)(
+                    Math.Cos(
+                        (totalSeconds * Tau * DriftCyclesPerSecond * 0.73d)
+                        + (phase * 1.31d)
+                    )
+                    * driftAmplitude
+                    * 0.65d
+                );
+                distortionAmount = (float)Math.Clamp(
+                    MaximumDistortionAmount * insanityBlend,
+                    0d,
+                    MaximumDistortionAmount
+                );
+                var distortionRadians =
+                    (totalSeconds * DistortionRadiansPerSecond) + phase;
+                distortionPhase = (float)(
+                    (distortionRadians % Tau) / Tau
+                );
+            }
         }
 
         var shakeX = 0f;
         var shakeY = 0f;
-        if ((worldLayers & SanityVisualLayerMask.ViewShake) != 0)
+        if (
+            screenDistortionEnabled
+            && (worldLayers & SanityVisualLayerMask.ViewShake) != 0
+        )
         {
             var shakeProgress = Math.Clamp((0.6d - ratio) / 0.45d, 0d, 1d);
             var shakeAmplitude =
@@ -222,6 +273,9 @@ internal static class SanityWorldCompositionPlanner
             snapshot.Revision,
             worldLayers,
             Math.Clamp(saturation, 0f, 1f),
+            Math.Clamp(insanityColourBlend, 0f, 1f),
+            Math.Clamp(distortionAmount, 0f, MaximumDistortionAmount),
+            Math.Clamp(distortionPhase, 0f, 1f),
             offsetX,
             offsetY,
             overscan

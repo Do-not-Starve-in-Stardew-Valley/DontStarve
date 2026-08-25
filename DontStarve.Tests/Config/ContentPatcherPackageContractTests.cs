@@ -26,6 +26,7 @@ public sealed class ContentPatcherPackageContractTests
         "Winter_Feast",
         "Winter_Food_Drop",
         "Winter_Food_Strengthen",
+        "Dragon_Boat_Festival",
     };
 
     private static string ContractsRoot =>
@@ -54,7 +55,7 @@ public sealed class ContentPatcherPackageContractTests
         using var work = ReadJson(Path.Combine(WorkCopyRoot, "manifest.json"));
         var workRoot = work.RootElement;
         Assert.Equal("ZG.DS", workRoot.GetProperty("UniqueID").GetString());
-        Assert.Equal("1.4.1", workRoot.GetProperty("Version").GetString());
+        Assert.Equal("1.4.3", workRoot.GetProperty("Version").GetString());
         Assert.Equal(
             "Pathoschild.ContentPatcher",
             workRoot
@@ -70,7 +71,7 @@ public sealed class ContentPatcherPackageContractTests
     }
 
     [Fact]
-    public void WorkCopyPreservesEightCpOnlyKeysAndAddsOnlyNamespacedWhenKeys()
+    public void WorkCopyPreservesCpOnlyKeysAndAddsOnlyNamespacedWhenKeys()
     {
         using var config = ReadJson(Path.Combine(WorkCopyRoot, "config.json"));
         Assert.Equal(
@@ -122,6 +123,48 @@ public sealed class ContentPatcherPackageContractTests
         Assert.Equal("Default", when.GetProperty("Yurin.DontStarve/DarknessDamageMode").GetString());
         Assert.Equal("Compatible", when.GetProperty("Yurin.DontStarve/MonsterDifficultyProfile").GetString());
         Assert.Equal("false", when.GetProperty("Yurin.DontStarve/EnableJunimoBlessing").GetString());
+    }
+
+    [Fact]
+    public void WorkCopyConfigSchemaTranslationsResolveInDefaultAndChinese()
+    {
+        const string i18nPrefix = "{{i18n:";
+        using var content = ReadJson(Path.Combine(WorkCopyRoot, "content.json"));
+        using var english = ReadJson(
+            Path.Combine(WorkCopyRoot, "i18n", "default.json")
+        );
+        using var chinese = ReadJson(Path.Combine(WorkCopyRoot, "i18n", "zh.json"));
+
+        foreach (
+            var option in content.RootElement.GetProperty("ConfigSchema").EnumerateObject()
+        )
+        {
+            var nameKey = $"config.{option.Name}.name";
+            AssertTranslation(english.RootElement, nameKey, "default");
+            AssertTranslation(chinese.RootElement, nameKey, "zh");
+
+            var description = option.Value.GetProperty("Description").GetString();
+            Assert.NotNull(description);
+            Assert.StartsWith(i18nPrefix, description, StringComparison.Ordinal);
+            Assert.EndsWith("}}", description, StringComparison.Ordinal);
+            var descriptionKey = description[i18nPrefix.Length..^2];
+            Assert.False(string.IsNullOrWhiteSpace(descriptionKey));
+            AssertTranslation(english.RootElement, descriptionKey, "default");
+            AssertTranslation(chinese.RootElement, descriptionKey, "zh");
+        }
+
+        static void AssertTranslation(
+            JsonElement locale,
+            string key,
+            string localeName
+        )
+        {
+            Assert.True(
+                locale.TryGetProperty(key, out var value),
+                $"{localeName} is missing {key}"
+            );
+            Assert.False(string.IsNullOrWhiteSpace(value.GetString()));
+        }
     }
 
     [Fact]

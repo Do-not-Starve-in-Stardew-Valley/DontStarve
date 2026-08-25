@@ -52,6 +52,20 @@ public sealed class SanityVisualRuntimeStaticTests
     }
 
     [Fact]
+    public void World_composition_pauses_saturation_but_keeps_offset_distortion_and_independent_colour_inputs()
+    {
+        var runtime = ReadRuntime("SanityWorldCompositionRuntimeAdapter.cs");
+
+        Assert.DoesNotContain("parameters.Saturation", runtime, StringComparison.Ordinal);
+        Assert.Contains("parameters.OffsetX", runtime, StringComparison.Ordinal);
+        Assert.Contains("parameters.OffsetY", runtime, StringComparison.Ordinal);
+        Assert.Contains("parameters.DistortionAmount", runtime, StringComparison.Ordinal);
+        Assert.Contains("parameters.DistortionPhase", runtime, StringComparison.Ordinal);
+        Assert.Contains("parameters.InsanityColourBlend", runtime, StringComparison.Ordinal);
+        Assert.Contains("SanityWorldColourPolicy.ResolvePhase", runtime, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Adapter_borrows_existing_loader_slot_and_never_disposes_texture()
     {
         var source = ReadVisual();
@@ -110,11 +124,15 @@ public sealed class SanityVisualRuntimeStaticTests
     public void Mod_entry_wires_visual_config_without_touching_audio_or_music_switches()
     {
         var source = ReadContract("ShadowProjection", "ModEntry.cs");
+        var service = ReadVisual();
 
         Assert.Contains("ConfigKeys.EnableSanityVisualEffects", source, StringComparison.Ordinal);
+        Assert.Contains("ConfigKeys.EnableLowSanityScreenDistortion", source, StringComparison.Ordinal);
         Assert.Contains("new SanitySmapiVisualService", source, StringComparison.Ordinal);
         Assert.Contains("ModManifest.UniqueID", source, StringComparison.Ordinal);
         Assert.Contains("_sanityVisual?.SetEnabled", source, StringComparison.Ordinal);
+        Assert.Contains("_sanityVisual?.SetScreenDistortionEnabled", source, StringComparison.Ordinal);
+        Assert.Contains("screenDistortionEnabled", service, StringComparison.Ordinal);
     }
 
     [Fact]

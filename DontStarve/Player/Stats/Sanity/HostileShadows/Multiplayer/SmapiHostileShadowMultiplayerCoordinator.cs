@@ -227,6 +227,11 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
             PlayerKey = intent.PlayerKey,
             SpeciesId = intent.SpeciesId,
             RequestedAtMinute = intent.RequestedAtMinute,
+            // DIAG-20260812: 携带投影原位（原地转化用）；NaN=未提供（联机旧格式）。
+            HasPosition = !double.IsNaN(intent.PositionX)
+                && !double.IsNaN(intent.PositionY),
+            PositionX = intent.PositionX,
+            PositionY = intent.PositionY,
             DangerRevision = authority.TryGetConversionEpochRevision(
                 intent.PlayerKey,
                 out var dangerRevision

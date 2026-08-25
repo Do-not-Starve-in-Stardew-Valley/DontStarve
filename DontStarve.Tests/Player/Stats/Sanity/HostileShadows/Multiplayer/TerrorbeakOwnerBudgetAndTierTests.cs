@@ -504,7 +504,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     }
 
     [Fact]
-    public void Smapi_host_uses_the_shared_tier_strategy_and_species_aware_budget_facade()
+    public void Smapi_host_delegates_species_eligibility_to_the_shared_budget_facade()
     {
         var source = File.ReadAllText(
             Path.Combine(
@@ -520,13 +520,18 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             source,
             StringComparison.Ordinal
         );
-        Assert.Contains(
+        Assert.DoesNotContain(
             "SanityShadowPoolEligibilityPolicy.TryAuthorize(",
             source,
             StringComparison.Ordinal
         );
         Assert.Contains(
             "lifecycle.EvaluateHostileShadowBudget(",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "lifecycle.EvaluateHostileShadowBudgetRealTime(",
             source,
             StringComparison.Ordinal
         );

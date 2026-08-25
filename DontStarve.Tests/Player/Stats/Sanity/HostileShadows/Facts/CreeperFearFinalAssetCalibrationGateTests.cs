@@ -107,7 +107,7 @@ public sealed class CreeperFearFinalAssetCalibrationGateTests
     }
 
     [Fact]
-    public void Four_by_twelve_sheet_is_machine_valid_but_visual_calibration_stays_provisional()
+    public void Four_by_thirteen_sheet_is_machine_valid_but_visual_calibration_stays_provisional()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(AnimationMetadataPath));
         var profile = Assert.Single(
@@ -122,8 +122,8 @@ public sealed class CreeperFearFinalAssetCalibrationGateTests
 
         Assert.Equal("sanity.asset.creeper-fear.sprite", profile.GetProperty("TextureSlotId").GetString());
         Assert.Equal(64, profile.GetProperty("FrameWidth").GetInt32());
-        Assert.Equal(64, profile.GetProperty("FrameHeight").GetInt32());
-        Assert.Equal(12, profile.GetProperty("SheetRows").GetInt32());
+        Assert.Equal(96, profile.GetProperty("FrameHeight").GetInt32());
+        Assert.Equal(13, profile.GetProperty("SheetRows").GetInt32());
         Assert.Equal("FourWayRows", profile.GetProperty("DirectionMode").GetString());
         Assert.True(profile.GetProperty("IsPlaceholder").GetBoolean());
         Assert.Equal("ART-05", profile.GetProperty("CreditGroup").GetString());
@@ -150,7 +150,7 @@ public sealed class CreeperFearFinalAssetCalibrationGateTests
             states.Select(state => state.GetProperty("AnimationId").GetString())
         );
         Assert.Equal(new[] { 0, 4, 8, 9, 10, 11 }, states.Select(StateRow));
-        Assert.Equal(new[] { 150, 125, 100, 90, 390, 488 }, states.Select(StateDuration));
+        Assert.Equal(new[] { 100, 100, 100, 100, 200, 300 }, states.Select(StateDuration));
         Assert.All(states, state =>
         {
             Assert.Equal(4, state.GetProperty("FrameCount").GetInt32());
@@ -165,7 +165,7 @@ public sealed class CreeperFearFinalAssetCalibrationGateTests
             ResolveShippedPath("Asset/Sanity/Sprites/Monsters/creeper-fear.png")
         );
         Assert.Equal(256, sheet.Width);
-        Assert.Equal(768, sheet.Height);
+        Assert.Equal(1248, sheet.Height);
     }
 
     [Fact]

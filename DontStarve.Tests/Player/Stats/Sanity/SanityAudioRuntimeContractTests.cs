@@ -35,6 +35,37 @@ public sealed class SanityAudioRuntimeContractTests
     }
 
     [Fact]
+    public void Event_overlay_owner_invalidation_retains_audio_claim_but_real_owner_loss_cleans_it()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+        var handlerStart = source.IndexOf(
+            "private void OnStateEventPublished",
+            StringComparison.Ordinal
+        );
+        var handlerEnd = source.IndexOf(
+            "private void OnTierStateObserved",
+            handlerStart,
+            StringComparison.Ordinal
+        );
+        var handler = source.Substring(handlerStart, handlerEnd - handlerStart);
+        var eventRetention = handler.IndexOf(
+            "lifecycle.IsEventCoverageActiveForPlayer(stateEvent.PlayerKey)",
+            StringComparison.Ordinal
+        );
+        var ownerRemoval = handler.IndexOf(
+            "RemoveOwner(stateEvent.PlayerKey);",
+            StringComparison.Ordinal
+        );
+
+        Assert.True(handlerStart >= 0);
+        Assert.True(handlerEnd > handlerStart);
+        Assert.True(eventRetention >= 0);
+        Assert.True(ownerRemoval > eventRetention);
+        Assert.Contains("LogEventOwnerClaimRetained", handler, StringComparison.Ordinal);
+        Assert.Contains("LogEventAudioTransition(active);", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Audio_pool_routes_ambient_and_sound_sliders_without_global_volume_mutation()
     {
         var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");

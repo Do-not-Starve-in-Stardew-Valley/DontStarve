@@ -6,7 +6,7 @@ namespace DontStarve.Tests.Player.Stats.Sanity;
 
 public sealed class EnvironmentLightFoundationTests
 {
-    private static readonly EnvironmentLightClassifier Classifier = new();
+    private static readonly EnvironmentLightClassifier Classifier = new(CreatePolicy());
 
     [Fact]
     public void WhiteBaseIsTheOnlyBuiltInConfirmedLitRule()
@@ -235,7 +235,7 @@ public sealed class EnvironmentLightFoundationTests
         Assert.Equal(0, diagnostic.NearestCandidateAttachedPlayerId);
         Assert.True(diagnostic.IsNearestCandidateDrawEligible);
         Assert.Equal("vanilla.farm", diagnostic.LocationRuleId);
-        Assert.Equal(2, diagnostic.LocationRuleContractVersion);
+        Assert.Equal(3, diagnostic.LocationRuleContractVersion);
         Assert.False(diagnostic.PitchBlackAuthorized);
         Assert.Equal(44, diagnostic.Revision);
     }
@@ -464,17 +464,26 @@ public sealed class EnvironmentLightFoundationTests
     {
         return new EnvironmentLightLocationRuleResolution(
             EnvironmentLightLocationRuleStatus.Matched,
-            2,
+            3,
             profile == EnvironmentLightLocationLightProfile.FallbackOnly
                 ? "vanilla.mine-shaft"
                 : "vanilla.farm",
             profile,
             TwoAmSpecialDeathSafe: false,
-            DarknessAttackSafe: false,
             HostileShadowSafe: false,
             JunimoBlessingEligible: profile
                 == EnvironmentLightLocationLightProfile.OpaqueWhiteBase,
             EnvironmentLightReasonIds.LocationRuleMatched
+        );
+    }
+
+    private static DarknessAttackLocationAuthorizationPolicy CreatePolicy()
+    {
+        return new DarknessAttackLocationAuthorizationPolicy(
+            () => new EnvironmentLightJunimoBlessingState(
+                IsAvailable: true,
+                IsEnabled: false
+            )
         );
     }
 

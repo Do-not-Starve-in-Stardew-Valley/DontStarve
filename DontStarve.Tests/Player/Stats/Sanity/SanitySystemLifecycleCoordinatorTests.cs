@@ -41,7 +41,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
     }
 
     [Fact]
-    public void Projection_boundary_hooks_run_before_generic_state_machine_events()
+    public void Warp_notifies_projection_boundary_without_resetting_tier_state_machine()
     {
         var service = Service();
         var lifecycle = ReadyLifecycle(service, Persistence((OwnerA, 20d, 200d)));
@@ -53,8 +53,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
 
         lifecycle.HandleWorldBoundary(SanityWorldBoundary.Warp);
 
-        Assert.Equal("world:Warp", sequence[0]);
-        Assert.Contains(sequence.Skip(1), value => value == "state:WorldCleanup");
+        Assert.Equal(new[] { "world:Warp" }, sequence);
     }
 
     [Fact]
@@ -292,6 +291,13 @@ public sealed class SanitySystemLifecycleCoordinatorTests
         Assert.True(service.TryGetSnapshot(OwnerB, out var afterB));
         Assert.Equal((beforeA.Current, beforeA.Revision), (afterA.Current, afterA.Revision));
         Assert.Equal((beforeB.Current, beforeB.Revision), (afterB.Current, afterB.Revision));
+        if (boundary == SanityWorldBoundary.Warp)
+        {
+            Assert.Empty(published);
+            Assert.True(service.TryGetShadowBudgetState(OwnerA, out _));
+            Assert.True(service.TryGetShadowBudgetState(OwnerB, out _));
+            return;
+        }
         Assert.Single(
             published.Where(stateEvent =>
                 stateEvent.EventId == SanityStateEventIds.WorldCleanup

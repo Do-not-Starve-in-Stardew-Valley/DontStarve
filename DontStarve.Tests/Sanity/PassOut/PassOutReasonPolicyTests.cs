@@ -96,6 +96,26 @@ public sealed class PassOutReasonPolicyTests
         Assert.Equal(137.5d, 275d * health.TargetMaximumFraction);
     }
 
+    [Fact]
+    public void RepeatedPostReviveCallbackCannotApplyHealthDeathAgain()
+    {
+        var first = PassOutReasonPolicy.ResolveHealthDeathRecovery(
+            true,
+            false,
+            10,
+            100
+        );
+        var repeated = PassOutReasonPolicy.ResolveHealthDeathRecovery(
+            false,
+            false,
+            10,
+            100
+        );
+
+        Assert.Equal(PassOutPolicyAction.SetToMaximumFraction, first.Action);
+        Assert.Equal(PassOutPolicyAction.None, repeated.Action);
+    }
+
     [Theory]
     [InlineData(false, false, 50, 100)] // Phoenix revives before a death screen exists.
     [InlineData(false, true, 0, 100)]
@@ -263,7 +283,16 @@ public sealed class PassOutReasonPolicyTests
         var special = Contract("SmapiSanityTwoAmSpecialDeathService.cs");
 
         Assert.Contains("typeof(GameLocation),\r\n            \"doSleep\"", Normalize(adapter), StringComparison.Ordinal);
-        Assert.Contains("nameof(Game1.updatePause)", adapter, StringComparison.Ordinal);
+        Assert.Contains(
+            "typeof(GameLocation),\r\n            nameof(GameLocation.checkForEvents)",
+            Normalize(adapter),
+            StringComparison.Ordinal
+        );
+        Assert.Contains("CheckForEventsPrefix", adapter, StringComparison.Ordinal);
+        Assert.Contains("CheckForEventsPostfix", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("nameof(Game1.updatePause)", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("UpdatePausePrefix", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("UpdatePausePostfix", adapter, StringComparison.Ordinal);
         Assert.Contains("wasKillScreen,\r\n            Game1.killScreen", Normalize(adapter), StringComparison.Ordinal);
         Assert.Contains("farmer.GetMaxSanity() * decision.TargetMaximumFraction", adapter, StringComparison.Ordinal);
         Assert.DoesNotContain("takeDamage", adapter, StringComparison.Ordinal);

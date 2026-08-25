@@ -22,26 +22,32 @@ internal class HungerBar : INonTimeRelatedUIElement
         var hunger = player.GetHunger();
         var maxHunger = player.GetMaxHunger();
 
-        // 右下角锚点已在 UIRenderContext 中根据原版生命 HUD 让位。
-        var hudAnchor = uiContext.ViewportBottomRightAnchor;
+        var containerBounds = uiContext.HudLayout.HungerBounds;
         var spriteBatch = e.SpriteBatch;
 
-        var containerW = TextureLoader.HungerContainerScaledWidth;
-        var containerH = TextureLoader.HungerContainerScaledHeight;
         var fillerWidth = TextureLoader.HungerFillerScaledWidth;
-        var containerX = (int)hudAnchor.X - 60;
-        var containerY = (int)hudAnchor.Y - 240;
 
         spriteBatch.Draw(
             TextureLoader.HungerContainer,
-            new Rectangle(containerX, containerY, containerW, containerH),
+            new Rectangle(
+                containerBounds.X,
+                containerBounds.Y,
+                containerBounds.Width,
+                containerBounds.Height
+            ),
             Color.White
         );
 
+        var fillerPosition = HudDisplayRules.GetFillerPosition(containerBounds);
         spriteBatch.Draw(
             TextureLoader.HungerFiller,
-            new Vector2(hudAnchor.X - 24, hudAnchor.Y - 25),
-            new Rectangle(0, 0, fillerWidth, (int)(hunger / maxHunger * 168)),
+            new Vector2(fillerPosition.X, fillerPosition.Y),
+            new Rectangle(
+                0,
+                0,
+                fillerWidth,
+                HudDisplayRules.GetFillerHeight(hunger, maxHunger)
+            ),
             Brushes.HungerBrush,
             3.138997f,
             new Vector2(0.5f, 0.5f),
@@ -51,17 +57,18 @@ internal class HungerBar : INonTimeRelatedUIElement
         );
 
         var mousePoint = Game1.getMousePosition(true);
-        var checkX = mousePoint.X >= containerX && mousePoint.X <= containerX + containerW;
-        var checkY = mousePoint.Y >= containerY && mousePoint.Y <= containerY + containerH;
-
-        if (checkX && checkY)
+        if (containerBounds.Contains(mousePoint.X, mousePoint.Y))
         {
             var information = $"Hunger: {Math.Round(hunger)}/{Math.Round(maxHunger)}";
             var textSize = Game1.dialogueFont.MeasureString(information);
-            var posX = hudAnchor.X - 60;
-            var posY = containerY - textSize.Y + 116;
+            var posX = containerBounds.X;
+            var posY =
+                containerBounds.Y
+                + containerBounds.Height / 2f
+                + 4f
+                - textSize.Y;
 
-            Game1.spriteBatch.DrawString(
+            spriteBatch.DrawString(
                 Game1.dialogueFont,
                 information,
                 new Vector2(posX, posY),

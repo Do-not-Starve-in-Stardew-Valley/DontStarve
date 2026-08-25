@@ -11,7 +11,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     private const string OwnerB = "2002";
 
     [Fact]
-    public void CatalogFreezesOnlyTwoIdleSpeciesAndFiveToFifteenRing()
+    public void CatalogFreezesOnlyTwoIdleSpeciesAndFourToSixteenRing()
     {
         var policies = ShadowCreatureHarmlessProjectionCatalog.Policies;
 
@@ -26,14 +26,47 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
         Assert.All(policies, policy =>
         {
-            Assert.Equal(5, policy.MinimumDistanceTiles);
-            Assert.Equal(15, policy.MaximumDistanceTiles);
+            Assert.Equal(4, policy.MinimumDistanceTiles);
+            Assert.Equal(16, policy.MaximumDistanceTiles);
             Assert.Equal(16, policy.CandidateAttemptLimit);
             Assert.Equal(HarmlessProjectionPlacementKind.Ground, policy.PlacementKind);
             Assert.EndsWith(".idle", policy.IdleVisualSlotId, StringComparison.Ordinal);
         });
-        Assert.Equal(390, policies[0].FrameDurationMilliseconds);
-        Assert.Equal(100, policies[1].FrameDurationMilliseconds);
+        Assert.Equal(200, policies[0].FrameDurationMilliseconds);
+        Assert.Equal(100, policies[0].SpawnFrameDurationMilliseconds);
+        Assert.Equal(100, policies[0].MoveFrameDurationMilliseconds);
+        Assert.Equal(200, policies[1].FrameDurationMilliseconds);
+        Assert.Equal(100, policies[1].SpawnFrameDurationMilliseconds);
+        Assert.Equal(100, policies[1].MoveFrameDurationMilliseconds);
+    }
+
+    [Fact]
+    public void Harmless_catalog_registers_taunt_and_death_as_dormant_actions()
+    {
+        foreach (var policy in ShadowCreatureHarmlessProjectionCatalog.Policies)
+        {
+            Assert.Equal(
+                new[]
+                {
+                    policy.SpawnVisualSlotId,
+                    policy.MoveVisualSlotId,
+                    policy.IdleVisualSlotId,
+                },
+                policy.AppliedVisualSlotIds
+            );
+            Assert.Equal(
+                new[]
+                {
+                    policy.TauntVisualSlotId,
+                    policy.DeathVisualSlotId,
+                },
+                policy.RegisteredDormantActionVisualSlotIds
+            );
+            Assert.Contains(policy.TauntVisualSlotId, policy.AllVisualSlotIds);
+            Assert.Contains(policy.DeathVisualSlotId, policy.AllVisualSlotIds);
+            Assert.DoesNotContain(policy.TauntVisualSlotId, policy.AppliedVisualSlotIds);
+            Assert.DoesNotContain(policy.DeathVisualSlotId, policy.AppliedVisualSlotIds);
+        }
     }
 
     [Theory]
@@ -119,11 +152,11 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
         Assert.Equal(
             ShadowCreatureProjectionUpdateStatus.Spawned,
-            harness.Update(owner, minute: 60).Status
+            harness.Update(owner, minute: 60, elapsedMilliseconds: 42_000).Status
         );
         Assert.Equal(
             ShadowCreatureProjectionUpdateStatus.Spawned,
-            harness.Update(owner, minute: 120).Status
+            harness.Update(owner, minute: 120, elapsedMilliseconds: 42_000).Status
         );
         var capped = harness.Update(owner, minute: 121);
 
@@ -152,7 +185,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         {
             Assert.Equal(
                 ShadowCreatureProjectionUpdateStatus.Spawned,
-                harness.Update(owner, minute).Status
+                harness.Update(owner, minute, elapsedMilliseconds: 21_000).Status
             );
         }
         var capped = harness.Update(owner, minute: 121);
@@ -188,7 +221,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         harness.Update(ownerB, minute: 20);
         Assert.Equal(
             ShadowCreatureProjectionUpdateStatus.Spawned,
-            harness.Update(ownerA, minute: 60).Status
+            harness.Update(ownerA, minute: 60, elapsedMilliseconds: 42_000).Status
         );
         Assert.Equal(
             ShadowCreatureProjectionUpdateStatus.Waiting,
@@ -196,7 +229,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
         Assert.Equal(
             ShadowCreatureProjectionUpdateStatus.Spawned,
-            harness.Update(ownerB, minute: 80).Status
+            harness.Update(ownerB, minute: 80, elapsedMilliseconds: 42_000).Status
         );
 
         Assert.Equal(1, harness.Index.CountForOwner(OwnerA));
@@ -246,22 +279,38 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
-    public void OwnerApproachCreatesOneAccurateVacancyReplacement()
+    public void OwnerApproachFleesBeforeCompletingOneVacancyReplacement()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
         var owner = Owner(OwnerA);
         harness.EnterShadow(OwnerA);
         harness.Update(owner, minute: 0);
-        harness.Update(owner, minute: 60);
-        harness.Update(owner, minute: 120);
+        harness.Update(owner, minute: 60, elapsedMilliseconds: 42_000);
+        harness.Update(owner, minute: 120, elapsedMilliseconds: 42_000);
         harness.Update(owner, minute: 121);
         var first = harness.Factory.Instances[0];
 
-        var replacement = harness.Coordinator.UpdateOwner(
+        var startedFlee = harness.Coordinator.UpdateOwner(
             owner,
             first.SpawnWorldPixel,
             gameMinute: 122,
             elapsedMilliseconds: 16,
+            harness.Factory
+        );
+
+        Assert.Equal(0, startedFlee.ProximityCleanupCount);
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.AtCap, startedFlee.Status);
+        Assert.False(first.IsCleanedUp);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionBehaviorState.Fleeing,
+            first.BehaviorState
+        );
+
+        var replacement = harness.Coordinator.UpdateOwner(
+            owner,
+            first.SpawnWorldPixel,
+            gameMinute: 123,
+            elapsedMilliseconds: 2_000,
             harness.Factory
         );
 
@@ -274,7 +323,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
-    public void ExactOwnerApproachCannotCleanAnotherOwnerProjection()
+    public void ExactOwnerApproachOnlyFleesAndLaterCleansItsOwnProjection()
     {
         var index = new ShadowCreatureHarmlessProjectionIndex();
         var coordinator = CreateCoordinator(
@@ -295,7 +344,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         var instanceA = AddDirect(index, ownerA, "direct-a", x: 320);
         var instanceB = AddDirect(index, ownerB, "direct-b", x: 320);
 
-        var result = coordinator.UpdateOwner(
+        var startedFlee = coordinator.UpdateOwner(
             ownerA,
             instanceA.SpawnWorldPixel,
             gameMinute: 1,
@@ -303,7 +352,23 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             new FakeSpawnFactory()
         );
 
-        Assert.Equal(1, result.ProximityCleanupCount);
+        Assert.Equal(0, startedFlee.ProximityCleanupCount);
+        Assert.False(instanceA.IsCleanedUp);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionBehaviorState.Fleeing,
+            instanceA.BehaviorState
+        );
+        Assert.False(instanceB.IsCleanedUp);
+
+        var completed = coordinator.UpdateOwner(
+            ownerA,
+            instanceA.SpawnWorldPixel,
+            gameMinute: 2,
+            elapsedMilliseconds: 2_000,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(1, completed.ProximityCleanupCount);
         Assert.True(instanceA.IsCleanedUp);
         Assert.False(instanceB.IsCleanedUp);
         Assert.Equal(0, index.CountForOwner(OwnerA));
@@ -311,13 +376,13 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
-    public void FiftyPercentTierExitCleansLocalPoolIdempotently()
+    public void FiftyPercentTierExitFadesOutWithoutCompensationAndIsIdempotent()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
         var owner = Owner(OwnerA);
         harness.EnterShadow(OwnerA);
         harness.Update(owner, 0);
-        harness.Update(owner, 60);
+        harness.Update(owner, 60, elapsedMilliseconds: 42_000);
         var instance = harness.Factory.Instances.Single();
 
         var first = harness.Publish(
@@ -335,8 +400,277 @@ public sealed class ShadowCreatureHarmlessProjectionTests
 
         Assert.Equal(1, first.LocalCleanupCount);
         Assert.Equal(0, repeated.LocalCleanupCount);
+        Assert.Equal(1, harness.Index.CountForOwner(OwnerA));
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionFadeOutKind.HighSan,
+            instance.FadeOutKind
+        );
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionBehaviorState.FadingOut,
+            instance.BehaviorState
+        );
+
+        harness.Update(owner, minute: 61, elapsedMilliseconds: 1000);
+
         Assert.Equal(0, harness.Index.CountForOwner(OwnerA));
-        Assert.Equal(HarmlessProjectionCleanupReason.TierExited, instance.CleanupReason);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Empty(harness.Coordinator.ConsumePendingCompensations());
+    }
+
+    [Fact]
+    public void Command_projection_without_a_shadow_phase_enters_high_sanity_fade()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(
+            index,
+            new NeverPermitAuthority(),
+            sink
+        );
+        var owner = Owner(OwnerA);
+        var instance = AddDirect(index, owner, "command-projection", x: 320);
+
+        var result = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 0,
+            elapsedMilliseconds: 16,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(
+            ShadowCreatureProjectionUpdateStatus.Inactive,
+            result.Status
+        );
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionFadeOutKind.HighSan,
+            instance.FadeOutKind
+        );
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionBehaviorState.FadingOut,
+            instance.BehaviorState
+        );
+        Assert.Empty(sink.Intents);
+    }
+
+    [Fact]
+    public void Danger_update_converts_new_projection_before_far_fade_can_remove_it()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+
+        coordinator.ApplyStateEvent(
+            TierEvent(
+                SanityStateEventKind.TierEntered,
+                OwnerA,
+                SanityTierIds.ShadowCreatures
+            ),
+            gameMinute: 0
+        );
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            gameMinute: 1
+        );
+        var instance = AddDirect(index, owner, "danger-far-projection", x: 2000);
+
+        var result = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 2,
+            elapsedMilliseconds: 1000,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, result.Status);
+        Assert.Single(sink.Intents);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(
+            HarmlessProjectionCleanupReason.ConversionRequested,
+            instance.CleanupReason
+        );
+        Assert.Empty(coordinator.ConsumePendingCompensations());
+    }
+
+    [Fact]
+    public void High_sanity_far_fade_never_creates_a_compensation()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var coordinator = CreateCoordinator(
+            index,
+            new NeverPermitAuthority(),
+            new RecordingSink()
+        );
+        var owner = Owner(OwnerA);
+        var instance = AddDirect(index, owner, "high-sanity-far-projection", x: 2000);
+
+        coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 0,
+            elapsedMilliseconds: 1000,
+            new FakeSpawnFactory()
+        );
+        coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 0,
+            elapsedMilliseconds: 7000,
+            new FakeSpawnFactory()
+        );
+
+        Assert.True(instance.IsCleanedUp);
+        Assert.Empty(coordinator.ConsumePendingCompensations());
+    }
+
+    [Fact]
+    public void Natural_refresh_uses_real_elapsed_time_when_game_minute_does_not_advance()
+    {
+        var harness = new Harness(SanityMonsterIntensityIds.Default);
+        var owner = Owner(OwnerA);
+        harness.EnterShadow(OwnerA);
+
+        Assert.Equal(
+            ShadowCreatureProjectionUpdateStatus.Waiting,
+            harness.Update(owner, minute: 0, elapsedMilliseconds: 16).Status
+        );
+
+        var due = harness.Update(
+            owner,
+            minute: 0,
+            elapsedMilliseconds: 42_000
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.Spawned, due.Status);
+        Assert.Single(harness.Factory.Instances);
+    }
+
+    [Fact]
+    public void Direct_shadow_registration_requires_the_active_harmless_pool()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var coordinator = CreateCoordinator(
+            index,
+            new NeverPermitAuthority(),
+            new RecordingSink()
+        );
+        var owner = Owner(OwnerA);
+        var instance = new ShadowCreatureHarmlessProjectionInstance(
+            "direct-registration",
+            owner,
+            ShadowCreatureHarmlessProjectionCatalog.Policies[0],
+            new HarmlessProjectionWorldPoint(320, 0),
+            spawnedAtMinute: 0
+        );
+
+        var beforeTier = coordinator.TryRegisterAuthorizedProjection(
+            owner,
+            instance,
+            Permit(OwnerA, occupancy: 0, cap: 1, minute: 0),
+            out var beforeReason
+        );
+
+        Assert.False(beforeTier);
+        Assert.Equal("shadow-projection.shadow-tier-inactive", beforeReason);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+
+        coordinator.ApplyStateEvent(
+            TierEvent(
+                SanityStateEventKind.TierEntered,
+                OwnerA,
+                SanityTierIds.ShadowCreatures
+            ),
+            gameMinute: 0
+        );
+
+        var accepted = coordinator.TryRegisterAuthorizedProjection(
+            owner,
+            instance,
+            Permit(OwnerA, occupancy: 0, cap: 1, minute: 0),
+            out var acceptedReason
+        );
+
+        Assert.True(accepted, acceptedReason);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+    }
+
+    [Fact]
+    public void Debug_shadow_registration_bypasses_natural_permit_and_phase_checks()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var coordinator = CreateCoordinator(
+            index,
+            new NeverPermitAuthority(),
+            new RecordingSink()
+        );
+        var owner = Owner(OwnerA);
+        var instance = new ShadowCreatureHarmlessProjectionInstance(
+            "debug-registration",
+            owner,
+            ShadowCreatureHarmlessProjectionCatalog.Policies[0],
+            new HarmlessProjectionWorldPoint(320, 0),
+            spawnedAtMinute: 0
+        );
+
+        var accepted = coordinator.TryRegisterDebugProjection(
+            owner,
+            instance,
+            out var reason
+        );
+
+        Assert.True(accepted, reason);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+    }
+
+    [Fact]
+    public void Danger_entry_converts_even_while_generation_animation_is_running()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+        var instance = AddDirect(index, owner, "paused-conversion", x: 320);
+
+        coordinator.ApplyStateEvent(
+            TierEvent(
+                SanityStateEventKind.TierEntered,
+                OwnerA,
+                SanityTierIds.ShadowCreatures
+            ),
+            gameMinute: 0
+        );
+        var firstDangerEntry = coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            gameMinute: 1
+        );
+
+        Assert.Equal(1, firstDangerEntry.IntentCount);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
+            instance.AnimationState
+        );
+        Assert.True(instance.IsCleanedUp);
+        Assert.Single(sink.Intents);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+
+        coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 1,
+            elapsedMilliseconds: 360,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
+            instance.AnimationState
+        );
+        Assert.Single(sink.Intents);
+        Assert.Equal(instance.CorrelationId, sink.Intents[0].CorrelationId);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
     }
 
     [Fact]
@@ -402,8 +736,11 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         var evidence = Assert.Single(coordinator.SnapshotConversionEvidence());
         Assert.Equal(status, evidence.Submission.Status);
         Assert.Equal("conversion-requested", evidence.LocalCleanupReasonId);
-        Assert.True(removed.IsCleanedUp);
-        Assert.Equal(0, index.Count);
+        var shouldRestore = status
+            is ShadowProjectionConversionSubmissionStatus.Rejected
+                or ShadowProjectionConversionSubmissionStatus.Failed;
+        Assert.Equal(!shouldRestore, removed.IsCleanedUp);
+        Assert.Equal(shouldRestore ? 1 : 0, index.Count);
         Assert.Equal(1, first.IntentCount);
         Assert.True(repeated.Duplicate);
         Assert.Equal(0, repeated.IntentCount);
@@ -435,7 +772,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         Assert.Equal(ShadowProjectionConversionSubmissionStatus.Failed, evidence.Submission.Status);
         Assert.Equal("shadow-conversion.sink-threw-InvalidOperationException", evidence.Submission.Reason);
         Assert.Equal(1, sink.CallCount);
-        Assert.Equal(0, index.Count);
+        Assert.Equal(1, index.Count);
     }
 
     [Fact]
@@ -477,7 +814,10 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
         harness.EnterShadow(OwnerA, minute: 200);
         Assert.Equal(ShadowCreatureProjectionUpdateStatus.Waiting, harness.Update(owner, 200).Status);
-        Assert.Equal(ShadowCreatureProjectionUpdateStatus.Spawned, harness.Update(owner, 260).Status);
+        Assert.Equal(
+            ShadowCreatureProjectionUpdateStatus.Spawned,
+            harness.Update(owner, 260, elapsedMilliseconds: 42_000).Status
+        );
 
         var fresh = Assert.Single(harness.Factory.Instances);
         Assert.NotSame(oldInstance, fresh);
@@ -498,7 +838,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
 
         harness.Update(owner, 0);
-        var result = harness.Update(owner, 60);
+        var result = harness.Update(owner, 60, elapsedMilliseconds: 42_000);
 
         Assert.Equal(ShadowCreatureProjectionUpdateStatus.Unavailable, result.Status);
         Assert.Equal("shadow-permit.pool-not-harmless", result.Reason);
@@ -507,7 +847,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
-    public void ConversionIntentCarriesNoClientPositionOrVitalStateAndForbidsRestoration()
+    public void ConversionIntentCarriesOptionalOriginAndNoVitalState()
     {
         var intent = new ShadowProjectionConversionIntent(
             "contract-correlation",
@@ -529,6 +869,8 @@ public sealed class ShadowCreatureHarmlessProjectionTests
                 "AuthorityResponsibility",
                 "CorrelationId",
                 "PlayerKey",
+                "PositionX",
+                "PositionY",
                 "RequestedAtMinute",
                 "RequiresFreshBudgetAndLegalSpawn",
                 "RestoresRemovedLocalInstance",
@@ -539,9 +881,10 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         Assert.True(intent.RequiresFreshBudgetAndLegalSpawn);
         Assert.False(intent.RestoresRemovedLocalInstance);
         Assert.Equal("future-host-authority", intent.AuthorityResponsibility);
+        Assert.True(double.IsNaN(intent.PositionX));
+        Assert.True(double.IsNaN(intent.PositionY));
         Assert.DoesNotContain(propertyNames, name =>
-            name.Contains("Position", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Health", StringComparison.OrdinalIgnoreCase)
+            name.Contains("Health", StringComparison.OrdinalIgnoreCase)
             || name.Equals("HP", StringComparison.OrdinalIgnoreCase)
         );
     }
@@ -576,9 +919,9 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         {
             Assert.DoesNotContain(forbidden, product, StringComparison.Ordinal);
         }
-        Assert.DoesNotContain(".attack\"", product, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(".death\"", product, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(".taunt\"", product, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("HostileAttackStateMachine", product, StringComparison.Ordinal);
+        Assert.DoesNotContain("HostileAttackHitProcessor", product, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShadowAttackHitRequest", product, StringComparison.Ordinal);
     }
 
     private static string ShippedModRoot =>
@@ -729,20 +1072,23 @@ public sealed class ShadowCreatureHarmlessProjectionTests
 
         internal ShadowCreatureProjectionUpdateResult Update(
             HarmlessProjectionOwnerContext owner,
-            long minute
+            long minute,
+            int elapsedMilliseconds = 16
         )
         {
             return Coordinator.UpdateOwner(
                 owner,
                 new HarmlessProjectionWorldPoint(0, 0),
                 minute,
-                elapsedMilliseconds: 16,
+                elapsedMilliseconds,
                 Factory
             );
         }
     }
 
-    private sealed class GovernorAuthority : IShadowCreatureProjectionBudgetAuthority
+    private sealed class GovernorAuthority
+        : IShadowCreatureProjectionBudgetAuthority,
+            ISanityShadowRealTimeBudgetAuthority
     {
         private readonly SanityShadowBudgetGovernor governor;
 
@@ -765,6 +1111,23 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         )
         {
             return governor.Evaluate(playerKey, gameMinute, occupancy);
+        }
+
+        public SanityShadowBudgetEvaluationResult EvaluateShadowBudgetRealTime(
+            string playerKey,
+            long gameMinute,
+            int occupancy,
+            int elapsedMilliseconds,
+            SanityShadowSpecies? requestedSpecies
+        )
+        {
+            return governor.EvaluateRealTime(
+                playerKey,
+                gameMinute,
+                occupancy,
+                elapsedMilliseconds,
+                requestedSpecies
+            );
         }
     }
 

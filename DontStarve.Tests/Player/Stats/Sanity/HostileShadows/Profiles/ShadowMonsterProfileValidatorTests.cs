@@ -531,7 +531,7 @@ public sealed class ShadowMonsterProfileValidatorTests
         Assert.Equal(300, profile.MaxHealth);
         Assert.Equal(20, profile.BaseDamage);
         Assert.Equal(2.5d, profile.MovementSpeed);
-        Assert.Equal(1d, profile.AttackIntervalSeconds);
+        Assert.Equal(1.8d, profile.AttackIntervalSeconds);
         Assert.Equal(15, profile.SanityReward);
         Assert.Equal("sanity.animation.creeper-fear.profile", profile.AnimationProfileId);
         Assert.Equal("sanity.cue.creeper-fear", profile.CueSetId);
@@ -542,7 +542,7 @@ public sealed class ShadowMonsterProfileValidatorTests
         Assert.Equal(400, profile.MaxHealth);
         Assert.Equal(50, profile.BaseDamage);
         Assert.Equal(6d, profile.MovementSpeed);
-        Assert.Equal(0.7d, profile.AttackIntervalSeconds);
+        Assert.Equal(1.2d, profile.AttackIntervalSeconds);
         Assert.Equal(33, profile.SanityReward);
         Assert.Equal("sanity.animation.terrorbeak.profile", profile.AnimationProfileId);
         Assert.Equal("sanity.cue.terrorbeak", profile.CueSetId);

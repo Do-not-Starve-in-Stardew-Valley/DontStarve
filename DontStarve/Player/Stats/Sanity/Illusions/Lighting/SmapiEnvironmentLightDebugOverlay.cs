@@ -430,7 +430,7 @@ internal sealed class SmapiEnvironmentLightDebugOverlay : IDisposable
         );
         DrawLine(
             spriteBatch,
-            $"rule semantics 2am/darkness/hostile/junimo: {diagnostic.TwoAmSpecialDeathSafe}/{diagnostic.DarknessAttackSafe}/{diagnostic.HostileShadowSafe}/{diagnostic.JunimoBlessingEligible}",
+            $"rule semantics 2am/hostile/junimo: {diagnostic.TwoAmSpecialDeathSafe}/{diagnostic.HostileShadowSafe}/{diagnostic.JunimoBlessingEligible}",
             x,
             ref y,
             Color.LightGray

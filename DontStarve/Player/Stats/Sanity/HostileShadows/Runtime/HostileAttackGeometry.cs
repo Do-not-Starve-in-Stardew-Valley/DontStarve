@@ -126,37 +126,45 @@ internal static class HostileAttackCollisionResolver
             box.Y + box.Height,
             facing
         );
-        var actorWorldX = pivotWorldX
-            + (
-                definition.ActorOriginSourcePx.X
-                - definition.AttackPivotSourcePx.X
-            ) * definition.AttackDrawScale;
-        var actorWorldY = pivotWorldY
-            + (
-                definition.ActorOriginSourcePx.Y
-                - definition.AttackPivotSourcePx.Y
-            ) * definition.AttackDrawScale;
         var minX = Math.Min(
                 Math.Min(topLeft.X, topRight.X),
                 Math.Min(bottomLeft.X, bottomRight.X)
-            ) * definition.AttackDrawScale;
+            );
         var minY = Math.Min(
                 Math.Min(topLeft.Y, topRight.Y),
                 Math.Min(bottomLeft.Y, bottomRight.Y)
-            ) * definition.AttackDrawScale;
+            );
         var maxX = Math.Max(
                 Math.Max(topLeft.X, topRight.X),
                 Math.Max(bottomLeft.X, bottomRight.X)
-            ) * definition.AttackDrawScale;
+            );
         var maxY = Math.Max(
                 Math.Max(topLeft.Y, topRight.Y),
                 Math.Max(bottomLeft.Y, bottomRight.Y)
-            ) * definition.AttackDrawScale;
+            );
+        var rotatedWidth = (maxX - minX) * definition.AttackDrawScale;
+        var rotatedHeight = (maxY - minY) * definition.AttackDrawScale;
+
+        // DIAG-20260807 主策划裁定：攻击框只动偏移、大小不变（保留旋转后包围盒尺寸），
+        // 几何中心对齐受击框（HurtBox）几何中心。受击框无效时攻击框同样视为无效。
+        // 攻击框仅在 Attack 状态参与判定（ProcessCurrentHits 只在攻击态调用），
+        // 非攻击状态不存在“绿框区域被打”的路径。
+        if (
+            !TryCreateWorldHurtBox(
+                definition,
+                pivotWorldX,
+                pivotWorldY,
+                out var hurtBox
+            )
+        )
+        {
+            return false;
+        }
         worldBox = new HostileAttackRectangle(
-            actorWorldX + minX,
-            actorWorldY + minY,
-            maxX - minX,
-            maxY - minY
+            hurtBox.X + (hurtBox.Width - rotatedWidth) / 2d,
+            hurtBox.Y + (hurtBox.Height - rotatedHeight) / 2d,
+            rotatedWidth,
+            rotatedHeight
         );
         return worldBox.IsValid;
     }

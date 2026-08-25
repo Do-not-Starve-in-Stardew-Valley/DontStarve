@@ -89,7 +89,7 @@ internal readonly record struct EnvironmentLightEvidenceValidationContext(
     string ExpectedLocationNameOrUniqueName,
     int ExpectedLocationRuleContractVersion,
     string ExpectedLocationRuleId,
-    bool ExpectedDarknessAttackSafe,
+    bool ExpectedDarknessAttackLocationAuthorized,
     EnvironmentLightConfigIdentity ExpectedConfig,
     string ExpectedGameVersion,
     string ExpectedModVersion,
@@ -306,7 +306,7 @@ internal static class EnvironmentLightEvidenceProtocol
             return Reject("environment-light.network.classification-invariant-failed");
 
         var expectedAuthorization =
-            context.ExpectedDarknessAttackSafe
+            context.ExpectedDarknessAttackLocationAuthorized
             && level == EnvironmentLightLevel.PitchBlack
             && EnvironmentLightVisibilityMath.CanAuthorizePitchBlack(
                 score,
@@ -323,7 +323,7 @@ internal static class EnvironmentLightEvidenceProtocol
                 EnvironmentLightReasonIds.FinalVisibilityDimConfirmed,
             EnvironmentLightLevel.PitchBlack when expectedAuthorization =>
                 EnvironmentLightReasonIds.FinalVisibilityPitchBlackConfirmed,
-            _ => EnvironmentLightReasonIds.FinalVisibilityPitchBlackLocationUnsafe,
+            _ => EnvironmentLightReasonIds.FinalVisibilityPitchBlackAuthorizationDenied,
         };
         if (!string.Equals(message.Reason, expectedReason, StringComparison.Ordinal))
             return Reject("environment-light.network.reason-invariant-failed");

@@ -227,6 +227,24 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
     }
 
     [Fact]
+    public void Hit_response_sync_failure_is_deferred_instead_of_deleting_the_entity()
+    {
+        var runtime = Contract("SmapiHostileShadowWorldRuntime.cs")
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains(
+            "hostile-shadow.hit-response-sync-deferred",
+            runtime,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain(
+            "HostileShadowCleanupReasonIds.HitResponseSynchronizationFailed",
+            runtime,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
     public void Repeated_hit_never_rerolls_restarts_or_accumulates_motion()
     {
         var started = StartAttack();
@@ -494,6 +512,18 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
             source.PostAttackPolicyId,
             source.ExperienceValue,
             source.KillCounterId
+        );
+    }
+
+    private static string Contract(string fileName)
+    {
+        return File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Contracts",
+                "HostileShadowAuthority",
+                fileName
+            )
         );
     }
 

@@ -420,19 +420,17 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
             worldScale + ((overscan * 2f) / world.Width),
             worldScale + ((overscan * 2f) / world.Height)
         );
-        var saturationByte = (byte)Math.Clamp(
-            (int)Math.Round(
-                parameters.Saturation * byte.MaxValue,
-                MidpointRounding.AwayFromZero
-            ),
-            byte.MinValue,
-            byte.MaxValue
-        );
-        var saturation = new Color(
-            byte.MaxValue,
-            byte.MaxValue,
-            byte.MaxValue,
-            saturationByte
+        // The planner retains saturation/grayscale values for a later opt-in revisit. RGB now
+        // transports a normalized distortion phase plus the independent (1 - Sanity)^2 colour
+        // blend and day/dusk/night profile; alpha remains the localized edge-distortion amount.
+        var colourPhase = parameters.InsanityColourBlend > 0f
+            ? ResolveWorldColourPhase()
+            : SanityWorldColourPhase.Day;
+        var compositionInputs = new Color(
+            ToVertexByte(parameters.DistortionPhase),
+            ToVertexByte(parameters.InsanityColourBlend),
+            SanityWorldColourPolicy.ToVertexCode(colourPhase),
+            ToVertexByte(parameters.DistortionAmount)
         );
 
         Game1.spriteBatch.Begin(
@@ -447,7 +445,7 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
             world,
             position,
             world.Bounds,
-            saturation,
+            compositionInputs,
             0f,
             Vector2.Zero,
             scale,
@@ -478,6 +476,31 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
             1f
         );
         Game1.spriteBatch.End();
+    }
+
+    private static SanityWorldColourPhase ResolveWorldColourPhase()
+    {
+        var location = Game1.currentLocation;
+        if (location is null)
+            return SanityWorldColourPhase.Day;
+
+        return SanityWorldColourPolicy.ResolvePhase(
+            Game1.timeOfDay,
+            Game1.getStartingToGetDarkTime(location),
+            Game1.getTrulyDarkTime(location)
+        );
+    }
+
+    private static byte ToVertexByte(float value)
+    {
+        return (byte)Math.Clamp(
+            (int)Math.Round(
+                Math.Clamp(value, 0f, 1f) * byte.MaxValue,
+                MidpointRounding.AwayFromZero
+            ),
+            byte.MinValue,
+            byte.MaxValue
+        );
     }
 
     private bool EnsureEffect(GraphicsDevice device)

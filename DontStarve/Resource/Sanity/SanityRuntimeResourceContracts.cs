@@ -39,6 +39,101 @@ internal enum SanityVisualPreviewKind
     NineSliceOverlay,
 }
 
+/// <summary>
+/// Exact audio formats accepted by the runtime resource pipeline. Keeping this catalog
+/// centralized prevents a new WAV rate from being accepted by one gate and rejected by another.
+/// </summary>
+internal sealed class SanityWavFormatDescriptor
+{
+    internal SanityWavFormatDescriptor(
+        string formatId,
+        int formatCode,
+        int channels,
+        int sampleRateHz,
+        int bitsPerSample,
+        int blockAlign,
+        int byteRate
+    )
+    {
+        FormatId = formatId;
+        FormatCode = formatCode;
+        Channels = channels;
+        SampleRateHz = sampleRateHz;
+        BitsPerSample = bitsPerSample;
+        BlockAlign = blockAlign;
+        ByteRate = byteRate;
+    }
+
+    internal string FormatId { get; }
+
+    internal int FormatCode { get; }
+
+    internal int Channels { get; }
+
+    internal int SampleRateHz { get; }
+
+    internal int BitsPerSample { get; }
+
+    internal int BlockAlign { get; }
+
+    internal int ByteRate { get; }
+
+    internal bool Matches(SanityWavInspectionResult inspection)
+    {
+        ArgumentNullException.ThrowIfNull(inspection);
+        return inspection.Success
+            && inspection.FormatCode == FormatCode
+            && inspection.Channels == Channels
+            && inspection.SampleRateHz == SampleRateHz
+            && inspection.BitsPerSample == BitsPerSample
+            && inspection.BlockAlign == BlockAlign
+            && inspection.ByteRate == ByteRate;
+    }
+}
+
+internal static class SanityWavFormatCatalog
+{
+    internal const string PcmS16Stereo44100V1 = "sanity.wav.pcm-s16-stereo-44100-v1";
+    internal const string PcmS16Stereo48000V1 = "sanity.wav.pcm-s16-stereo-48000-v1";
+
+    private static readonly IReadOnlyDictionary<string, SanityWavFormatDescriptor> Formats =
+        new ReadOnlyDictionary<string, SanityWavFormatDescriptor>(
+            new Dictionary<string, SanityWavFormatDescriptor>(StringComparer.Ordinal)
+            {
+                [PcmS16Stereo44100V1] = new(
+                    PcmS16Stereo44100V1,
+                    formatCode: 1,
+                    channels: 2,
+                    sampleRateHz: 44100,
+                    bitsPerSample: 16,
+                    blockAlign: 4,
+                    byteRate: 176400
+                ),
+                [PcmS16Stereo48000V1] = new(
+                    PcmS16Stereo48000V1,
+                    formatCode: 1,
+                    channels: 2,
+                    sampleRateHz: 48000,
+                    bitsPerSample: 16,
+                    blockAlign: 4,
+                    byteRate: 192000
+                ),
+            }
+        );
+
+    internal static bool TryGet(
+        string? formatId,
+        out SanityWavFormatDescriptor descriptor
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(formatId) && Formats.TryGetValue(formatId, out descriptor!))
+            return true;
+
+        descriptor = null!;
+        return false;
+    }
+}
+
 internal sealed class SanityRuntimeResourceDiagnostic
 {
     internal SanityRuntimeResourceDiagnostic(
@@ -335,14 +430,50 @@ internal sealed class SanityCueSetRuntimeResource
         SanityCueSetDefinition definition,
         IReadOnlyList<ISanityPhysicalResource> physicalResources
     )
+        : this(definition, physicalResources, cueResources: null)
     {
+    }
+
+    internal SanityCueSetRuntimeResource(
+        SanityCueSetDefinition definition,
+        IReadOnlyList<ISanityPhysicalResource> physicalResources,
+        IReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>>? cueResources
+    )
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(physicalResources);
         Definition = definition;
         PhysicalResources = Copy(physicalResources);
+        PhysicalResourcesByCueId = cueResources is null
+            ? BuildCueResourceMap(definition, PhysicalResources)
+            : CopyCueResourceMap(definition, cueResources);
     }
 
     internal SanityCueSetDefinition Definition { get; }
 
     internal IReadOnlyList<ISanityPhysicalResource> PhysicalResources { get; }
+
+    /// <summary>
+    /// Returns the exact physical-resource pool for each cue while retaining the legacy flat
+    /// list above for process-wide audio consumers.
+    /// </summary>
+    internal IReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>> PhysicalResourcesByCueId { get; }
+
+    internal bool TryGetCueResources(
+        string cueId,
+        out IReadOnlyList<ISanityPhysicalResource> resources
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(cueId)
+            && PhysicalResourcesByCueId.TryGetValue(cueId, out var found))
+        {
+            resources = found;
+            return true;
+        }
+
+        resources = Array.Empty<ISanityPhysicalResource>();
+        return false;
+    }
 
     private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
     {
@@ -350,6 +481,51 @@ internal sealed class SanityCueSetRuntimeResource
         for (var index = 0; index < values.Count; index++)
             copy[index] = values[index];
         return Array.AsReadOnly(copy);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>> BuildCueResourceMap(
+        SanityCueSetDefinition definition,
+        IReadOnlyList<ISanityPhysicalResource> physicalResources
+    )
+    {
+        var map = new Dictionary<string, IReadOnlyList<ISanityPhysicalResource>>(StringComparer.Ordinal);
+        var resourceIndex = 0;
+        foreach (var cue in definition.Cues)
+        {
+            var count = cue.Enabled ? cue.Clips.Count : 0;
+            if (resourceIndex + count > physicalResources.Count)
+                count = Math.Max(0, physicalResources.Count - resourceIndex);
+
+            var cueResources = new ISanityPhysicalResource[count];
+            for (var index = 0; index < count; index++)
+                cueResources[index] = physicalResources[resourceIndex + index];
+            resourceIndex += count;
+            map[cue.CueId] = Array.AsReadOnly(cueResources);
+        }
+
+        return new ReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>>(map);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>> CopyCueResourceMap(
+        SanityCueSetDefinition definition,
+        IReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>> values
+    )
+    {
+        var copy = new Dictionary<string, IReadOnlyList<ISanityPhysicalResource>>(StringComparer.Ordinal);
+        foreach (var pair in values)
+        {
+            ArgumentNullException.ThrowIfNull(pair.Key);
+            ArgumentNullException.ThrowIfNull(pair.Value);
+            copy[pair.Key] = Copy(pair.Value);
+        }
+
+        foreach (var cue in definition.Cues)
+        {
+            if (!copy.ContainsKey(cue.CueId))
+                copy[cue.CueId] = Array.Empty<ISanityPhysicalResource>();
+        }
+
+        return new ReadOnlyDictionary<string, IReadOnlyList<ISanityPhysicalResource>>(copy);
     }
 }
 

@@ -274,6 +274,84 @@ internal sealed class HostileShadowHitResponseController
         );
     }
 
+    /// <summary>
+    /// Starts the no-target natural disappearance animation without creating a death settlement
+    /// receipt. Natural disappearance is not a kill, so it must use the same complete death visual
+    /// timing while remaining ineligible for drops, sanity rewards, and kill settlement.
+    /// </summary>
+    internal HostileShadowHitResponseDecision BeginNaturalDying(
+        double positionX,
+        double positionY
+    )
+    {
+        if (
+            !double.IsFinite(positionX)
+            || !double.IsFinite(positionY)
+        )
+        {
+            return Rejected(
+                null,
+                "hostile-shadow.natural-dying-position-invalid"
+            );
+        }
+        if (
+            string.Equals(
+                StateId,
+                HostileShadowStateIds.Dying,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return Existing(
+                positionX,
+                positionY,
+                HostileShadowHitResponseDecisionStatus.Duplicate,
+                false,
+                "hostile-shadow.natural-dying-already-active"
+            );
+        }
+        if (
+            string.Equals(
+                StateId,
+                HostileShadowStateIds.Despawn,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return Rejected(
+                null,
+                "hostile-shadow.natural-dying-after-despawn"
+            );
+        }
+
+        var transition = attackState.TransitionToExternalState(
+            HostileShadowStateIds.Dying,
+            positionX,
+            positionY
+        );
+        if (!transition.Valid)
+            return Rejected(null, transition.Reason);
+
+        elapsedMilliseconds = 0d;
+        hasTeleportPoint = false;
+        completeWithoutTeleport = false;
+        removalIssued = false;
+        ActiveReceipt = null;
+        return new HostileShadowHitResponseDecision(
+            HostileShadowHitResponseDecisionStatus.Started,
+            HostileShadowStateIds.Dying,
+            transition.PositionX,
+            transition.PositionY,
+            transition.AttackInterrupted,
+            true,
+            !Same(positionX, transition.PositionX)
+                || !Same(positionY, transition.PositionY),
+            false,
+            null,
+            "hostile-shadow.natural-dying-started"
+        );
+    }
+
     internal HostileShadowHitResponseDecision Advance(
         double positionX,
         double positionY,

@@ -204,6 +204,20 @@ public sealed class SanityAudioVisualFactContractTests
     }
 
     [Fact]
+    public void Dusk_music_uses_stardews_start_dark_boundary_not_true_darkness()
+    {
+        var dusk = ReadSource("DuskMusicService.cs");
+
+        Assert.Contains(
+            "return Game1.getStartingToGetDarkTime(Game1.currentLocation);",
+            dusk,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain("\"fall\" => 1900", dusk, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"winter\" => 1800", dusk, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MusicSuppressionIsVersionGatedWithJukeboxOnlyExemption()
     {
         var capability = SanityAudioVisualFactContract.MusicSuppression;

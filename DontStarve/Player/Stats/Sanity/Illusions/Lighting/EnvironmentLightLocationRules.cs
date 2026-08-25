@@ -22,6 +22,18 @@ internal enum EnvironmentLightLocationLightProfile
 }
 
 /// <summary>
+/// Describes how a location's native natural-light base is altered. This is intentionally
+/// independent from the classifier's evidence profile and from the darkness-attack permission.
+/// </summary>
+internal enum NaturalDarknessProfile
+{
+    Unchanged,
+    NightThreeSeconds,
+    FullDark,
+    MineTwoStage,
+}
+
+/// <summary>
 /// Pure, bounded location evidence. It deliberately has no localized display name and retains no
 /// GameLocation or game-data reference.
 /// </summary>
@@ -93,10 +105,10 @@ internal sealed record EnvironmentLightLocationRuleResolution(
     string RuleId,
     EnvironmentLightLocationLightProfile LightProfile,
     bool TwoAmSpecialDeathSafe,
-    bool DarknessAttackSafe,
     bool HostileShadowSafe,
     bool JunimoBlessingEligible,
-    string Reason
+    string Reason,
+    NaturalDarknessProfile NaturalDarknessProfile = NaturalDarknessProfile.Unchanged
 )
 {
     internal bool IsMatched => Status == EnvironmentLightLocationRuleStatus.Matched;
@@ -122,7 +134,6 @@ internal sealed record EnvironmentLightLocationRuleResolution(
             EnvironmentLightLocationRuleIds.Unmatched,
             EnvironmentLightLocationLightProfile.FallbackOnly,
             TwoAmSpecialDeathSafe: false,
-            DarknessAttackSafe: false,
             HostileShadowSafe: false,
             JunimoBlessingEligible: false,
             EnvironmentLightReasonIds.LocationRuleUnmatched
@@ -137,7 +148,6 @@ internal sealed record EnvironmentLightLocationRuleResolution(
             EnvironmentLightLocationRuleIds.Unavailable,
             EnvironmentLightLocationLightProfile.FallbackOnly,
             TwoAmSpecialDeathSafe: false,
-            DarknessAttackSafe: false,
             HostileShadowSafe: false,
             JunimoBlessingEligible: false,
             reason
@@ -152,7 +162,6 @@ internal sealed record EnvironmentLightLocationRuleResolution(
             EnvironmentLightLocationRuleIds.Ambiguous,
             EnvironmentLightLocationLightProfile.FallbackOnly,
             TwoAmSpecialDeathSafe: false,
-            DarknessAttackSafe: false,
             HostileShadowSafe: false,
             JunimoBlessingEligible: false,
             EnvironmentLightReasonIds.LocationRuleAmbiguous
@@ -172,7 +181,7 @@ internal readonly record struct EnvironmentLightLocationRuleLoadResult(
 /// </summary>
 internal sealed class EnvironmentLightLocationRuleCatalog
 {
-    internal const int CurrentSchemaVersion = 2;
+    internal const int CurrentSchemaVersion = 4;
     internal const int MaximumRules = 64;
     internal const int MaximumCustomFieldsPerMatch = 8;
     internal const string RelativePath = "Asset/Sanity/Data/location-rules.json";
@@ -253,10 +262,10 @@ internal sealed class EnvironmentLightLocationRuleCatalog
             best.Id,
             best.LightProfile,
             best.TwoAmSpecialDeathSafe,
-            best.DarknessAttackSafe,
             best.HostileShadowSafe,
             best.JunimoBlessingEligible,
-            EnvironmentLightReasonIds.LocationRuleMatched
+            EnvironmentLightReasonIds.LocationRuleMatched,
+            best.NaturalDarknessProfile
         );
     }
 
@@ -359,9 +368,9 @@ internal sealed class EnvironmentLightLocationRuleCatalog
                 "Match",
                 "LightProfile",
                 "TwoAmSpecialDeathSafe",
-                "DarknessAttackSafe",
                 "HostileShadowSafe",
-                "JunimoBlessingEligible"
+                "JunimoBlessingEligible",
+                "NaturalDarknessProfile"
             )
         )
         {
@@ -381,12 +390,22 @@ internal sealed class EnvironmentLightLocationRuleCatalog
                 ignoreCase: false,
                 out var lightProfile
             )
+            || !TryReadRequiredString(
+                element,
+                "NaturalDarknessProfile",
+                64,
+                out var naturalDarknessProfileName
+            )
+            || !Enum.TryParse<NaturalDarknessProfile>(
+                naturalDarknessProfileName,
+                ignoreCase: false,
+                out var naturalDarknessProfile
+            )
             || !TryReadRequiredBoolean(
                 element,
                 "TwoAmSpecialDeathSafe",
                 out var twoAmSpecialDeathSafe
             )
-            || !TryReadRequiredBoolean(element, "DarknessAttackSafe", out var darknessAttackSafe)
             || !TryReadRequiredBoolean(element, "HostileShadowSafe", out var hostileShadowSafe)
             || !TryReadRequiredBoolean(
                 element,
@@ -404,9 +423,9 @@ internal sealed class EnvironmentLightLocationRuleCatalog
             match,
             lightProfile,
             twoAmSpecialDeathSafe,
-            darknessAttackSafe,
             hostileShadowSafe,
-            junimoBlessingEligible
+            junimoBlessingEligible,
+            naturalDarknessProfile
         );
         reason = string.Empty;
         return true;
@@ -649,9 +668,9 @@ internal sealed class EnvironmentLightLocationRuleCatalog
             EnvironmentLightLocationRuleMatch match,
             EnvironmentLightLocationLightProfile lightProfile,
             bool twoAmSpecialDeathSafe,
-            bool darknessAttackSafe,
             bool hostileShadowSafe,
-            bool junimoBlessingEligible
+            bool junimoBlessingEligible,
+            NaturalDarknessProfile naturalDarknessProfile
         )
         {
             Id = id;
@@ -659,9 +678,9 @@ internal sealed class EnvironmentLightLocationRuleCatalog
             Match = match;
             LightProfile = lightProfile;
             TwoAmSpecialDeathSafe = twoAmSpecialDeathSafe;
-            DarknessAttackSafe = darknessAttackSafe;
             HostileShadowSafe = hostileShadowSafe;
             JunimoBlessingEligible = junimoBlessingEligible;
+            NaturalDarknessProfile = naturalDarknessProfile;
         }
 
         internal string Id { get; }
@@ -669,9 +688,9 @@ internal sealed class EnvironmentLightLocationRuleCatalog
         internal EnvironmentLightLocationRuleMatch Match { get; }
         internal EnvironmentLightLocationLightProfile LightProfile { get; }
         internal bool TwoAmSpecialDeathSafe { get; }
-        internal bool DarknessAttackSafe { get; }
         internal bool HostileShadowSafe { get; }
         internal bool JunimoBlessingEligible { get; }
+        internal NaturalDarknessProfile NaturalDarknessProfile { get; }
 
         internal bool Matches(EnvironmentLightLocationSnapshot location)
         {

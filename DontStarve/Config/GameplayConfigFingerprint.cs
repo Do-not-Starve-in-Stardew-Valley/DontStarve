@@ -14,6 +14,7 @@ internal sealed class GameplayConfigFingerprint
         ConfigKeys.EnableSanitySystem,
         ConfigKeys.SanityMonsterIntensity,
         ConfigKeys.DarkHandMode,
+        ConfigKeys.EnableNaturalDarkness,
         ConfigKeys.DarknessDamageMode,
         ConfigKeys.MonsterDifficultyProfile,
         ConfigKeys.EnableJunimoBlessing,

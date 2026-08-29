@@ -23,6 +23,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
     private ISanityAudioInstance? current;
     private bool desiredContinuousActive;
     private bool paused;
+    private bool? pendingPauseState;
     private bool failed;
     private bool stopRequested;
     private bool disposeRequested;
@@ -69,6 +70,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         SetVolume(targetVolume);
         if (!active)
         {
+            pendingPauseState = null;
             StopAndDispose();
             return;
         }
@@ -76,15 +78,16 @@ internal sealed class SanityAudioInstanceLane : IDisposable
             EnsurePlaying();
     }
 
-    internal void TriggerOneShot(float targetVolume)
+    internal bool TriggerOneShot(float targetVolume, int? effectIndex = null)
     {
         if (disposed || continuous || failed || paused)
-            return;
+            return false;
 
         SetVolume(targetVolume);
         StopAndDispose();
         if (!failed)
-            EnsurePlaying();
+            return EnsurePlaying(effectIndex);
+        return false;
     }
 
     internal void SetVolume(float targetVolume)
@@ -111,19 +114,20 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         if (disposed || paused)
             return;
         paused = true;
-        if (current is null || failed || !EnsureOwningThread("pause"))
+        if (current is null || failed)
             return;
 
-        try
+        if (!threadContext.IsOnOwningThread)
         {
-            if (current.State == SanityAudioPlaybackState.Playing)
-                current.Pause();
+            // Focus callbacks normally arrive on the XNA thread, but keep the request alive if a
+            // platform raises one elsewhere. Do not mark the lane failed or turn a pause into a
+            // deferred stop; the owning thread will apply the same pause before its next tick.
+            pendingPauseState = true;
+            return;
         }
-        catch (Exception exception)
-        {
-            Fail("audio.lane.pause-failed", exception);
-            StopAndDisposeCore();
-        }
+
+        pendingPauseState = null;
+        PauseCurrent();
     }
 
     internal void Resume()
@@ -131,21 +135,17 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         if (disposed || !paused)
             return;
         paused = false;
-        if (failed || !EnsureOwningThread("resume"))
+        if (failed)
             return;
 
-        try
+        if (!threadContext.IsOnOwningThread)
         {
-            if (current?.State == SanityAudioPlaybackState.Paused)
-                current.Resume();
-            else if (current is null && continuous && desiredContinuousActive)
-                EnsurePlaying();
+            pendingPauseState = false;
+            return;
         }
-        catch (Exception exception)
-        {
-            Fail("audio.lane.resume-failed", exception);
-            StopAndDisposeCore();
-        }
+
+        pendingPauseState = null;
+        ResumeCurrent();
     }
 
     internal void StopPlayback()
@@ -180,6 +180,20 @@ internal sealed class SanityAudioInstanceLane : IDisposable
                 return;
             }
         }
+
+        if (pendingPauseState.HasValue)
+        {
+            if (!threadContext.IsOnOwningThread)
+                return;
+
+            var requestedPause = pendingPauseState.Value;
+            pendingPauseState = null;
+            if (requestedPause)
+                PauseCurrent();
+            else
+                ResumeCurrent();
+        }
+
         if (failed || paused || !EnsureOwningThread("tick"))
             return;
 
@@ -220,22 +234,22 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         disposed = true;
     }
 
-    private void EnsurePlaying()
+    private bool EnsurePlaying(int? effectIndex = null)
     {
         if (current is not null || failed || disposed || !EnsureOwningThread("play"))
-            return;
+            return false;
 
         ISanityAudioInstance? created = null;
         try
         {
-            var index = random.NextIndex(effects.Length);
+            var index = effectIndex ?? random.NextIndex(effects.Length);
             if (index < 0 || index >= effects.Length)
             {
                 Fail(
                     "audio.lane.random-index-invalid",
                     "The injected bounded random source returned an out-of-range effect index."
                 );
-                return;
+                return false;
             }
 
             created = effects[index].CreateInstance();
@@ -245,11 +259,12 @@ internal sealed class SanityAudioInstanceLane : IDisposable
                     "audio.lane.instance-missing",
                     "The borrowed effect returned no owned SoundEffectInstance."
                 );
-                return;
+                return false;
             }
             current = created;
             created.Volume = volume;
             created.Play();
+            return true;
         }
         catch (Exception exception)
         {
@@ -258,6 +273,60 @@ internal sealed class SanityAudioInstanceLane : IDisposable
                 StopAndDisposeCore();
             else if (created is not null)
                 DisposeCreatedAfterFailure(created);
+            return false;
+        }
+    }
+
+    private void PauseCurrent()
+    {
+        if (current is null || failed)
+            return;
+
+        try
+        {
+            if (current.State == SanityAudioPlaybackState.Playing)
+                current.Pause();
+        }
+        catch (Exception exception)
+        {
+            Fail("audio.lane.pause-failed", exception);
+            StopAndDisposeCore();
+        }
+    }
+
+    private void ResumeCurrent()
+    {
+        if (failed)
+            return;
+
+        try
+        {
+            if (current is null)
+            {
+                if (continuous && desiredContinuousActive)
+                    EnsurePlaying();
+                return;
+            }
+
+            var state = current.State;
+            if (state == SanityAudioPlaybackState.Paused)
+                current.Resume();
+            else if (
+                state == SanityAudioPlaybackState.Stopped
+                && continuous
+                && desiredContinuousActive
+            )
+            {
+                // A platform can report Stopped if the focus callback raced the backend. Reuse the
+                // same instance before Tick() gets a chance to dispose it, so focus recovery never
+                // selects a different random clip for a continuous lane.
+                current.Play();
+            }
+        }
+        catch (Exception exception)
+        {
+            Fail("audio.lane.resume-failed", exception);
+            StopAndDisposeCore();
         }
     }
 

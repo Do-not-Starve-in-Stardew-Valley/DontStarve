@@ -42,6 +42,36 @@ internal readonly record struct HostileAttackRectangle(
 
 internal static class HostileAttackCollisionResolver
 {
+    /// <summary>
+    /// Resolves the entity pivot/Position which places the mod-defined hurt-box centre at the
+    /// requested world point. HostileShadowMonster.Position is an entity/draw anchor, not the
+    /// centre exposed by the projection and binding contracts.
+    /// </summary>
+    internal static bool TryResolvePivotForHurtBoxCenter(
+        HostileAttackRuntimeDefinition? definition,
+        double centerWorldX,
+        double centerWorldY,
+        out double pivotWorldX,
+        out double pivotWorldY
+    )
+    {
+        pivotWorldX = 0d;
+        pivotWorldY = 0d;
+        if (
+            definition is null
+            || !double.IsFinite(centerWorldX)
+            || !double.IsFinite(centerWorldY)
+            || !TryCreateWorldHurtBox(definition, 0d, 0d, out var hurtBox)
+        )
+        {
+            return false;
+        }
+
+        pivotWorldX = centerWorldX - (hurtBox.X + (hurtBox.Width / 2d));
+        pivotWorldY = centerWorldY - (hurtBox.Y + (hurtBox.Height / 2d));
+        return double.IsFinite(pivotWorldX) && double.IsFinite(pivotWorldY);
+    }
+
     internal static bool TryCreateWorldHurtBox(
         HostileAttackRuntimeDefinition? definition,
         double pivotWorldX,

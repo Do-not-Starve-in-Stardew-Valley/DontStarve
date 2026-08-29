@@ -2306,81 +2306,102 @@
           "PlaybackMode": "CancelableOneShot",
           "Enabled": true,
           "RequiredForRelease": true,
-          "IsPlaceholder": true,
+          "IsPlaceholder": false,
           "Loop": false,
           "LoopDecisionStatus": "NotLooped",
           "ListeningStatus": "PendingRealMachine",
           "Clips": [
             {
-              "ClipId": "sanity.clip.darkness.warning",
-              "Path": "Asset/Sanity/Audio/Events/darkness-warning.wav",
-              "Sha256": "99EA7A4C8C45305D6EBB3231AD94F15F0159C4D7EAB2D299171D084C2C5F1245",
+              "ClipId": "sanity.clip.darkness.warning.01",
+              "Path": "Asset/Sanity/Audio/Events/darkness-warning-01.wav",
+              "Sha256": "BCC10E3BF55769AEA05BC27D8E491C92F9F06C5E13996963B29F6D63ACCECB9C",
               "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
-              "DurationFrames": 21168,
-              "DurationSeconds": 0.48,
-              "IsPlaceholder": true,
+              "DurationFrames": 99451,
+              "DurationSeconds": 2.255125,
+              "IsPlaceholder": false,
               "Loop": false,
-              "SourceEvidence": {
-                "Status": "MissingFinalAsset",
-                "EvidenceId": "sanity4-missing-asset-ledger",
-                "Sha256": null,
-                "Bytes": null,
-                "Format": null,
-                "PeakLinear": null,
-                "PeakDbfs": null,
-                "RmsLinear": null,
-                "RmsDbfs": null,
-                "ExactZeroTailFrames": null,
-                "ExactZeroTailSeconds": null
-              },
-              "GainEvidence": {
-                "GainAppliedDb": 0.0,
-                "NormalizationApplied": false,
-                "SourcePeakLinear": null,
-                "SourcePeakDbfs": null,
-                "SourceRmsLinear": null,
-                "SourceRmsDbfs": null,
-                "OutputPeakLinear": 0.119995117,
-                "OutputPeakDbfs": -18.416729,
-                "OutputRmsLinear": 0.047949439,
-                "OutputRmsDbfs": -26.384329
-              },
-              "TailEvidence": {
-                "TrimmedFrames": 0,
-                "ClickRepairApplied": false,
-                "SourceExactZeroTailFrames": null,
-                "SourceExactZeroTailSeconds": null,
-                "OutputExactZeroTailFrames": 5734,
-                "OutputExactZeroTailSeconds": 0.130023,
-                "OutputTrailingBelowMinus60DbfsSeconds": 0.1,
-                "OutputTrailingBelowMinus50DbfsSeconds": 0.1,
-                "OutputTrailingBelowMinus40DbfsSeconds": 0.1,
-                "OutputFirstFrameSamples": [
-                  0,
-                  0
-                ],
-                "OutputLastFrameSamples": [
-                  0,
-                  0
-                ],
-                "OutputBoundaryPeakLinear": 0.0
-              },
-              "ListeningEvidence": {
-                "OverallStatus": "PendingRealMachine",
-                "OneShotStatus": "PendingRealMachine",
-                "LoopSeamStatus": "NotApplicableIndividualClip",
-                "PoolTransitionStatus": "PendingRealMachine",
-                "StopTailStatus": "PendingRealMachine",
-                "Reason": "No game-audio playback session was performed in stage 05."
-              },
-              "PlaceholderGenerator": {
-                "Kind": "DEV-PLACEHOLDER-TRIPLE-TRIANGLE-BEEP",
-                "BaseFrequencyHz": 330,
-                "PulseCount": 3,
-                "DurationMilliseconds": 480,
-                "PeakTargetLinear": 0.12,
-                "FinalAssetEligible": false
-              }
+              "SourceEvidence": { "Status": "AvailableReadOnlyEvidence", "EvidenceId": "ART-10", "Sha256": "BCC10E3BF55769AEA05BC27D8E491C92F9F06C5E13996963B29F6D63ACCECB9C", "Bytes": 397882, "Format": { "Container": "RIFF", "Codec": "PCM", "FormatCode": 1, "Channels": 2, "SampleRateHz": 44100, "BitsPerSample": 16, "BlockAlign": 4, "ByteRate": 176400, "Frames": 99451 }, "ContainerEvidence": { "RiffLengthDeltaBytes": 0, "CanonicalHeaderRebuilt": false, "DataDeclaredBytes": 397804, "DataDecodedBytes": 397804 } },
+              "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+              "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+              "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+            },
+            {
+              "ClipId": "sanity.clip.darkness.warning.02",
+              "Path": "Asset/Sanity/Audio/Events/darkness-warning-02.wav",
+              "Sha256": "CFA580E075FA0CA6A2B758BFBAC06C522012BAABE446FF0AAE10A3137F02ED22",
+              "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+              "DurationFrames": 112282,
+              "DurationSeconds": 2.546077,
+              "IsPlaceholder": false,
+              "Loop": false,
+              "SourceEvidence": { "Status": "AvailableReadOnlyEvidence", "EvidenceId": "ART-10", "Sha256": "CFA580E075FA0CA6A2B758BFBAC06C522012BAABE446FF0AAE10A3137F02ED22", "Bytes": 449206, "Format": { "Container": "RIFF", "Codec": "PCM", "FormatCode": 1, "Channels": 2, "SampleRateHz": 44100, "BitsPerSample": 16, "BlockAlign": 4, "ByteRate": 176400, "Frames": 112282 }, "ContainerEvidence": { "RiffLengthDeltaBytes": 0, "CanonicalHeaderRebuilt": false, "DataDeclaredBytes": 449128, "DataDecodedBytes": 449128 } },
+              "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+              "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+              "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+            },
+            {
+              "ClipId": "sanity.clip.darkness.warning.03",
+              "Path": "Asset/Sanity/Audio/Events/darkness-warning-03.wav",
+              "Sha256": "2CE8EBB385A3797DCA6D52E6CF4FA43857FD76AB090CCE11DE3D65FDA49C69B0",
+              "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+              "DurationFrames": 100431,
+              "DurationSeconds": 2.277347,
+              "IsPlaceholder": false,
+              "Loop": false,
+              "SourceEvidence": { "Status": "AvailableReadOnlyEvidence", "EvidenceId": "ART-10", "Sha256": "2CE8EBB385A3797DCA6D52E6CF4FA43857FD76AB090CCE11DE3D65FDA49C69B0", "Bytes": 401802, "Format": { "Container": "RIFF", "Codec": "PCM", "FormatCode": 1, "Channels": 2, "SampleRateHz": 44100, "BitsPerSample": 16, "BlockAlign": 4, "ByteRate": 176400, "Frames": 100431 }, "ContainerEvidence": { "RiffLengthDeltaBytes": 0, "CanonicalHeaderRebuilt": false, "DataDeclaredBytes": 401724, "DataDecodedBytes": 401724 } },
+              "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+              "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+              "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+            },
+            {
+              "ClipId": "sanity.clip.darkness.warning.04",
+              "Path": "Asset/Sanity/Audio/Events/darkness-warning-04.wav",
+              "Sha256": "42B6FEDCF89656833625EE8FCA0C7D05473B6704C7CC2DAFACB477DBDD9AD938",
+              "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+              "DurationFrames": 121254,
+              "DurationSeconds": 2.749524,
+              "IsPlaceholder": false,
+              "Loop": false,
+              "SourceEvidence": { "Status": "AvailableReadOnlyEvidence", "EvidenceId": "ART-10", "Sha256": "42B6FEDCF89656833625EE8FCA0C7D05473B6704C7CC2DAFACB477DBDD9AD938", "Bytes": 485094, "Format": { "Container": "RIFF", "Codec": "PCM", "FormatCode": 1, "Channels": 2, "SampleRateHz": 44100, "BitsPerSample": 16, "BlockAlign": 4, "ByteRate": 176400, "Frames": 121254 }, "ContainerEvidence": { "RiffLengthDeltaBytes": 0, "CanonicalHeaderRebuilt": false, "DataDeclaredBytes": 485016, "DataDecodedBytes": 485016 } },
+              "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+              "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+              "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "CueSetId": "sanity.cue.darkness-attack",
+      "Group": "darkness-attack",
+      "CachePolicy": "LazyPerCueSetBounded",
+      "LifecyclePolicy": "ReleaseOnWorldTitleDispose",
+      "MaxConcurrentInstances": 1,
+      "ContractVersion": 1,
+      "Cues": [
+        {
+          "CueId": "sanity.cue.darkness.attack",
+          "PlaybackMode": "OneShot",
+          "Enabled": true,
+          "RequiredForRelease": true,
+          "IsPlaceholder": false,
+          "Loop": false,
+          "LoopDecisionStatus": "NotLooped",
+          "ListeningStatus": "PendingRealMachine",
+          "Clips": [
+            {
+              "ClipId": "sanity.clip.darkness.attack",
+              "Path": "Asset/Sanity/Audio/Events/darkness-attack.wav",
+              "Sha256": "D783CD2FDB13157D4305B4787ADF8B365290EFE58C570445689C8C6480E7E210",
+              "FormatId": "sanity.wav.pcm-s16-stereo-44100-v1",
+              "DurationFrames": 96884,
+              "DurationSeconds": 2.196916,
+              "IsPlaceholder": false,
+              "Loop": false,
+              "SourceEvidence": { "Status": "AvailableReadOnlyEvidence", "EvidenceId": "ART-10", "Sha256": "D783CD2FDB13157D4305B4787ADF8B365290EFE58C570445689C8C6480E7E210", "Bytes": 387614, "Format": { "Container": "RIFF", "Codec": "PCM", "FormatCode": 1, "Channels": 2, "SampleRateHz": 44100, "BitsPerSample": 16, "BlockAlign": 4, "ByteRate": 176400, "Frames": 96884 }, "ContainerEvidence": { "RiffLengthDeltaBytes": 0, "CanonicalHeaderRebuilt": false, "DataDeclaredBytes": 387536, "DataDecodedBytes": 387536 } },
+              "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+              "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+              "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
             }
           ]
         }
@@ -4142,7 +4163,7 @@
           ]
         },
         {
-          "CueId": "sanity.cue.creeper-fear.attack-dull",
+          "CueId": "sanity.cue.creeper-fear.hurt-dull",
           "PlaybackMode": "OneShot",
           "Enabled": true,
           "RequiredForRelease": true,
@@ -4152,8 +4173,8 @@
           "ListeningStatus": "PendingRealMachine",
           "Clips": [
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-dull.01",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_dull_01.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-dull.01",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtDull_01.wav",
               "Sha256": "018EDEA0A6373C04CE7B25793D411873C53D6DE37E897B58C0BF2490D42BA888",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 359424,
@@ -4218,8 +4239,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-dull.02",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_dull_02.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-dull.02",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtDull_02.wav",
               "Sha256": "D08A3E4ED10DA789F0CF374960FED8ACE59B2BFE7828DD7AA2A7D4381C9BB143",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 353280,
@@ -4284,8 +4305,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-dull.03",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_dull_03.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-dull.03",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtDull_03.wav",
               "Sha256": "C3FA4CE7B1C030F7D82037D2C7E7FC74687658D21E9FE5E9FF193D8A72CE0E5A",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 315392,
@@ -4350,8 +4371,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-dull.04",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_dull_04.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-dull.04",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtDull_04.wav",
               "Sha256": "4724908B26E155F4D05C11F198B23EAEA3B989F3BAF1BD99A474ABE80B38E73A",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 353280,
@@ -4416,8 +4437,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-dull.05",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_dull_05.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-dull.05",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtDull_05.wav",
               "Sha256": "33B83D7D437FF4BE0BFE89E9E90DE88FD502DBD310B6EF51CBFB78EFB3C7D763",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 325632,
@@ -4484,7 +4505,7 @@
           ]
         },
         {
-          "CueId": "sanity.cue.creeper-fear.attack-sharp",
+          "CueId": "sanity.cue.creeper-fear.hurt-sharp",
           "PlaybackMode": "OneShot",
           "Enabled": true,
           "RequiredForRelease": true,
@@ -4494,8 +4515,8 @@
           "ListeningStatus": "PendingRealMachine",
           "Clips": [
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.01",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_01.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.01",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_01.wav",
               "Sha256": "F178669295DEB6F5DD73C04FB0CD970A00ADD747EC5EB2E46559D88978A85C8D",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 457728,
@@ -4560,8 +4581,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.02",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_02.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.02",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_02.wav",
               "Sha256": "591F05D4983ED8868B74FDEABF8D8B69B3099AAD8F38263E4F95111F84757C33",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 458752,
@@ -4626,8 +4647,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.03",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_03.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.03",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_03.wav",
               "Sha256": "F284614AD86788CB72258C0936B4F43AA7003C4F0DFDEB1D6C6647666D983342",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 450560,
@@ -4692,8 +4713,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.04",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_04.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.04",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_04.wav",
               "Sha256": "D6F873D7024FA946BD3BE94B5562408AF43289B1EFB242D2E8A3211D8AA6BDDF",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 470016,
@@ -4758,8 +4779,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.05",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_05.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.05",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_05.wav",
               "Sha256": "834212266DE2223A414E80F8E37689CDA6AF07AACA55F866B7C4C74B922F3E62",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 443392,
@@ -4824,8 +4845,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.06",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_06.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.06",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_06.wav",
               "Sha256": "21DEBBAA555015A20727D45247CDD4F56A4789582B3A1D5859BCD09D8CA280BD",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 453632,
@@ -4890,8 +4911,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.07",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_07.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.07",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_07.wav",
               "Sha256": "EA84A110B25B3DA528C917488CD5162E09B10B0A23B6D5F952A07EB2B332EC80",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 501760,
@@ -4956,8 +4977,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.attack-sharp.08",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_attack_impact_sharp_08.wav",
+              "ClipId": "sanity.clip.creeper-fear.hurt-sharp.08",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_HurtSharp_08.wav",
               "Sha256": "31B23FF601B42419760EB19ADCA7874E6869E7C1CD23E609116147AF0B4D837E",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 479232,
@@ -5024,7 +5045,7 @@
           ]
         },
         {
-          "CueId": "sanity.cue.creeper-fear.hurt",
+          "CueId": "sanity.cue.creeper-fear.attack",
           "PlaybackMode": "OneShot",
           "Enabled": true,
           "RequiredForRelease": true,
@@ -5034,8 +5055,8 @@
           "ListeningStatus": "PendingRealMachine",
           "Clips": [
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.01",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_01.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.01",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_01.wav",
               "Sha256": "3447B3BCBD0D46FD884372A1302AAA740F9FCE3AC15C4CA2D22C38BDEDBFCAD5",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 332800,
@@ -5100,8 +5121,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.02",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_02.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.02",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_02.wav",
               "Sha256": "F9512EF24AF9326F7BB0263D4166E4B3742CD4348DD7F57B32831F285C1BB4EB",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 320512,
@@ -5166,8 +5187,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.03",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_03.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.03",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_03.wav",
               "Sha256": "9670B6858457ED792962A0D86029BA2FC1B2D6B11AD3F0FB58CDF47BB6CB7188",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 304128,
@@ -5232,8 +5253,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.04",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_04.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.04",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_04.wav",
               "Sha256": "451E95A4CE7B12A4291B732CC7D2ED70CE021F499F8883BB35EC295FCB9C9685",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 306176,
@@ -5298,8 +5319,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.05",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_05.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.05",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_05.wav",
               "Sha256": "47E48DEEBE4D87930410AE83B3F3E36C6850FCE1E3E49B9A4EA9B5F2C03D23C1",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 317440,
@@ -5364,8 +5385,8 @@
               }
             },
             {
-              "ClipId": "sanity.clip.creeper-fear.hurt.06",
-              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/shadow_creeper_fear_hurt_06.wav",
+              "ClipId": "sanity.clip.creeper-fear.attack.06",
+              "Path": "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/CreeperFear_Attack_06.wav",
               "Sha256": "A59BFCD64714B1BFC904B3D251ED11A2BEA6EE0E49F45BD234C667D1CF8043C4",
               "FormatId": "sanity.wav.pcm-s16-stereo-48000-v1",
               "DurationFrames": 241664,

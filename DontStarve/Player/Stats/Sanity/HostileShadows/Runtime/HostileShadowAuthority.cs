@@ -449,7 +449,12 @@ internal sealed class HostileShadowAuthority
             LocationId = command.LocationId,
             DifficultyProfileId = command.Profile.DifficultyProfileId,
             AssetBindingId = command.Profile.AssetBindingId,
-            StateId = HostileShadowStateIds.Spawn,
+            // Conversion replaces an already-visible harmless projection, so its hostile
+            // counterpart must enter the one-time Taunt presentation directly. Standalone
+            // interval/debug spawns retain the normal hostile Spawn animation.
+            StateId = command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion
+                ? HostileShadowStateIds.Taunt
+                : HostileShadowStateIds.Spawn,
             TargetPlayerKey = string.Empty,
             PositionX = command.PositionX,
             PositionY = command.PositionY,
@@ -802,6 +807,52 @@ internal sealed class HostileShadowAuthority
         return false;
     }
 
+    /// <summary>
+    /// Rehydrates the current Danger epoch from the Sanity tier snapshot after a session reset.
+    /// Sanity publishes its initial tier events before the hostile-shadow SaveLoaded handler can
+    /// begin this authority session, so event-only observation would lose the conversion gate.
+    /// On a client this revision is only used to build the request envelope; the host remains the
+    /// sole authority which accepts the conversion.
+    /// </summary>
+    internal bool SynchronizeDangerEpoch(
+        string ownerPlayerKey,
+        bool dangerActive,
+        long tierRevision,
+        out string reason
+    )
+    {
+        if (!SanityPlayerKey.IsCanonical(ownerPlayerKey))
+        {
+            reason = "hostile-shadow.conversion-owner-key-invalid";
+            return false;
+        }
+        if (tierRevision < 0)
+        {
+            reason = "hostile-shadow.conversion-tier-revision-invalid";
+            return false;
+        }
+
+        if (!dangerActive)
+        {
+            conversionEpochs.Remove(ownerPlayerKey);
+            reason = "hostile-shadow.conversion-danger-epoch-inactive";
+            return true;
+        }
+
+        // The tier snapshot revision can advance while the player remains inside the same Danger
+        // interval. Preserve the original interval revision so host and client envelopes keep the
+        // same value; a real TierEntered event is the only operation that starts a new epoch.
+        if (!conversionEpochs.ContainsKey(ownerPlayerKey))
+        {
+            conversionEpochs[ownerPlayerKey] = new ConversionEpoch(tierRevision);
+            reason = "hostile-shadow.conversion-danger-epoch-synchronized";
+            return true;
+        }
+
+        reason = "hostile-shadow.conversion-danger-epoch-already-current";
+        return true;
+    }
+
     private bool TryValidateCommand(
         HostileShadowSpawnCommand? command,
         out string reason
@@ -927,6 +978,13 @@ internal sealed class HostileShadowAuthority
         HostileShadowSpawnResult result
     )
     {
+        // A successful spawn needs an idempotent receipt so replay cannot materialize a second
+        // entity. Failed/rejected capacity, budget, or capability checks are retryable state
+        // observations; caching them would turn a later valid retry with the same conversion
+        // correlation into a permanent Duplicate-without-entity rejection.
+        if (result.Status != HostileShadowSpawnStatus.Spawned)
+            return result;
+
         while (receipts.Count >= MaximumSpawnReceipts && receiptOrder.Count > 0)
         {
             var oldest = receiptOrder.Dequeue();

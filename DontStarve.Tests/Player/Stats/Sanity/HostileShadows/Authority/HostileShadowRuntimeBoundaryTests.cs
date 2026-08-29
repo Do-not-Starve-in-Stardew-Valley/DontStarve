@@ -503,6 +503,33 @@ public sealed class HostileShadowRuntimeBoundaryTests
     }
 
     [Fact]
+    public void Stage_03_bridges_nonlethal_hits_after_sync_and_force_cleans_world_audio()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var modEntry = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "Contracts", "ShadowProjection", "ModEntry.cs")
+        );
+        var hit = Slice(
+            world,
+            "private int HandleIncomingHit(",
+            "    private void PropagateAggroToNearby("
+        );
+        var sync = hit.IndexOf("TrySynchronizeHitResponse(", StringComparison.Ordinal);
+        var notify = hit.IndexOf("NotifyHostileHit", sync, StringComparison.Ordinal);
+
+        Assert.True(sync >= 0);
+        Assert.True(notify > sync);
+        Assert.Contains("damageDecision.PendingDying", hit, StringComparison.Ordinal);
+        Assert.Contains("ClassifyHitSource(attacker)", hit, StringComparison.Ordinal);
+        Assert.Contains("ResolvePendingLethalDamage", world, StringComparison.Ordinal);
+        Assert.Contains("ConfirmHostileDeath", world, StringComparison.Ordinal);
+        Assert.Contains("RemoveOwner(", world, StringComparison.Ordinal);
+        Assert.Contains("NotifyHostileHit(", modEntry, StringComparison.Ordinal);
+        Assert.Contains("ForceRemoveAll(", modEntry, StringComparison.Ordinal);
+        Assert.Contains("coordinator.ForceRemoveAll", modEntry, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Debug_and_interval_spawn_commands_share_the_same_physical_materialization_path()
     {
         var source = Contract("SmapiHostileShadowHost.cs");

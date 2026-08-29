@@ -59,6 +59,7 @@ internal sealed class SanitySmapiResourceService
             helper.DirectoryPath,
             new XnaSanityPhysicalResourceFactory(owningThreadId)
         );
+        loader.DiagnosticRecorded += OnLoaderDiagnosticRecorded;
         previews = new SanityResourcePreviewController(loader);
 
         var snapshot = loader.Prime();
@@ -182,6 +183,7 @@ internal sealed class SanitySmapiResourceService
             helper.Events.Content.AssetsInvalidated -= OnAssetsInvalidated;
             helper.Events.GameLoop.ReturnedToTitle -= OnReturnedToTitle;
             AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+            loader.DiagnosticRecorded -= OnLoaderDiagnosticRecorded;
             loader.Dispose();
             disposalGate.Complete();
         }
@@ -578,6 +580,7 @@ internal sealed class SanitySmapiResourceService
     {
         var level = diagnostic.Status switch
         {
+            _ when diagnostic.IsWarning => LogLevel.Warn,
             SanityResourceCapabilityStatus.Available when diagnostic.IsPlaceholder => LogLevel.Warn,
             SanityResourceCapabilityStatus.Available => LogLevel.Info,
             SanityResourceCapabilityStatus.DisabledOptional => LogLevel.Warn,
@@ -587,6 +590,12 @@ internal sealed class SanitySmapiResourceService
             $"Sanity resource result (capability={diagnostic.Capability}, status={diagnostic.Status}, code={diagnostic.Code}, slot={diagnostic.SlotId}, path={diagnostic.Path}, required={diagnostic.Required}, placeholder={diagnostic.IsPlaceholder}, reason={diagnostic.Reason}).",
             level
         );
+    }
+
+    private void OnLoaderDiagnosticRecorded(SanityRuntimeResourceDiagnostic diagnostic)
+    {
+        if (diagnostic.IsWarning && diagnostic.Code.Contains("hash-", StringComparison.OrdinalIgnoreCase))
+            LogDiagnostic(diagnostic);
     }
 
     private void LogRenderFailureOnce(string slotId, string code, string reason)

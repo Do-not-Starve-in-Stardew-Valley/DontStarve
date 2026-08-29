@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using DontStarve.Interface;
+using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using DontStarve.Resource.Sanity;
@@ -95,7 +96,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         internal string AggroLockPlayerKey { get; set; } = string.Empty;
 
         // DIAG-20260809: 无索敌游荡状态。锚点=生成点（首次）或最后脱战位置；
-        // 每 3-5 秒在锚点 10 格半径内选随机目标点，半速移动过去，不脱离锚点半径。
+        // 到达目标后随机静息 3-5 秒，再在锚点 10 格半径内选新目标，半速移动过去。
         internal double WanderAnchorX;
         internal double WanderAnchorY;
         internal double WanderRemainingMilliseconds = 3000d;
@@ -713,8 +714,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 state.EntityId.ToString(CultureInfo.InvariantCulture);
             monster.modData[HostileShadowMonster.AssetBindingModDataKey] =
                 state.AssetBindingId;
-            monster.modData[HostileShadowMonster.StateModDataKey] =
-                HostileShadowStateIds.Spawn;
+            // Authority chooses Spawn for standalone entities and Taunt for a harmless-projection
+            // conversion. Preserve that initial presentation on the physical monster so a
+            // conversion cannot replay the hostile Spawn animation.
+            monster.modData[HostileShadowMonster.StateModDataKey] = state.StateId;
             // DIAG-20260807: 记录配置档位的攻击力，供 LookupAnythingDisplayFake 在 Lookup
             // 构造 Subject 时临时写回 DamageToFarmer（显示用）；本体 DamageToFarmer 保持 0
             // 禁接触伤害。
@@ -815,7 +818,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
             var attackState = new HostileAttackStateMachine(
                 attackDefinition,
-                transitionPolicy
+                transitionPolicy,
+                state.StateId
             );
             AddPhysical(
                 state.EntityId,
@@ -842,6 +846,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             {
                 materializedEntry.WanderAnchorX = state.PositionX;
                 materializedEntry.WanderAnchorY = state.PositionY;
+                ObserveShadowCreatureSfx(state.EntityId, materializedEntry, state);
             }
             reason = "hostile-shadow.physical-entity-materialized";
             return true;
@@ -1298,9 +1303,34 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             DeferHitResponseSynchronizationFailure(decision.Reason);
             return damageDecision.AppliedDamage;
         }
+        if (!damageDecision.PendingDying && damageDecision.AppliedDamage > 0)
+        {
+            DontStarve.ModEntry.ActiveShadowCreatureSfx?.NotifyHostileHit(
+                authority.SessionId,
+                entityId,
+                entry.Profile.AssetBindingId,
+                monster.Position.X,
+                monster.Position.Y,
+                proposedRevision,
+                state.LocationId,
+                ClassifyHitSource(attacker)
+            );
+        }
         if (decision.RemovalRequested)
             authority.CleanupEntity(entityId, decision.Reason);
         return damageDecision.AppliedDamage;
+    }
+
+    private static ShadowCreatureSfxHitSource ClassifyHitSource(Farmer attacker)
+    {
+        if (attacker.CurrentTool is not StardewValley.Tools.MeleeWeapon weapon)
+            return ShadowCreatureSfxHitSource.Other;
+
+        return ShadowCreatureSfxHitSourceClassifier.From(
+            isMeleeWeapon: true,
+            isScythe: weapon.isScythe(),
+            weaponType: weapon.type.Value
+        );
     }
 
     /// <summary>
@@ -1381,8 +1411,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     }
 
     /// <summary>
-    /// DIAG-20260809: 无索敌游荡推进。每 3-5 秒在锚点（生成点/最后脱战位置）10 格半径内
-    /// 选随机目标点，以半速朝其移动（到达 0.5 格内停下等下一个周期）。返回是否处于游荡中
+    /// DIAG-20260809: 无索敌游荡推进。到达目标后随机静息 3-5 秒，再在锚点（生成点/最后脱战
+    /// 位置）10 格半径内选随机目标点，以半速朝其移动（到达 0.5 格内停下）。返回是否处于游荡中
     /// （用于帧推进与 WanderActive 标记）。索敌到玩家时主循环不再调用本方法。
     /// </summary>
     private bool TryAdvanceWander(
@@ -1398,9 +1428,12 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             entry.WanderAnchorY = entry.Monster.Position.Y;
         }
 
-        entry.WanderRemainingMilliseconds -= elapsedSeconds * 1000d;
-        if (entry.WanderRemainingMilliseconds <= 0d)
+        if (!entry.HasWanderTarget)
         {
+            entry.WanderRemainingMilliseconds -= elapsedSeconds * 1000d;
+            if (entry.WanderRemainingMilliseconds > 0d)
+                return false;
+
             // 选新目标：锚点 10 格半径内随机方向/距离（含 0，可原地停一个周期）。
             var angle = wanderRandom.NextDouble() * Math.PI * 2d;
             var radiusPixels = wanderRandom.NextDouble() * (10d * Game1.tileSize);
@@ -1409,12 +1442,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             entry.WanderTargetY =
                 entry.WanderAnchorY + Math.Sin(angle) * radiusPixels;
             entry.HasWanderTarget = true;
-            // 下一个周期 3-5 秒随机。
-            entry.WanderRemainingMilliseconds =
-                3000d + (wanderRandom.NextDouble() * 2000d);
         }
-        if (!entry.HasWanderTarget)
-            return false;
 
         // 半速移动（MovementSpeed × 0.5）；动画半速在帧推进处（elapsedMs × 0.5）。
         var movement = HostileShadowTargetingEngine.AdvancePosition(
@@ -1445,8 +1473,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             )
         )
         {
-            // 到达目标点 → 停下等下一个 3-5 秒周期。
+            // 到达目标点后才开始随机静息；移动期间绝不消耗该倒计时。
             entry.HasWanderTarget = false;
+            entry.WanderRemainingMilliseconds =
+                3000d + (wanderRandom.NextDouble() * 2000d);
         }
         return true;
     }
@@ -1518,6 +1548,27 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 (float)decision.PositionY
             );
             ApplyMonsterState(entry);
+            if (
+                authority.TryGetEntity(entityId, out var confirmed)
+                && confirmed is not null
+                && string.Equals(
+                    confirmed.StateId,
+                    HostileShadowStateIds.Dying,
+                    StringComparison.Ordinal
+                )
+                && confirmed.Health == 0
+            )
+            {
+                DontStarve.ModEntry.ActiveShadowCreatureSfx?.ConfirmHostileDeath(
+                    authority.SessionId,
+                    entityId,
+                    entry.Profile.AssetBindingId,
+                    entry.Monster.Position.X,
+                    entry.Monster.Position.Y,
+                    confirmed.Revision,
+                    confirmed.LocationId
+                );
+            }
         }
     }
 
@@ -2079,6 +2130,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     HostileShadowStateIds.Taunt
                 );
                 entry.AppliedStateId = HostileShadowStateIds.Taunt;
+                ObserveShadowCreatureSfx(entityId, entry);
                 continue;
             }
             if (entry.IsBindingHidden)
@@ -2117,6 +2169,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                         }
                     }
                 }
+                ObserveShadowCreatureSfx(entityId, entry);
                 continue;
             }
 
@@ -2193,8 +2246,9 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                         )
                             ? HostileShadowCleanupReasonIds.DyingCompleted
                             : response.Reason
-                    );
+                        );
                 }
+                ObserveShadowCreatureSfx(entityId, entry);
                 continue;
             }
             var movementPositionChanged = false;
@@ -2230,8 +2284,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 }
             }
 
-            // DIAG-20260809: 无索敌游荡——Idle 且无目标时，在锚点（生成点/最后脱战位置）
-            // 10 格半径内每 3-5 秒选随机目标点，半速移动过去；一旦索敌到玩家（hasTarget=true）
+            // DIAG-20260809: 无索敌游荡——Idle 且无目标时，到达目标后静息 3-5 秒，再在锚点
+            // （生成点/最后脱战位置）10 格半径内选随机目标点，半速移动过去；一旦索敌到玩家（hasTarget=true）
             // 本分支立即不执行，游荡目标自然作废，进入既有 索敌→恐吓→追击 链。
             var isWanderingNow = false;
             if (
@@ -2387,7 +2441,35 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     state
                 );
             }
+            ObserveShadowCreatureSfx(entityId, entry);
         }
+    }
+
+    private void ObserveShadowCreatureSfx(
+        long entityId,
+        PhysicalEntry entry,
+        ShadowStateSnapshot? stateOverride = null
+    )
+    {
+        var service = DontStarve.ModEntry.ActiveShadowCreatureSfx;
+        if (service is null)
+            return;
+        var state = stateOverride;
+        if (state is null && (!authority.TryGetEntity(entityId, out state) || state is null))
+            return;
+        service.ObserveHostile(
+            authority.SessionId,
+            entityId,
+            entry.Profile.AssetBindingId,
+            entry.AttackState.StateId,
+            entry.Monster.Position.X,
+            entry.Monster.Position.Y,
+            entry.Monster.Health,
+            entry.Monster.MaxHealth,
+            state.AttackInstanceId,
+            state.Revision,
+            state.LocationId
+        );
     }
 
     private static void ApplyMonsterState(PhysicalEntry entry)
@@ -2596,6 +2678,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 }
             }
             ApplyMonsterState(entry, state);
+            ObserveShadowCreatureSfx(state.EntityId, entry, state);
         }
     }
 
@@ -2693,6 +2776,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         }
         pendingLethalEntityIds.Remove(entityId);
         entry.Location.characters.Remove(entry.Monster);
+        DontStarve.ModEntry.ActiveShadowCreatureSfx?.RemoveOwner(
+            authority.SessionId,
+            entityId.ToString(CultureInfo.InvariantCulture)
+        );
     }
 
     private void RemoveAllPhysical()

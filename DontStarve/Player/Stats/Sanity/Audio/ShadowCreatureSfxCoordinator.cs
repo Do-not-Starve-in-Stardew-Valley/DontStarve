@@ -51,8 +51,9 @@ internal readonly record struct ShadowCreatureSfxHarmlessObservation(
 /// <summary>
 /// Pure event-to-voice coordinator. Runtime adapters feed it state facts and spatial samples;
 /// this class owns no SMAPI or XNA objects beyond the effect instances supplied by its pool
-/// provider. A due cadence is deliberately retained while a lane is busy, so it never becomes a
-/// delayed queue.
+/// provider. Each owner lane may have multiple overlapping one-shot voices; cadence due times are
+/// retained only when a request cannot start for a concrete reason such as silence or a missing
+/// pool.
 /// </summary>
 internal sealed class ShadowCreatureSfxCoordinator : IDisposable
 {
@@ -83,14 +84,35 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         internal bool IsProjection { get; set; }
     }
 
+    private sealed class DetachedVoiceState
+    {
+        internal DetachedVoiceState(
+            ShadowCreatureSfxOwnerKey owner,
+            ShadowCreatureSfxDetachedVoice voice,
+            ShadowCreatureSfxSpatial spatial
+        )
+        {
+            Owner = owner;
+            Voice = voice;
+            Spatial = spatial;
+        }
+
+        internal ShadowCreatureSfxOwnerKey Owner { get; }
+        internal ShadowCreatureSfxDetachedVoice Voice { get; }
+        internal ShadowCreatureSfxSpatial Spatial { get; set; }
+    }
+
     private readonly Func<
         ShadowCreatureSpecies,
         IReadOnlyDictionary<ShadowCreatureSfxCue, IReadOnlyList<IShadowCreatureSfxEffect>>
     > poolProvider;
     private readonly IShadowCreatureSfxRandom random;
     private readonly IShadowCreatureSfxDiagnostics? diagnostics;
+    private readonly Action<ShadowCreatureSfxPlaybackStarted>? playbackStarted;
     private readonly Dictionary<ShadowCreatureSfxOwnerKey, OwnerState> owners = new();
+    private readonly List<DetachedVoiceState> detachedVoices = new();
     private readonly HashSet<string> reportedDiagnosticKeys = new(StringComparer.Ordinal);
+    private bool newSoundsAllowed = true;
     private bool disposed;
 
     internal ShadowCreatureSfxCoordinator(
@@ -99,18 +121,41 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
             IReadOnlyDictionary<ShadowCreatureSfxCue, IReadOnlyList<IShadowCreatureSfxEffect>>
         > poolProvider,
         IShadowCreatureSfxRandom random,
-        IShadowCreatureSfxDiagnostics? diagnostics = null
+        IShadowCreatureSfxDiagnostics? diagnostics = null,
+        Action<ShadowCreatureSfxPlaybackStarted>? playbackStarted = null
     )
     {
         this.poolProvider = poolProvider ?? throw new ArgumentNullException(nameof(poolProvider));
         this.random = random ?? throw new ArgumentNullException(nameof(random));
         this.diagnostics = diagnostics;
+        this.playbackStarted = playbackStarted;
     }
 
     internal int OwnerCount => owners.Count;
 
     internal ShadowCreatureSfxOwnerLane? GetLane(ShadowCreatureSfxOwnerKey owner) =>
         owners.TryGetValue(owner, out var state) ? state.Lane : null;
+
+    internal bool NewSoundsAllowed => newSoundsAllowed;
+
+    /// <summary>
+    /// Gates only new voice creation. Existing instances continue through their normal XNA
+    /// lifetime; cadence due times are shifted on resume so focus loss does not create a burst.
+    /// </summary>
+    internal void SetNewSoundsAllowed(bool allowed, double nowSeconds)
+    {
+        if (disposed || newSoundsAllowed == allowed)
+            return;
+
+        newSoundsAllowed = allowed;
+        foreach (var state in owners.Values)
+        {
+            if (allowed)
+                state.Cadence.ResumeScheduling(nowSeconds);
+            else
+                state.Cadence.PauseScheduling(nowSeconds);
+        }
+    }
 
     internal void ObserveHostile(ShadowCreatureSfxHostileObservation observation)
     {
@@ -142,11 +187,14 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
 
             if (observation.State == ShadowCreatureSfxObservedState.Taunt)
             {
-                state.Lane.Request(
-                    ShadowCreatureSfxCue.Taunt,
-                    DedupKey("taunt", observation.StateRevision),
-                    observation.Spatial
-                );
+                if (newSoundsAllowed)
+                {
+                    state.Lane.Request(
+                        ShadowCreatureSfxCue.Taunt,
+                        DedupKey("taunt", observation.StateRevision),
+                        observation.Spatial
+                    );
+                }
             }
         }
 
@@ -160,16 +208,16 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
             )
         )
         {
-            var cue = ShadowCreatureSfxPolicy.SelectAttackCue(
-                observation.Species,
-                observation.HealthRatio
-            );
-            state.Lane.Request(
-                cue,
-                string.Concat("attack:", observation.AttackInstanceId),
-                observation.Spatial
-            );
-            state.LastAttackInstanceId = observation.AttackInstanceId;
+            var cue = ShadowCreatureSfxPolicy.SelectAttackCue(observation.Species);
+            if (newSoundsAllowed)
+            {
+                state.Lane.Request(
+                    cue,
+                    string.Concat("attack:", observation.AttackInstanceId),
+                    observation.Spatial
+                );
+                state.LastAttackInstanceId = observation.AttackInstanceId;
+            }
         }
 
         state.LastHostileState = observation.State;
@@ -207,13 +255,6 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         if (!cadenceState.HasValue)
         {
             state.Cadence.Leave();
-            if (
-                observation.State is ShadowCreatureSfxProjectionState.Spawning
-                    or ShadowCreatureSfxProjectionState.FadingOut
-            )
-            {
-                state.Lane.Stop();
-            }
         }
         else if (
             state.LastProjectionState is null
@@ -240,10 +281,11 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         ShadowCreatureSpecies species,
         ShadowCreatureSfxSpatial spatial,
         long hitRevision,
-        bool lethal
+        bool lethal,
+        ShadowCreatureSfxHitSource source = ShadowCreatureSfxHitSource.Other
     )
     {
-        if (disposed || lethal)
+        if (disposed || lethal || !newSoundsAllowed)
             return;
         var state = GetOrCreate(owner, species, isProjection: false);
         if (hitRevision < state.Revision)
@@ -251,7 +293,7 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         state.Revision = Math.Max(state.Revision, hitRevision);
         state.Spatial = spatial;
         state.Lane.Request(
-            ShadowCreatureSfxCue.Hurt,
+            ShadowCreatureSfxPolicy.SelectHurtCue(species, source),
             DedupKey("hurt", hitRevision),
             spatial
         );
@@ -265,7 +307,7 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         long dyingRevision
     )
     {
-        if (disposed)
+        if (disposed || !newSoundsAllowed)
             return;
         var state = GetOrCreate(owner, species, isProjection: false);
         if (dyingRevision < state.Revision)
@@ -286,16 +328,54 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         foreach (var state in owners.Values)
         {
             state.Lane.Tick(state.Spatial, soundVolume);
-            if (soundVolume > 0f)
+            if (newSoundsAllowed && soundVolume > 0f)
                 TryStartDueCadence(state, nowSeconds);
+        }
+        for (var index = detachedVoices.Count - 1; index >= 0; index--)
+        {
+            var detached = detachedVoices[index];
+            if (detached.Voice.Tick(detached.Spatial, soundVolume))
+                continue;
+            detachedVoices.RemoveAt(index);
         }
     }
 
     internal void RemoveOwner(ShadowCreatureSfxOwnerKey owner)
     {
-        if (!owners.Remove(owner, out var state))
+        RemoveOwnerCore(owner, retainDeathVoice: true);
+    }
+
+    /// <summary>
+    /// Normal harmless-projection removal. Projection Idle/Chase one-shots may outlive the visual
+    /// owner and are reaped by the coordinator after their natural playback ends. If a caller ever
+    /// passes a hostile owner by mistake, preserve the established normal-owner Death behavior.
+    /// </summary>
+    internal void RemoveProjectionOwner(ShadowCreatureSfxOwnerKey owner)
+    {
+        if (owners.TryGetValue(owner, out var state) && state.IsProjection)
+        {
+            RemoveOwnerCore(owner, retainDeathVoice: false, retainAllVoices: true);
             return;
-        state.Lane.Dispose();
+        }
+
+        RemoveOwnerCore(owner, retainDeathVoice: true);
+    }
+
+    /// <summary>World/title/mod cleanup path. It always interrupts retained Death voices.</summary>
+    internal void ForceRemoveOwner(ShadowCreatureSfxOwnerKey owner)
+    {
+        RemoveOwnerCore(owner, retainDeathVoice: false);
+    }
+
+    /// <summary>Clears every live and detached voice at a world/resource boundary.</summary>
+    internal void ForceRemoveAll()
+    {
+        foreach (var state in owners.Values)
+            state.Lane.Dispose();
+        owners.Clear();
+        foreach (var detached in detachedVoices)
+            detached.Voice.Dispose();
+        detachedVoices.Clear();
     }
 
     public void Dispose()
@@ -303,9 +383,40 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         if (disposed)
             return;
         disposed = true;
-        foreach (var state in owners.Values)
+        ForceRemoveAll();
+    }
+
+    private void RemoveOwnerCore(
+        ShadowCreatureSfxOwnerKey owner,
+        bool retainDeathVoice,
+        bool retainAllVoices = false
+    )
+    {
+        if (owners.Remove(owner, out var state))
+        {
+            if (retainAllVoices)
+            {
+                foreach (var voice in state.Lane.DetachAll())
+                    detachedVoices.Add(new DetachedVoiceState(owner, voice, state.Spatial));
+            }
+            else if (retainDeathVoice)
+            {
+                foreach (var voice in state.Lane.Detach(ShadowCreatureSfxCue.Death))
+                    detachedVoices.Add(new DetachedVoiceState(owner, voice, state.Spatial));
+            }
             state.Lane.Dispose();
-        owners.Clear();
+        }
+
+        if (!retainDeathVoice && !retainAllVoices)
+        {
+            for (var index = detachedVoices.Count - 1; index >= 0; index--)
+            {
+                if (detachedVoices[index].Owner != owner)
+                    continue;
+                detachedVoices[index].Voice.Dispose();
+                detachedVoices.RemoveAt(index);
+            }
+        }
     }
 
     private OwnerState GetOrCreate(
@@ -341,7 +452,7 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         ShadowCreatureSfxOwnerLane lane;
         try
         {
-            lane = new ShadowCreatureSfxOwnerLane(owner, species, pools, random);
+            lane = new ShadowCreatureSfxOwnerLane(owner, species, pools, random, playbackStarted);
         }
         catch (Exception exception)
         {
@@ -354,7 +465,8 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
                 owner,
                 species,
                 new Dictionary<ShadowCreatureSfxCue, IReadOnlyList<IShadowCreatureSfxEffect>>(),
-                random
+                random,
+                playbackStarted
             );
         }
         var created = new OwnerState(owner, species, lane, random)
@@ -365,7 +477,7 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         return created;
     }
 
-    private static void EnterCadence(
+    private void EnterCadence(
         OwnerState state,
         ShadowCreatureSfxCadenceState cadenceState,
         double nowSeconds
@@ -373,6 +485,8 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
     {
         var revision = state.Revision == 0 ? 1 : state.Revision;
         state.Cadence.Enter(cadenceState, nowSeconds, revision);
+        if (!newSoundsAllowed)
+            state.Cadence.PauseScheduling(nowSeconds);
     }
 
     private static bool SameCadence(
@@ -383,11 +497,12 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
     private static string DedupKey(string kind, long revision) =>
         string.Concat(kind, ":", revision.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-    private static void TryStartDueCadence(OwnerState state, double nowSeconds)
+    private void TryStartDueCadence(OwnerState state, double nowSeconds)
     {
         if (
+            !newSoundsAllowed
+            ||
             !state.Cadence.IsDue(nowSeconds)
-            || state.Lane.HasActiveInstance
             || !state.Spatial.IsAudible
             || state.Spatial.Volume <= 0f
         )
@@ -395,6 +510,14 @@ internal sealed class ShadowCreatureSfxCoordinator : IDisposable
         var cue = state.Cadence.State == ShadowCreatureSfxCadenceState.Chase
             ? ShadowCreatureSfxCue.Chase
             : ShadowCreatureSfxCue.Idle;
+        if (
+            cue == ShadowCreatureSfxCue.Chase
+            && state.Lane.HasActiveNonChaseVoice
+        )
+        {
+            state.Cadence.DeferBecauseVoiceBusy();
+            return;
+        }
         var key = string.Concat(
             "cadence:",
             cue.ToString(),

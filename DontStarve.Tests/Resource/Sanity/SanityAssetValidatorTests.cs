@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DontStarve.Resource.Sanity;
 using Xunit;
 
@@ -25,14 +26,14 @@ public sealed class SanityAssetValidatorTests
         Assert.True(parsed.Success, parsed.Reason);
         var manifest = Assert.IsType<SanityAssetManifest>(parsed.Manifest);
         Assert.Equal(1, manifest.SchemaVersion);
-        Assert.Equal(50, manifest.Slots.Count);
+        Assert.Equal(56, manifest.Slots.Count);
         Assert.Equal(
-            50,
+            56,
             manifest.Slots.Select(slot => slot.SlotId).Distinct(StringComparer.OrdinalIgnoreCase).Count()
         );
         Assert.Equal(9, manifest.Slots.Count(slot => slot.SlotId.StartsWith("sanity.asset.", StringComparison.Ordinal)));
         Assert.Equal(24, manifest.Slots.Count(slot => slot.SlotId.StartsWith("sanity.animation.", StringComparison.Ordinal)));
-        Assert.Equal(17, manifest.Slots.Count(slot => slot.SlotId.StartsWith("sanity.cue.", StringComparison.Ordinal)));
+        Assert.Equal(23, manifest.Slots.Count(slot => slot.SlotId.StartsWith("sanity.cue.", StringComparison.Ordinal)));
         Assert.Equal(11, manifest.Slots.Select(slot => slot.Path).Distinct(StringComparer.Ordinal).Count());
         Assert.All(manifest.Slots, slot =>
         {
@@ -55,7 +56,7 @@ public sealed class SanityAssetValidatorTests
         Assert.DoesNotContain(result.Issues, issue => issue.Code == "asset.required-missing");
         Assert.DoesNotContain(result.Issues, issue => issue.Code == "asset.optional-missing");
         Assert.Empty(result.DisabledOptionalSlotIds);
-        Assert.Equal(50, result.PendingReplacementSlotIds.Count);
+        Assert.Equal(56, result.PendingReplacementSlotIds.Count);
         Assert.DoesNotContain(result.Issues, issue => issue.Code.StartsWith("manifest.", StringComparison.Ordinal));
         Assert.DoesNotContain(result.Issues, issue => issue.Code.StartsWith("credits.", StringComparison.Ordinal));
         Assert.DoesNotContain(result.Issues, issue => issue.Code == "asset.unknown-credit-group");
@@ -300,7 +301,7 @@ public sealed class SanityAssetValidatorTests
     }
 
     [Fact]
-    public void HashMismatchAndInvalidFileFormatFailClosed()
+    public void HashMismatchWarnsButInvalidFileFormatStillFailsClosed()
     {
         var notPng = Encoding.UTF8.GetBytes("not-a-png");
         var slot = Slot(
@@ -319,11 +320,16 @@ public sealed class SanityAssetValidatorTests
         );
 
         Assert.Contains(result.Issues, issue => issue.Code == "asset.hash-mismatch");
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == "asset.hash-mismatch"
+                && issue.Severity == SanityAssetIssueSeverity.Warning
+        );
         Assert.Contains(result.Issues, issue => issue.Code == "asset.invalid-format");
     }
 
     [Fact]
-    public void ExistingFileWithoutHashFailsClosed()
+    public void ExistingFileWithoutHashRemainsAvailableWithWarning()
     {
         var bytes = ValidPng();
         var slot = Slot(
@@ -341,6 +347,37 @@ public sealed class SanityAssetValidatorTests
             files
         );
 
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Issues.Select(issue => issue.Code)));
+        Assert.Contains(result.Issues, issue => issue.Code == "asset.hash-missing");
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == "asset.hash-missing"
+                && issue.Severity == SanityAssetIssueSeverity.Warning
+        );
+    }
+
+    [Fact]
+    public void ExistingFileWithHashPropertyOmittedRemainsAvailableWithWarning()
+    {
+        var bytes = ValidPng();
+        var slot = Slot(
+            "sanity.asset.omitted-hash.sprite",
+            "Asset/Sanity/Sprites/omitted-hash.png",
+            sha256: null
+        );
+        var files = FilesWith(slot, bytes);
+        var manifest = JsonNode.Parse(Manifest(slot))!.AsObject();
+        manifest["Slots"]![0]!.AsObject().Remove("Sha256");
+
+        var result = SanityAssetValidator.Validate(
+            manifest.ToJsonString(),
+            Credits(FinalCredit()),
+            files.DeploymentRoot,
+            SanityAssetValidationGate.Development,
+            files
+        );
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Issues.Select(issue => issue.Code)));
         Assert.Contains(result.Issues, issue => issue.Code == "asset.hash-missing");
     }
 

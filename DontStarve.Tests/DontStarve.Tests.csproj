@@ -435,6 +435,9 @@
     <None Include="..\DontStarve\Display\UIRenderContext.cs" Link="Contracts\AudioVisualFact\UIRenderContext.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Display\TaggedHudMessageService.cs" Link="Contracts\HudMessages\TaggedHudMessageService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Resource\Sanity\SanitySmapiResourceService.cs" Link="Contracts\AudioVisualFact\SanitySmapiResourceService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

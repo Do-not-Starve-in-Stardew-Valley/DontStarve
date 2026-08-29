@@ -30,34 +30,22 @@ public sealed class TerrorbeakAssetFactGateTests
     private static readonly string[] CueIds =
     {
         "sanity.cue.terrorbeak.attack",
+        "sanity.cue.terrorbeak.chase",
         "sanity.cue.terrorbeak.death",
         "sanity.cue.terrorbeak.hurt",
+        "sanity.cue.terrorbeak.idle",
         "sanity.cue.terrorbeak.taunt",
     };
 
-    private static readonly IReadOnlyDictionary<string, (string Path, string Sha256)> CueFiles =
-        new Dictionary<string, (string Path, string Sha256)>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, int> ExpectedClipCounts =
+        new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["sanity.cue.terrorbeak.attack"] =
-                (
-                    "Asset/Sanity/Audio/Creatures/terrorbeak/attack.wav",
-                    "C22047BA51A96EA39E591CF6FE1CCC94C097195342368C3FC8773E5D481E0103"
-                ),
-            ["sanity.cue.terrorbeak.death"] =
-                (
-                    "Asset/Sanity/Audio/Creatures/terrorbeak/death.wav",
-                    "1336902E7DBE5350956AE2439AB3942FFE9E99D1B59B616744279D5E19B93736"
-                ),
-            ["sanity.cue.terrorbeak.hurt"] =
-                (
-                    "Asset/Sanity/Audio/Creatures/terrorbeak/hurt.wav",
-                    "FE2208701DF5A05EF754E223DF388DE22A24078B9A78AC16AFCAFA2912B1EE53"
-                ),
-            ["sanity.cue.terrorbeak.taunt"] =
-                (
-                    "Asset/Sanity/Audio/Creatures/terrorbeak/taunt.wav",
-                    "2F61A04979830A5811FE9246B7BD9F5F3AFFED8CC2E30229F1FB51AF0B96566C"
-                ),
+            ["sanity.cue.terrorbeak.attack"] = 6,
+            ["sanity.cue.terrorbeak.chase"] = 14,
+            ["sanity.cue.terrorbeak.death"] = 11,
+            ["sanity.cue.terrorbeak.hurt"] = 6,
+            ["sanity.cue.terrorbeak.idle"] = 16,
+            ["sanity.cue.terrorbeak.taunt"] = 10,
         };
 
     private static string ShippedModRoot =>
@@ -83,7 +71,7 @@ public sealed class TerrorbeakAssetFactGateTests
             .OrderBy(slot => slot.SlotId, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(11, slots.Length);
+        Assert.Equal(13, slots.Length);
         var sprite = Assert.Single(slots.Where(slot => slot.SlotId == SpriteSlotId));
         Assert.Equal(SpritePath, sprite.Path);
         Assert.Equal(SpriteSha256, sprite.Sha256);
@@ -111,9 +99,9 @@ public sealed class TerrorbeakAssetFactGateTests
         Assert.All(cues, slot =>
         {
             Assert.Equal("Asset/Sanity/Audio/audio-cues.json", slot.Path);
-            Assert.True(slot.IsPlaceholder);
+            Assert.False(slot.IsPlaceholder);
             Assert.True(slot.RequiredForRelease);
-            Assert.Equal("DEV-PLACEHOLDER", slot.CreditGroup);
+            Assert.Equal("ART-06", slot.CreditGroup);
         });
 
         var sheet = PngRgbaImage.Decode(ResolveShippedPath(SpritePath));
@@ -158,7 +146,7 @@ public sealed class TerrorbeakAssetFactGateTests
             release.Issues,
             issue =>
                 issue.SlotId == "sanity.cue.terrorbeak.attack"
-                && issue.Code == "release.dev-credit-group"
+                && issue.Code == "release.credit-placeholder"
         );
 
         var creditParse = SanityCreditCatalogParser.Parse(File.ReadAllText(CreditsPath));
@@ -294,7 +282,7 @@ public sealed class TerrorbeakAssetFactGateTests
     }
 
     [Fact]
-    public void Death_is_the_current_removal_visual_while_despawn_is_absent_and_four_cues_stay_dev_only()
+    public void Death_is_the_current_removal_visual_while_despawn_is_absent_and_real_cues_are_pending_listening()
     {
         var factory = new FactGateResourceFactory();
         using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
@@ -323,18 +311,24 @@ public sealed class TerrorbeakAssetFactGateTests
             Assert.Equal("OneShot", cue.PlaybackMode);
             Assert.True(cue.Enabled);
             Assert.True(cue.RequiredForRelease);
-            Assert.True(cue.IsPlaceholder);
+            Assert.False(cue.IsPlaceholder);
             Assert.Equal("PendingRealMachine", cue.ListeningStatus);
-            var clip = Assert.Single(cue.Clips);
-            Assert.Equal(CueFiles[cue.CueId].Path, clip.Path);
-            Assert.Equal(CueFiles[cue.CueId].Sha256, clip.Sha256);
-            Assert.Equal("sanity.wav.pcm-s16-stereo-44100-v1", clip.FormatId);
-            Assert.True(clip.IsPlaceholder);
-            Assert.Equal(21168, clip.DurationFrames);
-            Assert.Equal(0.48d, clip.DurationSeconds);
+            Assert.Equal(ExpectedClipCounts[cue.CueId], cue.Clips.Count);
+            Assert.All(cue.Clips, clip =>
+            {
+                Assert.StartsWith(
+                    "Asset/Sanity/Audio/Creatures/shadow_terrorbeak/",
+                    clip.Path,
+                    StringComparison.Ordinal
+                );
+                Assert.Equal("sanity.wav.pcm-s16-stereo-48000-v1", clip.FormatId);
+                Assert.False(clip.IsPlaceholder);
+                Assert.True(clip.DurationFrames > 0);
+                Assert.True(clip.DurationSeconds > 0d);
+            });
         });
         Assert.Equal(1, factory.TextureCreates);
-        Assert.Equal(4, factory.SoundCreates);
+        Assert.Equal(63, factory.SoundCreates);
     }
 
     [Fact]

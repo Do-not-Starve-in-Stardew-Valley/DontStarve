@@ -144,7 +144,8 @@ internal sealed class SanityRuntimeResourceDiagnostic
         string path,
         bool required,
         bool isPlaceholder,
-        string reason
+        string reason,
+        bool isWarning = false
     )
     {
         Capability = capability;
@@ -155,6 +156,7 @@ internal sealed class SanityRuntimeResourceDiagnostic
         Required = required;
         IsPlaceholder = isPlaceholder;
         Reason = reason;
+        IsWarning = isWarning;
     }
 
     internal string Capability { get; }
@@ -172,6 +174,8 @@ internal sealed class SanityRuntimeResourceDiagnostic
     internal bool IsPlaceholder { get; }
 
     internal string Reason { get; }
+
+    internal bool IsWarning { get; }
 
     internal bool IsAvailable => Status == SanityResourceCapabilityStatus.Available;
 }

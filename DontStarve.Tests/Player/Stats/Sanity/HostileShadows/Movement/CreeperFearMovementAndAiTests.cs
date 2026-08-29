@@ -261,6 +261,58 @@ public sealed class CreeperFearMovementAndAiTests
     }
 
     [Fact]
+    public void Reaching_a_wander_target_restarts_a_random_three_to_five_second_rest()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var wanderStart = world.IndexOf(
+            "private bool TryAdvanceWander",
+            StringComparison.Ordinal
+        );
+        var selectionEnd = world.IndexOf(
+            "if (!entry.HasWanderTarget)",
+            wanderStart,
+            StringComparison.Ordinal
+        );
+        var arrivalStart = world.IndexOf(
+            "hostile-shadow.movement-at-stop-distance",
+            StringComparison.Ordinal
+        );
+        var arrivalEnd = world.IndexOf(
+            "return true;",
+            arrivalStart,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(wanderStart >= 0);
+        Assert.True(selectionEnd > wanderStart);
+        var selection = world[wanderStart..selectionEnd];
+        Assert.DoesNotContain(
+            "entry.WanderRemainingMilliseconds =",
+            selection,
+            StringComparison.Ordinal
+        );
+        Assert.True(arrivalStart >= 0);
+        Assert.True(arrivalEnd > arrivalStart);
+        var arrival = world[arrivalStart..arrivalEnd];
+        var clearTarget = arrival.IndexOf(
+            "entry.HasWanderTarget = false;",
+            StringComparison.Ordinal
+        );
+        var restartTimer = arrival.IndexOf(
+            "entry.WanderRemainingMilliseconds =",
+            StringComparison.Ordinal
+        );
+
+        Assert.True(clearTarget >= 0);
+        Assert.True(restartTimer > clearTarget);
+        Assert.Contains(
+            "3000d + (wanderRandom.NextDouble() * 2000d)",
+            arrival,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
     public void Speed_2_5_moves_on_a_normalized_straight_line_without_map_or_path_input()
     {
         var moved = HostileShadowTargetingEngine.AdvancePosition(

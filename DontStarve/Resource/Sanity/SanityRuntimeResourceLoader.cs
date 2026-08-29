@@ -48,6 +48,8 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
     private int visualMetadataParseCount;
     private int audioMetadataParseCount;
 
+    internal event Action<SanityRuntimeResourceDiagnostic>? DiagnosticRecorded;
+
     internal SanityRuntimeResourceLoader(
         string deploymentRoot,
         ISanityPhysicalResourceFactory resourceFactory,
@@ -633,7 +635,8 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
                         && issueSlot.RequiredForRelease,
                     slots.TryGetValue(issue.SlotId, out issueSlot)
                         && issueSlot.IsPlaceholder,
-                    issue.Reason
+                    issue.Reason,
+                    isWarning: issue.Severity == SanityAssetIssueSeverity.Warning
                 )
             );
         }
@@ -774,9 +777,25 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
             catalog.ManifestJson,
             deploymentRoot
         );
+        foreach (var issue in contract.Issues.Where(issue => !issue.IsBlocking))
+        {
+            RecordDiagnostic(
+                new SanityRuntimeResourceDiagnostic(
+                    "sanity.resource.audio-metadata",
+                    SanityResourceCapabilityStatus.Available,
+                    issue.Code,
+                    cueSlot.SlotId,
+                    cueSlot.Path,
+                    cueSlot.RequiredForRelease,
+                    cueSlot.IsPlaceholder,
+                    issue.Reason,
+                    isWarning: true
+                )
+            );
+        }
         if (!contract.Success)
         {
-            var issue = contract.Issues[0];
+            var issue = contract.Issues.First(issue => issue.IsBlocking);
             audioMetadataFailure = MetadataFailure(issue.Code, cueSlot.Path, issue.Reason);
             diagnostic = audioMetadataFailure;
             return false;
@@ -1048,6 +1067,7 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
             return;
         }
         runtimeDiagnostics.Add(diagnostic);
+        DiagnosticRecorded?.Invoke(diagnostic);
     }
 
     private void ReleasePhysicalResources(SanityResourceReleaseReason reason)

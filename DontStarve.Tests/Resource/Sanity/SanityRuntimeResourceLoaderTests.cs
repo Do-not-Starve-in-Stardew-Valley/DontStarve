@@ -22,7 +22,7 @@ public sealed class SanityRuntimeResourceLoaderTests
 
         Assert.Equal(1, first.ManifestParseCount);
         Assert.Equal(1, second.ManifestParseCount);
-        Assert.Equal(34, first.PlaceholderSlotIds.Count);
+        Assert.Equal(33, first.PlaceholderSlotIds.Count);
         Assert.Empty(first.DisabledOptionalSlotIds);
         Assert.Equal(0, factory.TotalCreates);
         Assert.Contains(first.Diagnostics, value => value.Code == "asset.placeholder-pending");
@@ -269,8 +269,8 @@ public sealed class SanityRuntimeResourceLoaderTests
         var factory = new FakeFactory();
         using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
 
-        var attack = loader.LoadSlot("sanity.cue.creeper-fear.attack-dull");
-        var hurt = loader.LoadSlot("sanity.cue.creeper-fear.hurt");
+        var attack = loader.LoadSlot("sanity.cue.creeper-fear.attack");
+        var hurt = loader.LoadSlot("sanity.cue.creeper-fear.hurt-sharp");
         var bySet = loader.LoadCueSet("sanity.cue.creeper-fear");
         var optional = loader.LoadSlot("sanity.cue.sanity-change.gain");
         var snapshot = loader.Snapshot();
@@ -284,7 +284,7 @@ public sealed class SanityRuntimeResourceLoaderTests
         Assert.Equal(50, attack.CueSet.PhysicalResources.Count);
         Assert.Equal(50, factory.SoundCreates);
         Assert.Equal("PendingRealMachine", attack.Cue!.ListeningStatus);
-        Assert.True(attack.Diagnostic.IsPlaceholder);
+        Assert.False(attack.Diagnostic.IsPlaceholder);
         Assert.Equal(SanityResourceCapabilityStatus.DisabledOptional, optional.Diagnostic.Status);
         Assert.Equal("resource.cue.disabled-optional", optional.Diagnostic.Code);
         Assert.Contains("sanity.cue.sanity-change.gain", snapshot.DisabledOptionalSlotIds);
@@ -386,6 +386,41 @@ public sealed class SanityRuntimeResourceLoaderTests
         Assert.Equal(9, cache.Count);
         Assert.Equal(9, factory.TextureCreates);
         Assert.Contains(diagnostics, value => value.Code == "resource.cache.capacity-exceeded");
+        Assert.True(cache.Release(SanityResourceReleaseReason.WorldCleanup));
+    }
+
+    [Fact]
+    public void PhysicalTextureCacheLoadsByPathWhenHashIsStaleAndReportsWarning()
+    {
+        var files = new MemoryFiles();
+        var factory = new FakeFactory();
+        var diagnostics = new List<SanityRuntimeResourceDiagnostic>();
+        var cache = new SanityRuntimePhysicalResourceCache(
+            files.DeploymentRoot,
+            files,
+            factory,
+            diagnostics.Add
+        );
+        const string path = "Asset/Sanity/Sprites/stale-hash.png";
+        files.Add(path, ValidPng());
+
+        var result = cache.Load(
+            "sanity.asset.stale-hash.sprite",
+            path,
+            SanityPhysicalResourceKind.Texture,
+            new string('0', 64),
+            required: true,
+            isPlaceholder: false
+        );
+
+        Assert.True(result.Success, result.Diagnostic.Reason);
+        Assert.Equal(1, factory.TextureCreates);
+        Assert.Contains(
+            diagnostics,
+            diagnostic => diagnostic.Code == "resource.physical.hash-mismatch"
+                && diagnostic.IsWarning
+                && diagnostic.Status == SanityResourceCapabilityStatus.Available
+        );
         Assert.True(cache.Release(SanityResourceReleaseReason.WorldCleanup));
     }
 

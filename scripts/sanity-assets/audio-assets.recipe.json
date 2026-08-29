@@ -2020,12 +2020,12 @@
       }
     },
     {
-      "ClipId": "sanity.clip.darkness.warning",
-      "Path": "Asset/Sanity/Audio/Events/darkness-warning.wav",
-      "Sha256": "99EA7A4C8C45305D6EBB3231AD94F15F0159C4D7EAB2D299171D084C2C5F1245",
-      "DurationFrames": 21168,
-      "DurationSeconds": 0.48,
-      "IsPlaceholder": true,
+      "ClipId": "sanity.clip.darkness.warning.01",
+      "Path": "Asset/Sanity/Audio/Events/darkness-warning-01.wav",
+      "Sha256": "BCC10E3BF55769AEA05BC27D8E491C92F9F06C5E13996963B29F6D63ACCECB9C",
+      "DurationFrames": 99451,
+      "DurationSeconds": 2.255125,
+      "IsPlaceholder": false,
       "GainEvidence": {
         "GainAppliedDb": 0.0,
         "NormalizationApplied": false,
@@ -2066,6 +2066,50 @@
         "StopTailStatus": "PendingRealMachine",
         "Reason": "No game-audio playback session was performed in stage 05."
       }
+    },
+    {
+      "ClipId": "sanity.clip.darkness.warning.02",
+      "Path": "Asset/Sanity/Audio/Events/darkness-warning-02.wav",
+      "Sha256": "CFA580E075FA0CA6A2B758BFBAC06C522012BAABE446FF0AAE10A3137F02ED22",
+      "DurationFrames": 112282,
+      "DurationSeconds": 2.546077,
+      "IsPlaceholder": false,
+      "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+      "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+      "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+    },
+    {
+      "ClipId": "sanity.clip.darkness.warning.03",
+      "Path": "Asset/Sanity/Audio/Events/darkness-warning-03.wav",
+      "Sha256": "2CE8EBB385A3797DCA6D52E6CF4FA43857FD76AB090CCE11DE3D65FDA49C69B0",
+      "DurationFrames": 100431,
+      "DurationSeconds": 2.277347,
+      "IsPlaceholder": false,
+      "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+      "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+      "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+    },
+    {
+      "ClipId": "sanity.clip.darkness.warning.04",
+      "Path": "Asset/Sanity/Audio/Events/darkness-warning-04.wav",
+      "Sha256": "42B6FEDCF89656833625EE8FCA0C7D05473B6704C7CC2DAFACB477DBDD9AD938",
+      "DurationFrames": 121254,
+      "DurationSeconds": 2.749524,
+      "IsPlaceholder": false,
+      "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+      "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+      "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
+    },
+    {
+      "ClipId": "sanity.clip.darkness.attack",
+      "Path": "Asset/Sanity/Audio/Events/darkness-attack.wav",
+      "Sha256": "D783CD2FDB13157D4305B4787ADF8B365290EFE58C570445689C8C6480E7E210",
+      "DurationFrames": 96884,
+      "DurationSeconds": 2.196916,
+      "IsPlaceholder": false,
+      "GainEvidence": { "GainAppliedDb": 0.0, "NormalizationApplied": false },
+      "TailEvidence": { "TrimmedFrames": 0, "ClickRepairApplied": false },
+      "ListeningEvidence": { "OverallStatus": "PendingRealMachine" }
     },
     {
       "ClipId": "sanity.clip.terrorbeak.attack",
@@ -2839,9 +2883,9 @@
   "Metadata": {
     "Path": "Asset/Sanity/Audio/audio-cues.json",
     "Sha256": "46C5B1BE3C8DC0D5188AEACC0F2E9AED9A0776393710F3CFD8F1DD9FF10CF323",
-    "CueSetCount": 8,
-    "CueCount": 17,
-    "PhysicalClipCount": 35
+    "CueSetCount": 9,
+    "CueCount": 23,
+    "PhysicalClipCount": 144
   },
   "Manifest": {
     "Path": "DontStarve/Asset/Sanity/Data/sanity-assets.json",

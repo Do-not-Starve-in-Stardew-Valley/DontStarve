@@ -125,6 +125,44 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         return true;
     }
 
+    /// <summary>
+    /// Reconciles the owner phase with the current Sanity tier snapshot. The initial tier event can
+    /// be published before the SMAPI projection host has finished its session wiring, and debug
+    /// commands can also arrive after that edge. A snapshot repair must preserve the
+    /// future-resolution lock after Danger exits, while a newly observed ShadowCreatures phase
+    /// may resume normal scheduling.
+    /// </summary>
+    internal void SynchronizeOwnerTierState(
+        string playerKey,
+        bool shadowTierActive,
+        bool dangerTierActive
+    )
+    {
+        if (!SanityPlayerKey.IsCanonical(playerKey))
+            return;
+
+        var phase = GetOrCreatePhase(playerKey);
+        var wasShadowTierActive = phase.ShadowTierActive;
+        phase.ShadowTierActive = shadowTierActive;
+        phase.DangerTierActive = dangerTierActive;
+
+        if (!wasShadowTierActive && shadowTierActive)
+        {
+            phase.RequiresFutureReverseResolution = dangerTierActive;
+            phase.LastBudgetEvaluationMinute = null;
+            phase.LastBudgetEvaluationOccupancy = -1;
+            phase.LastBudgetStatus = ShadowCreatureProjectionUpdateStatus.Waiting;
+        }
+        else if (dangerTierActive)
+        {
+            phase.RequiresFutureReverseResolution = true;
+        }
+        else if (!shadowTierActive)
+        {
+            phase.RequiresFutureReverseResolution = false;
+        }
+    }
+
     internal ShadowCreatureProjectionTransitionResult ApplyStateEvent(
         SanityStateEvent stateEvent,
         long gameMinute
@@ -327,19 +365,33 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         }
         if (phase.DangerTierActive || phase.RequiresFutureReverseResolution)
         {
-            // DIAG-20260811: 危险状态（Danger 已激活）下的存量无害投影——指令召唤
-            // （ds_spawn harmless）/驱赶补偿生成的实例——提交转化（RecordDangerEntry
-            // 内部按 evidence 去重：已提交过的实例不重复提交；新出现的实例立即转化）。
-            if (
-                phase.DangerTierActive
-                && index.CountForOwner(owner.PlayerKey) > 0
-            )
+            // DIAG-20260826: Danger 下的投影必须先播完生成过渡。生成中的实例仍留在
+            // index，由本次更新推进帧；已经进入静息态的实例才提交转换并从本地索引摘除。
+            // Danger 退出后仍要推进未完成的生成动画，否则实例会在 future-resolution lock
+            // 中永久停留在 Spawning；但只有 Danger 重新激活时才允许提交转换。
+            // DIAG-20260827: future-resolution lock 只冻结普通实例的转换/新刷调度。
+            // 已经代表隐藏危险实体的绑定投影仍是可见的无害行为实例；Danger 退出后必须
+            // 继续走 AdvanceBehavior，否则保护期、游荡、逃离和淡出都会永久停止。
+            var bindingCleanup = 0;
+            if (index.CountForOwner(owner.PlayerKey) > 0)
             {
-                RecordDangerEntry(owner.PlayerKey, gameMinute);
+                AdvanceSpawnAnimations(owner, elapsedMilliseconds);
+                if (phase.DangerTierActive)
+                    RecordDangerEntry(owner.PlayerKey, gameMinute);
+                else
+                {
+                    bindingCleanup = UpdateLocalInstances(
+                        owner,
+                        ownerStandingWorldPixel,
+                        elapsedMilliseconds,
+                        advanceMovement,
+                        bindingOnly: true
+                    );
+                }
             }
             return UpdateResult(
                 ShadowCreatureProjectionUpdateStatus.ConversionLocked,
-                0,
+                bindingCleanup,
                 owner.PlayerKey,
                 0,
                 "shadow-projection.future-reverse-resolution-required"
@@ -770,11 +822,15 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         long gameMinute
     )
     {
-        // Detach and mark every local appearance before the responsibility seam is invoked. A sink
-        // callback can therefore prove occupancy is already zero even when it delays or fails.
+        // 生成动画未完成的实例仍是可见投影，不能在转换请求提交前摘掉；只先摘除已经
+        // 进入静息/绑定状态的实例。这样 sink 看到的 occupancy 仍只包含未就绪投影。
         var removed = index.CleanupOwnerWithSnapshot(
             playerKey,
-            HarmlessProjectionCleanupReason.ConversionRequested
+            HarmlessProjectionCleanupReason.ConversionRequested,
+            instance =>
+                instance.AnimationState
+                != ShadowCreatureHarmlessProjectionInstance
+                    .ShadowCreatureProjectionAnimationState.Spawning
         );
         var intentCount = 0;
         foreach (var instance in removed)
@@ -788,8 +844,22 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
                     index.TryAdd(instance, out _);
                 continue;
             }
-            if (evidenceByCorrelation.ContainsKey(instance.CorrelationId))
+            if (
+                evidenceByCorrelation.TryGetValue(
+                    instance.CorrelationId,
+                    out var existingEvidence
+                )
+                && existingEvidence.Submission.Status
+                    is not ShadowProjectionConversionSubmissionStatus.Failed
+                    and not ShadowProjectionConversionSubmissionStatus.Rejected
+            )
+            {
+                // Confirmed, delayed, and unconfirmed submissions retain their original
+                // responsibility evidence and must not be submitted twice. Failed/rejected
+                // bridges are retryable: the restored local instance reaches this path again on
+                // the next Danger update and the new result replaces the stale evidence.
                 continue;
+            }
 
             var intent = new ShadowProjectionConversionIntent(
                 instance.CorrelationId,
@@ -840,11 +910,40 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         );
     }
 
+    private void AdvanceSpawnAnimations(
+        HarmlessProjectionOwnerContext owner,
+        int elapsedMilliseconds
+    )
+    {
+        if (
+            elapsedMilliseconds <= 0
+            || !index.TryGetContextInstances(owner, out var instances)
+            || instances is null
+        )
+        {
+            return;
+        }
+
+        foreach (var instance in instances)
+        {
+            if (
+                !instance.IsCleanedUp
+                && instance.AnimationState
+                    == ShadowCreatureHarmlessProjectionInstance
+                        .ShadowCreatureProjectionAnimationState.Spawning
+            )
+            {
+                instance.AdvanceFrame(elapsedMilliseconds);
+            }
+        }
+    }
+
     private int UpdateLocalInstances(
         HarmlessProjectionOwnerContext owner,
         HarmlessProjectionWorldPoint ownerStandingWorldPixel,
         int elapsedMilliseconds,
-        bool advanceMovement
+        bool advanceMovement,
+        bool bindingOnly = false
     )
     {
         if (!index.TryGetContextInstances(owner, out var instances) || instances is null)
@@ -856,6 +955,8 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         foreach (var instance in instances)
         {
             if (instance.IsCleanedUp || !instance.Owner.Matches(owner))
+                continue;
+            if (bindingOnly && !instance.IsBindingProjection)
                 continue;
 
             var behaviorEvent = advanceMovement
@@ -922,8 +1023,23 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     private void AddEvidence(ShadowProjectionConversionEvidence evidence)
     {
         var correlationId = evidence.Intent.CorrelationId;
-        if (evidenceByCorrelation.ContainsKey(correlationId))
+        if (
+            evidenceByCorrelation.TryGetValue(correlationId, out var existingEvidence)
+        )
+        {
+            // A failed/rejected submission may be retried after the harmless instance is
+            // restored. Keep one bounded queue entry per correlation while replacing only that
+            // retryable outcome; a confirmed or otherwise retained result is immutable evidence.
+            if (
+                existingEvidence.Submission.Status
+                    is ShadowProjectionConversionSubmissionStatus.Failed
+                    or ShadowProjectionConversionSubmissionStatus.Rejected
+            )
+            {
+                evidenceByCorrelation[correlationId] = evidence;
+            }
             return;
+        }
 
         while (evidenceOrder.Count >= MaximumRetainedConversionEvidence)
         {

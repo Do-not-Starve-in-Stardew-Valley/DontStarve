@@ -158,14 +158,16 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
     internal IReadOnlyList<ShadowCreatureHarmlessProjectionInstance>
         CleanupOwnerWithSnapshot(
             string playerKey,
-            HarmlessProjectionCleanupReason reason
+            HarmlessProjectionCleanupReason reason,
+            Func<ShadowCreatureHarmlessProjectionInstance, bool>? shouldRemove = null
         )
     {
         var removed = new List<ShadowCreatureHarmlessProjectionInstance>();
         CleanupWhere(
             key => string.Equals(key.PlayerKey, playerKey, StringComparison.Ordinal),
             reason,
-            removed
+            removed,
+            shouldRemove
         );
         return removed.AsReadOnly();
     }
@@ -248,7 +250,8 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
     private int CleanupWhere(
         Func<OwnerContextKey, bool> predicate,
         HarmlessProjectionCleanupReason reason,
-        List<ShadowCreatureHarmlessProjectionInstance>? removed
+        List<ShadowCreatureHarmlessProjectionInstance>? removed,
+        Func<ShadowCreatureHarmlessProjectionInstance, bool>? shouldRemove = null
     )
     {
         var contextKeys = new List<OwnerContextKey>();
@@ -266,6 +269,14 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
             var correlationIds = new List<string>(instances.Keys);
             foreach (var correlationId in correlationIds)
             {
+                if (
+                    shouldRemove is not null
+                    && instances.TryGetValue(correlationId, out var candidate)
+                    && !shouldRemove(candidate)
+                )
+                {
+                    continue;
+                }
                 if (
                     TryRemoveCore(
                         contextKey,

@@ -29,7 +29,7 @@ public sealed class ShadowCreatureSfxTests
     }
 
     [Fact]
-    public void Same_or_lower_priority_is_dropped_and_higher_priority_preempts()
+    public void Same_owner_cues_do_not_preempt_each_other()
     {
         var random = new SequenceShadowCreatureSfxRandom(0);
         var lane = new ShadowCreatureSfxOwnerLane(
@@ -46,18 +46,59 @@ public sealed class ShadowCreatureSfxTests
         Assert.Equal(ShadowCreatureSfxRequestStatus.Started, lane.Request(
             ShadowCreatureSfxCue.Chase, "chase-1", ShadowCreatureSfxSpatial.AtOrigin(1f)
         ).Status);
-        Assert.Equal(ShadowCreatureSfxRequestStatus.DroppedPriority, lane.Request(
+        Assert.Equal(ShadowCreatureSfxRequestStatus.Started, lane.Request(
             ShadowCreatureSfxCue.Chase, "chase-2", ShadowCreatureSfxSpatial.AtOrigin(1f)
         ).Status);
-        Assert.Equal(ShadowCreatureSfxRequestStatus.DroppedPriority, lane.Request(
+        Assert.Equal(ShadowCreatureSfxRequestStatus.Started, lane.Request(
             ShadowCreatureSfxCue.Idle, "idle-1", ShadowCreatureSfxSpatial.AtOrigin(1f)
         ).Status);
         Assert.Equal(ShadowCreatureSfxRequestStatus.Started, lane.Request(
             ShadowCreatureSfxCue.Taunt, "taunt-1", ShadowCreatureSfxSpatial.AtOrigin(1f)
         ).Status);
         Assert.Equal(ShadowCreatureSfxCue.Taunt, lane.CurrentCue);
-        Assert.Equal(1, lane.PhysicalInstanceCount);
-        Assert.Equal(1, ((FakeInstance)lane.CreatedInstances[0]).StopCount);
+        Assert.Equal(4, lane.PhysicalInstanceCount);
+        Assert.All(
+            lane.CreatedInstances,
+            instance => Assert.Equal(0, ((FakeInstance)instance).StopCount)
+        );
+    }
+
+    [Fact]
+    public void Same_owner_requests_play_concurrently_without_preempting_previous_voices()
+    {
+        var lane = new ShadowCreatureSfxOwnerLane(
+            new ShadowCreatureSfxOwnerKey("session", "concurrent"),
+            ShadowCreatureSpecies.CreeperFear,
+            Pools(
+                ShadowCreatureSfxCue.Taunt, 1,
+                ShadowCreatureSfxCue.HurtDull, 1
+            ),
+            new SequenceShadowCreatureSfxRandom(0)
+        );
+
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+        var taunt = lane.Request(ShadowCreatureSfxCue.Taunt, "taunt-1", spatial);
+        var firstAttack = lane.Request(
+            ShadowCreatureSfxCue.HurtDull,
+            "attack-1",
+            spatial
+        );
+        var secondAttack = lane.Request(
+            ShadowCreatureSfxCue.HurtDull,
+            "attack-2",
+            spatial
+        );
+
+        Assert.Equal(ShadowCreatureSfxRequestStatus.Started, taunt.Status);
+        Assert.Equal(ShadowCreatureSfxRequestStatus.Started, firstAttack.Status);
+        Assert.Equal(ShadowCreatureSfxRequestStatus.Started, secondAttack.Status);
+        Assert.Equal(3, lane.PhysicalInstanceCount);
+        Assert.NotSame(lane.CreatedInstances[0], lane.CreatedInstances[1]);
+        Assert.NotSame(lane.CreatedInstances[1], lane.CreatedInstances[2]);
+        Assert.All(
+            lane.CreatedInstances,
+            instance => Assert.Equal(0, ((FakeInstance)instance).StopCount)
+        );
     }
 
     [Fact]
@@ -86,19 +127,69 @@ public sealed class ShadowCreatureSfxTests
         Assert.Equal(ShadowCreatureSfxRequestStatus.DroppedDuplicate, duplicate.Status);
     }
 
+    [Fact]
+    public void Creeper_attack_always_uses_the_attack_cue()
+    {
+        Assert.Equal(
+            ShadowCreatureSfxCue.Attack,
+            ShadowCreatureSfxPolicy.SelectAttackCue(ShadowCreatureSpecies.CreeperFear)
+        );
+    }
+
+    [Fact]
+    public void Creeper_hurt_selection_is_sharp_only_for_swords_and_daggers()
+    {
+        Assert.Equal(
+            ShadowCreatureSfxCue.HurtSharp,
+            ShadowCreatureSfxPolicy.SelectHurtCue(
+                ShadowCreatureSpecies.CreeperFear,
+                ShadowCreatureSfxHitSource.Sword
+            )
+        );
+        Assert.Equal(
+            ShadowCreatureSfxCue.HurtSharp,
+            ShadowCreatureSfxPolicy.SelectHurtCue(
+                ShadowCreatureSpecies.CreeperFear,
+                ShadowCreatureSfxHitSource.Dagger
+            )
+        );
+        Assert.Equal(
+            ShadowCreatureSfxCue.HurtDull,
+            ShadowCreatureSfxPolicy.SelectHurtCue(
+                ShadowCreatureSpecies.CreeperFear,
+                ShadowCreatureSfxHitSource.Other
+            )
+        );
+        Assert.Equal(
+            ShadowCreatureSfxCue.Hurt,
+            ShadowCreatureSfxPolicy.SelectHurtCue(
+                ShadowCreatureSpecies.Terrorbeak,
+                ShadowCreatureSfxHitSource.Sword
+            )
+        );
+    }
+
     [Theory]
-    [InlineData(0.5, 3)]
-    [InlineData(0.499999, 4)]
-    public void Creeper_attack_variant_uses_the_frozen_half_health_boundary(
-        double healthRatio,
+    [InlineData(true, false, 3, 1)]
+    [InlineData(true, false, 0, 1)]
+    [InlineData(true, false, 1, 2)]
+    [InlineData(true, false, 2, 0)]
+    [InlineData(true, true, 3, 0)]
+    [InlineData(false, false, 3, 0)]
+    [InlineData(true, false, null, 0)]
+    public void Hit_source_classifier_maps_only_stardew_swords_and_daggers(
+        bool isMeleeWeapon,
+        bool isScythe,
+        int? weaponType,
         int expectedRaw
     )
     {
         Assert.Equal(
-            (ShadowCreatureSfxCue)expectedRaw,
-            ShadowCreatureSfxPolicy.SelectAttackCue(
-                ShadowCreatureSpecies.CreeperFear,
-                healthRatio
+            (ShadowCreatureSfxHitSource)expectedRaw,
+            ShadowCreatureSfxHitSourceClassifier.From(
+                isMeleeWeapon,
+                isScythe,
+                weaponType
             )
         );
     }
@@ -108,13 +199,10 @@ public sealed class ShadowCreatureSfxTests
     {
         Assert.Equal(
             ShadowCreatureSfxCue.Attack,
-            ShadowCreatureSfxPolicy.SelectAttackCue(
-                ShadowCreatureSpecies.Terrorbeak,
-                0.01d
-            )
+            ShadowCreatureSfxPolicy.SelectAttackCue(ShadowCreatureSpecies.Terrorbeak)
         );
         Assert.False(ShadowCreatureSfxPolicy.IsCueAllowedForHarmlessProjection(
-            ShadowCreatureSfxCue.AttackSharp
+            ShadowCreatureSfxCue.HurtSharp
         ));
     }
 
@@ -125,15 +213,119 @@ public sealed class ShadowCreatureSfxTests
         var cadence = new ShadowCreatureSfxCadence(ShadowCreatureSpecies.CreeperFear, random);
 
         cadence.Enter(ShadowCreatureSfxCadenceState.Chase, 100d, 7);
-        Assert.Equal(100.25d, cadence.NextDueAtSeconds, 6);
-        Assert.True(cadence.IsDue(100.25d));
+        Assert.Equal(100.5d, cadence.NextDueAtSeconds, 6);
+        Assert.True(cadence.IsDue(100.5d));
         cadence.DeferBecauseVoiceBusy();
-        Assert.Equal(100.25d, cadence.NextDueAtSeconds, 6);
-        cadence.MarkStarted(100.25d);
-        Assert.Equal(107.25d, cadence.NextDueAtSeconds, 6);
+        Assert.Equal(100.5d, cadence.NextDueAtSeconds, 6);
+        cadence.MarkStarted(100.5d);
+        Assert.Equal(114.5d, cadence.NextDueAtSeconds, 6);
 
         cadence.Enter(ShadowCreatureSfxCadenceState.Idle, 200d, 8);
         Assert.Equal(203.2d, cadence.NextDueAtSeconds, 6);
+    }
+
+    [Fact]
+    public void Terrorbeak_chase_cadence_uses_the_doubled_ranges()
+    {
+        var cadence = new ShadowCreatureSfxCadence(
+            ShadowCreatureSpecies.Terrorbeak,
+            new SequenceShadowCreatureSfxRandom(0d, 1d)
+        );
+
+        cadence.Enter(ShadowCreatureSfxCadenceState.Chase, 100d, 7);
+        Assert.Equal(100.5d, cadence.NextDueAtSeconds, 6);
+        cadence.MarkStarted(100.5d);
+        Assert.Equal(117.5d, cadence.NextDueAtSeconds, 6);
+    }
+
+    [Theory]
+    [InlineData(0, 1.8d, 6d)]
+    [InlineData(1, 2d, 8d)]
+    public void Focus_loss_finishes_existing_voice_and_resumes_the_pending_cadence(
+        int speciesRaw,
+        double initialDelay,
+        double subsequentDelay
+    )
+    {
+        var species = (ShadowCreatureSpecies)speciesRaw;
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            AllPools,
+            new SequenceShadowCreatureSfxRandom(0d, 0d, 0d, 0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "focus-" + species);
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.ObserveHarmless(new ShadowCreatureSfxHarmlessObservation(
+            owner,
+            species,
+            ShadowCreatureSfxProjectionState.Idle,
+            spatial,
+            0d,
+            1
+        ));
+        coordinator.Tick(initialDelay, 1f);
+
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        var first = Assert.IsType<FakeInstance>(Assert.Single(lane.CreatedInstances));
+        var pauseAt = initialDelay + 0.5d;
+        var resumeAt = pauseAt + 30d;
+        var resumedDue = initialDelay + subsequentDelay + 30d;
+        var finishAt = pauseAt + 1d;
+
+        coordinator.SetNewSoundsAllowed(false, pauseAt);
+        coordinator.Tick(resumeAt, 1f);
+
+        Assert.Single(lane.CreatedInstances);
+        Assert.Equal(1, first.PlayCount);
+        Assert.Equal(0, first.StopCount);
+
+        // A naturally completed voice is reaped without being force-stopped while focus is lost.
+        first.State = ShadowCreatureSfxPlaybackState.Stopped;
+        coordinator.Tick(finishAt, 1f);
+        Assert.Equal(0, first.StopCount);
+        Assert.Equal(1, first.DisposeCount);
+
+        coordinator.SetNewSoundsAllowed(true, resumeAt);
+        coordinator.Tick(resumeAt, 1f);
+        Assert.Single(lane.CreatedInstances);
+
+        // The original remaining cadence delay is preserved across the focus gap.
+        coordinator.Tick(resumedDue, 1f);
+        Assert.Equal(2, lane.CreatedInstances.Count);
+        Assert.Equal(ShadowCreatureSfxCue.Idle, lane.CurrentCue);
+    }
+
+    [Fact]
+    public void Focus_loss_blocks_new_event_voice_requests()
+    {
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            AllPools,
+            new SequenceShadowCreatureSfxRandom(0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "focus-event");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.SetNewSoundsAllowed(false, 0d);
+        coordinator.NotifyHostileHit(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            1,
+            lethal: false
+        );
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Taunt,
+            spatial,
+            0d,
+            1d,
+            string.Empty,
+            2
+        ));
+
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        Assert.Empty(lane.CreatedInstances);
     }
 
     [Theory]
@@ -312,6 +504,291 @@ public sealed class ShadowCreatureSfxTests
     }
 
     [Fact]
+    public void Coordinator_reports_each_successfully_started_event_voice()
+    {
+        var started = new List<ShadowCreatureSfxPlaybackStarted>();
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0),
+            playbackStarted: started.Add
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "started-events");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Taunt,
+            spatial,
+            0d,
+            1d,
+            string.Empty,
+            1
+        ));
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Attack,
+            spatial,
+            0.1d,
+            0.49d,
+            "attack-1",
+            2
+        ));
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Attack,
+            spatial,
+            0.2d,
+            0.49d,
+            "attack-2",
+            3
+        ));
+
+        Assert.Equal(3, started.Count);
+        Assert.Equal(ShadowCreatureSfxCue.Taunt, started[0].Cue);
+        Assert.Equal(ShadowCreatureSfxCue.Attack, started[1].Cue);
+        Assert.Equal(ShadowCreatureSfxCue.Attack, started[2].Cue);
+        Assert.All(started, playback =>
+        {
+            Assert.Equal(owner, playback.Owner);
+            Assert.Equal(ShadowCreatureSpecies.CreeperFear, playback.Species);
+            Assert.Equal(spatial, playback.Spatial);
+        });
+        Assert.NotEqual(started[1].DeduplicationKey, started[2].DeduplicationKey);
+    }
+
+    [Fact]
+    public void Coordinator_selects_hurt_cue_from_the_pure_hit_source_contract()
+    {
+        var started = new List<ShadowCreatureSfxPlaybackStarted>();
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0),
+            playbackStarted: started.Add
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "hit-source");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.NotifyHostileHit(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            1,
+            false,
+            ShadowCreatureSfxHitSource.Sword
+        );
+        coordinator.NotifyHostileHit(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            2,
+            false,
+            ShadowCreatureSfxHitSource.Other
+        );
+
+        Assert.Equal(
+            new[] { ShadowCreatureSfxCue.HurtSharp, ShadowCreatureSfxCue.HurtDull },
+            started.Select(playback => playback.Cue)
+        );
+    }
+
+    [Fact]
+    public void Coordinator_deduplicates_repeated_nonlethal_hit_revision()
+    {
+        var started = new List<ShadowCreatureSfxPlaybackStarted>();
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d),
+            playbackStarted: started.Add
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "hit-revision");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.NotifyHostileHit(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            42,
+            false,
+            ShadowCreatureSfxHitSource.Sword
+        );
+        coordinator.NotifyHostileHit(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            42,
+            false,
+            ShadowCreatureSfxHitSource.Sword
+        );
+
+        Assert.Single(started);
+        Assert.Equal(ShadowCreatureSfxCue.HurtSharp, started[0].Cue);
+    }
+
+    [Fact]
+    public void Coordinator_retains_started_death_after_normal_owner_removal_until_natural_stop()
+    {
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "death-retain");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.NotifyConfirmedDeath(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            7
+        );
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        var death = Assert.Single(lane.CreatedInstances);
+        var instance = Assert.IsType<FakeInstance>(death);
+
+        coordinator.RemoveOwner(owner);
+
+        Assert.Null(coordinator.GetLane(owner));
+        Assert.Equal(0, instance.StopCount);
+        Assert.Equal(0, instance.DisposeCount);
+
+        instance.State = ShadowCreatureSfxPlaybackState.Stopped;
+        coordinator.Tick(1d, 1f);
+
+        Assert.Equal(0, instance.StopCount);
+        Assert.Equal(1, instance.DisposeCount);
+    }
+
+    [Fact]
+    public void Coordinator_force_removal_stops_and_disposes_retained_death()
+    {
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "death-force");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.NotifyConfirmedDeath(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            8
+        );
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        var instance = Assert.IsType<FakeInstance>(Assert.Single(lane.CreatedInstances));
+
+        coordinator.ForceRemoveOwner(owner);
+
+        Assert.Null(coordinator.GetLane(owner));
+        Assert.Equal(1, instance.StopCount);
+        Assert.Equal(1, instance.DisposeCount);
+    }
+
+    [Fact]
+    public void Coordinator_force_remove_all_cleans_detached_death_voices()
+    {
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "death-all");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.NotifyConfirmedDeath(
+            owner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            9
+        );
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        var instance = Assert.IsType<FakeInstance>(Assert.Single(lane.CreatedInstances));
+        coordinator.RemoveOwner(owner);
+
+        coordinator.ForceRemoveAll();
+
+        Assert.Equal(1, instance.StopCount);
+        Assert.Equal(1, instance.DisposeCount);
+    }
+
+    [Fact]
+    public void Chase_is_blocked_by_the_same_owners_non_chase_voice_only()
+    {
+        var started = new List<ShadowCreatureSfxPlaybackStarted>();
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d),
+            playbackStarted: started.Add
+        );
+        var busyOwner = new ShadowCreatureSfxOwnerKey("session", "busy");
+        var freeOwner = new ShadowCreatureSfxOwnerKey("session", "free");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            busyOwner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Taunt,
+            spatial,
+            0d,
+            1d,
+            string.Empty,
+            1
+        ));
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            busyOwner,
+            ShadowCreatureSpecies.CreeperFear,
+            ShadowCreatureSfxObservedState.Chase,
+            spatial,
+            0.5d,
+            1d,
+            string.Empty,
+            2
+        ));
+        coordinator.NotifyHostileHit(
+            busyOwner,
+            ShadowCreatureSpecies.CreeperFear,
+            spatial,
+            3,
+            false,
+            ShadowCreatureSfxHitSource.Other
+        );
+
+        coordinator.ObserveHostile(new ShadowCreatureSfxHostileObservation(
+            freeOwner,
+            ShadowCreatureSpecies.Terrorbeak,
+            ShadowCreatureSfxObservedState.Chase,
+            spatial,
+            0d,
+            1d,
+            string.Empty,
+            1
+        ));
+        coordinator.Tick(0.5d, 1f);
+
+        Assert.Equal(
+            new[] { ShadowCreatureSfxCue.Taunt, ShadowCreatureSfxCue.HurtDull },
+            started.Where(playback => playback.Owner == busyOwner).Select(playback => playback.Cue)
+        );
+        Assert.Contains(
+            started,
+            playback => playback.Owner == freeOwner
+                && playback.Cue == ShadowCreatureSfxCue.Chase
+        );
+
+        var busyLane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(busyOwner));
+        foreach (var instance in busyLane.CreatedInstances)
+            ((FakeInstance)instance).State = ShadowCreatureSfxPlaybackState.Stopped;
+        coordinator.Tick(1d, 1f);
+
+        Assert.Contains(
+            started,
+            playback => playback.Owner == busyOwner
+                && playback.Cue == ShadowCreatureSfxCue.Chase
+        );
+    }
+
+    [Fact]
     public void Coordinator_ignores_observations_from_an_older_revision()
     {
         var coordinator = new ShadowCreatureSfxCoordinator(
@@ -373,7 +850,7 @@ public sealed class ShadowCreatureSfxTests
     }
 
     [Fact]
-    public void Coordinator_maps_harmless_states_and_cleanup_stops_the_owner()
+    public void Coordinator_maps_harmless_states_and_projection_removal_detaches_voices()
     {
         var coordinator = new ShadowCreatureSfxCoordinator(
             species => AllPools(species),
@@ -413,9 +890,54 @@ public sealed class ShadowCreatureSfxTests
         Assert.Contains(lane.CreatedInstances, instance => ((FakeInstance)instance).PlayCount > 0);
         Assert.All(lane.CreatedInstances, instance => Assert.True(((FakeInstance)instance).IsLooped == false));
 
-        coordinator.RemoveOwner(owner);
+        coordinator.RemoveProjectionOwner(owner);
         Assert.Null(coordinator.GetLane(owner));
-        Assert.All(lane.CreatedInstances, instance => Assert.True(((FakeInstance)instance).StopCount > 0));
+        Assert.All(lane.CreatedInstances, instance =>
+        {
+            var fake = Assert.IsType<FakeInstance>(instance);
+            Assert.Equal(0, fake.StopCount);
+            Assert.Equal(0, fake.DisposeCount);
+            fake.State = ShadowCreatureSfxPlaybackState.Stopped;
+        });
+
+        coordinator.Tick(5d, 1f);
+
+        Assert.All(lane.CreatedInstances, instance =>
+        {
+            var fake = Assert.IsType<FakeInstance>(instance);
+            Assert.Equal(0, fake.StopCount);
+            Assert.Equal(1, fake.DisposeCount);
+        });
+    }
+
+    [Fact]
+    public void Coordinator_force_removes_projection_voices_immediately()
+    {
+        var coordinator = new ShadowCreatureSfxCoordinator(
+            species => AllPools(species),
+            new SequenceShadowCreatureSfxRandom(0d)
+        );
+        var owner = new ShadowCreatureSfxOwnerKey("session", "projection-force");
+        var spatial = ShadowCreatureSfxSpatial.AtOrigin(1f);
+
+        coordinator.ObserveHarmless(new ShadowCreatureSfxHarmlessObservation(
+            owner,
+            ShadowCreatureSpecies.Terrorbeak,
+            ShadowCreatureSfxProjectionState.Idle,
+            spatial,
+            0d,
+            1
+        ));
+        coordinator.Tick(3d, 1f);
+
+        var lane = Assert.IsType<ShadowCreatureSfxOwnerLane>(coordinator.GetLane(owner));
+        var instance = Assert.IsType<FakeInstance>(Assert.Single(lane.CreatedInstances));
+
+        coordinator.ForceRemoveOwner(owner);
+
+        Assert.Null(coordinator.GetLane(owner));
+        Assert.Equal(1, instance.StopCount);
+        Assert.Equal(1, instance.DisposeCount);
     }
 
     [Theory]
@@ -490,8 +1012,7 @@ public sealed class ShadowCreatureSfxTests
     {
         internal FakeEffect(string id) => ResourceId = id;
         public string ResourceId { get; }
-        public FakeInstance Instance { get; } = new();
-        public IShadowCreatureSfxInstance CreateInstance() => Instance;
+        public IShadowCreatureSfxInstance CreateInstance() => new FakeInstance();
     }
 
     private sealed class RecordingShadowCreatureSfxDiagnostics : IShadowCreatureSfxDiagnostics
@@ -511,9 +1032,10 @@ public sealed class ShadowCreatureSfxTests
         public float Pan { get; set; }
         public int StopCount { get; private set; }
         public int PlayCount { get; private set; }
+        public int DisposeCount { get; private set; }
         public bool IsLooped { get; set; }
         public void Play() { PlayCount++; State = ShadowCreatureSfxPlaybackState.Playing; }
         public void Stop() { StopCount++; State = ShadowCreatureSfxPlaybackState.Stopped; }
-        public void Dispose() { }
+        public void Dispose() { DisposeCount++; }
     }
 }

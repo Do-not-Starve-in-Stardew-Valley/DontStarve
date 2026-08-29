@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using DontStarve.Display;
 using DontStarve.Interface;
 using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
@@ -27,6 +29,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
     private readonly EnvironmentLightService lightService;
     private readonly SanitySmapiResourceService resources;
     private readonly SanitySmapiAudioService audio;
+    private readonly TaggedHudMessageService hudMessages;
     private readonly IDarknessDamageModeResolver modeResolver;
     private readonly IEnvironmentLightRemoteEvidenceSource? remoteEvidenceSource;
     private readonly IEnvironmentLightRemotePresentationSink? remotePresentationSink;
@@ -40,6 +43,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         remoteOwners = new();
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private DarknessAttackStateMachine? stateMachine;
+    private double attackDurationSeconds;
     private bool metadataRefreshPending;
     private bool disposed;
 
@@ -51,6 +55,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         EnvironmentLightService lightService,
         SanitySmapiResourceService resources,
         SanitySmapiAudioService audio,
+        TaggedHudMessageService hudMessages,
         IDarknessDamageModeResolver modeResolver,
         IEnvironmentLightRemoteEvidenceSource? remoteEvidenceSource = null,
         IEnvironmentLightRemotePresentationSink? remotePresentationSink = null
@@ -63,6 +68,8 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         this.lightService = lightService ?? throw new ArgumentNullException(nameof(lightService));
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
         this.audio = audio ?? throw new ArgumentNullException(nameof(audio));
+        this.hudMessages = hudMessages
+            ?? throw new ArgumentNullException(nameof(hudMessages));
         this.modeResolver = modeResolver
             ?? throw new ArgumentNullException(nameof(modeResolver));
         this.remoteEvidenceSource = remoteEvidenceSource;
@@ -630,7 +637,12 @@ internal sealed class SmapiDarknessAttackService : IDisposable
                 result.WarningClaimAction,
                 result.WarningRequestId,
                 observation.Revision,
-                result.Reason
+                result.Reason,
+                result.WarningClipId,
+                result.WarningDurationSeconds,
+                result.Prompt == DarknessAttackPromptKind.Warning
+                    ? result.WarningDurationSeconds
+                    : 0d
             );
         }
         else
@@ -644,7 +656,9 @@ internal sealed class SmapiDarknessAttackService : IDisposable
                             observation.Key.ScreenId,
                             observation.Key.SessionId,
                             result.WarningRequestId,
-                            observation.Revision
+                            observation.Revision,
+                            result.WarningClipId,
+                            result.WarningDurationSeconds
                         )
                     );
                     break;
@@ -657,7 +671,13 @@ internal sealed class SmapiDarknessAttackService : IDisposable
                     );
                     break;
             }
-            ShowPrompt(result.Prompt);
+            ShowPrompt(
+                result.Prompt,
+                resolved: false,
+                durationSeconds: result.Prompt == DarknessAttackPromptKind.Warning
+                    ? result.WarningDurationSeconds
+                    : 0d
+            );
         }
 
         if (result.ExpiryIntent is not { } intent)
@@ -940,28 +960,59 @@ internal sealed class SmapiDarknessAttackService : IDisposable
     private void TryRefreshStateMachine()
     {
         metadataRefreshPending = false;
-        var result = resources.GetAudioCueMetadata(DarknessAttackContract.WarningCueId);
-        var cue = result.Cue;
+        var warningResult = resources.GetAudioCueMetadata(DarknessAttackContract.WarningCueId);
+        var warningCue = warningResult.Cue;
+        var attackResult = resources.GetAudioCueMetadata(DarknessAttackContract.AttackCueId);
+        var attackCue = attackResult.Cue;
         if (
-            !result.Success
-            || cue is null
+            !warningResult.Success
+            || warningCue is null
             || !string.Equals(
-                cue.CueId,
+                warningCue.CueId,
                 DarknessAttackContract.WarningCueId,
                 StringComparison.Ordinal
             )
-            || !cue.Enabled
-            || !string.Equals(cue.PlaybackMode, WarningPlaybackMode, StringComparison.Ordinal)
-            || cue.Clips.Count != 1
-            || !double.IsFinite(cue.Clips[0].DurationSeconds)
-            || cue.Clips[0].DurationSeconds <= 0d
+            || !warningCue.Enabled
+            || !string.Equals(warningCue.PlaybackMode, WarningPlaybackMode, StringComparison.Ordinal)
+            || warningCue.Clips.Count != DarknessAttackContract.WarningClipCount
+            || warningCue.Clips.Any(
+                clip =>
+                    string.IsNullOrWhiteSpace(clip.ClipId)
+                    || !double.IsFinite(clip.DurationSeconds)
+                    || clip.DurationSeconds <= 0d
+            )
+            || !attackResult.Success
+            || attackCue is null
+            || !string.Equals(
+                attackCue.CueId,
+                DarknessAttackContract.AttackCueId,
+                StringComparison.Ordinal
+            )
+            || !attackCue.Enabled
+            || !string.Equals(attackCue.PlaybackMode, "OneShot", StringComparison.Ordinal)
+            || attackCue.Clips.Count != 1
+            || !double.IsFinite(attackCue.Clips[0].DurationSeconds)
+            || attackCue.Clips[0].DurationSeconds <= 0d
         )
         {
+            var failedResult = !warningResult.Success || warningCue is null
+                ? warningResult
+                : attackResult;
             LogFailureOnce(
-                result.Diagnostic.Code,
-                $"Darkness countdown is unavailable because warning cue metadata failed closed (code={result.Diagnostic.Code}, reason={result.Diagnostic.Reason})."
+                failedResult.Diagnostic.Code,
+                $"Darkness countdown is unavailable because event audio metadata failed closed (code={failedResult.Diagnostic.Code}, reason={failedResult.Diagnostic.Reason})."
             );
             return;
+        }
+
+        var warningClips = new DarknessWarningClip[warningCue.Clips.Count];
+        for (var index = 0; index < warningCue.Clips.Count; index++)
+        {
+            var clip = warningCue.Clips[index];
+            warningClips[index] = new DarknessWarningClip(
+                clip.ClipId,
+                clip.DurationSeconds
+            );
         }
 
         stateMachine?.Dispose();
@@ -969,10 +1020,11 @@ internal sealed class SmapiDarknessAttackService : IDisposable
             clock,
             random,
             requestIds,
-            cue.Clips[0].DurationSeconds
+            warningClips
         );
+        attackDurationSeconds = attackCue.Clips[0].DurationSeconds;
         monitor.Log(
-            $"Darkness countdown metadata available (cue={cue.CueId}, warning-lead={cue.Clips[0].DurationSeconds:0.###}s, placeholder={result.Diagnostic.IsPlaceholder}, contract={DarknessAttackContract.ContractVersion}).",
+            $"Darkness attack metadata available (warning-cue={warningCue.CueId}, warning-clips={warningCue.Clips.Count}, attack-cue={attackCue.CueId}, attack-duration={attackDurationSeconds:0.###}s, placeholder={warningResult.Diagnostic.IsPlaceholder || attackResult.Diagnostic.IsPlaceholder}, contract={DarknessAttackContract.ContractVersion}).",
             LogLevel.Debug
         );
     }
@@ -989,19 +1041,24 @@ internal sealed class SmapiDarknessAttackService : IDisposable
                 DarknessWarningClaimAction.None,
                 string.Empty,
                 Math.Max(0L, Game1.ticks),
-                "darkness.resolution.settled"
+                "darkness.resolution.settled",
+                presentationDurationSeconds: attackDurationSeconds
             );
             return;
         }
-        ShowPrompt(DarknessAttackPromptKind.None, resolved: true);
+        audio.TriggerDarknessAttack();
+        ShowPrompt(
+            DarknessAttackPromptKind.None,
+            resolved: true,
+            durationSeconds: attackDurationSeconds
+        );
     }
 
-    private void ShowPrompt(DarknessAttackPromptKind prompt)
-    {
-        ShowPrompt(prompt, resolved: false);
-    }
-
-    private void ShowPrompt(DarknessAttackPromptKind prompt, bool resolved)
+    private void ShowPrompt(
+        DarknessAttackPromptKind prompt,
+        bool resolved = false,
+        double durationSeconds = 0d
+    )
     {
         var key = resolved
             ? "darkness-attack.prompt.resolved"
@@ -1014,8 +1071,10 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         };
         if (string.IsNullOrEmpty(key))
             return;
-        Game1.addHUDMessage(
-            HUDMessage.ForCornerTextbox(helper.Translation.Get(key).ToString())
+        hudMessages.AddCornerTextbox(
+            helper.Translation.Get(key).ToString(),
+            HudMessageGroupTags.DarknessAttack,
+            durationSeconds
         );
     }
 

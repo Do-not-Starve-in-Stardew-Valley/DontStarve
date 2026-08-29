@@ -16,7 +16,7 @@ internal sealed class DarknessAttackStateMachine : IDisposable
     private readonly IDarknessAttackRandom random;
     private readonly IDarknessAttackRequestIdSource requestIds;
     private readonly Dictionary<DarknessAttackOwnerKey, OwnerState> owners = new();
-    private readonly double warningLeadSeconds;
+    private readonly IReadOnlyList<DarknessWarningClip> warningClips;
     private bool disposed;
 
     internal DarknessAttackStateMachine(
@@ -25,19 +25,58 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         IDarknessAttackRequestIdSource requestIds,
         double warningLeadSeconds
     )
+        : this(
+            clock,
+            random,
+            requestIds,
+            new[]
+            {
+                new DarknessWarningClip(
+                    "sanity.clip.darkness.warning",
+                    warningLeadSeconds
+                ),
+            }
+        )
+    {
+    }
+
+    internal DarknessAttackStateMachine(
+        IDarknessAttackClock clock,
+        IDarknessAttackRandom random,
+        IDarknessAttackRequestIdSource requestIds,
+        IReadOnlyList<DarknessWarningClip> warningClips
+    )
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
         this.random = random ?? throw new ArgumentNullException(nameof(random));
         this.requestIds = requestIds
             ?? throw new ArgumentNullException(nameof(requestIds));
-        if (!double.IsFinite(warningLeadSeconds) || warningLeadSeconds <= 0d)
+        if (warningClips is null || warningClips.Count == 0)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(warningLeadSeconds),
-                "Warning lead time must come from a positive finite cue duration."
+                nameof(warningClips),
+                "At least one warning clip with a positive duration is required."
             );
         }
-        this.warningLeadSeconds = warningLeadSeconds;
+        var copiedClips = new DarknessWarningClip[warningClips.Count];
+        for (var index = 0; index < warningClips.Count; index++)
+        {
+            var clip = warningClips[index];
+            if (
+                string.IsNullOrWhiteSpace(clip.ClipId)
+                || clip.ClipId.Length > 256
+                || !double.IsFinite(clip.DurationSeconds)
+                || clip.DurationSeconds <= 0d
+            )
+            {
+                throw new ArgumentException(
+                    "Every warning clip must have a bounded ID and positive finite duration.",
+                    nameof(warningClips)
+                );
+            }
+            copiedClips[index] = clip;
+        }
+        this.warningClips = Array.AsReadOnly(copiedClips);
     }
 
     internal DarknessAttackUpdateResult Observe(DarknessAttackObservation observation)
@@ -128,7 +167,7 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         var prompt = DarknessAttackPromptKind.None;
         if (
             state.State == DarknessAttackOwnerState.Countdown
-            && state.RemainingSeconds <= warningLeadSeconds
+            && state.RemainingSeconds <= state.WarningDurationSeconds
         )
         {
             state.State = DarknessAttackOwnerState.Warned;
@@ -160,7 +199,13 @@ internal sealed class DarknessAttackStateMachine : IDisposable
             warningAction == DarknessWarningClaimAction.Activate
                 ? state.RequestId
                 : string.Empty,
-            intent
+            intent,
+            warningAction == DarknessWarningClaimAction.Activate
+                ? state.WarningClipId
+                : string.Empty,
+            warningAction == DarknessWarningClaimAction.Activate
+                ? state.WarningDurationSeconds
+                : 0d
         );
     }
 
@@ -292,7 +337,7 @@ internal sealed class DarknessAttackStateMachine : IDisposable
     {
         if (!disposed && owners.TryGetValue(key, out var state))
         {
-            snapshot = state.CreateSnapshot(warningLeadSeconds);
+            snapshot = state.CreateSnapshot();
             return true;
         }
         snapshot = null!;
@@ -337,6 +382,26 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         if (sampled < minimum || sampled > maximum)
             return Result(DarknessAttackMutationStatus.Invalid, "darkness.rng.out-of-range");
 
+        DarknessWarningClip warningClip;
+        try
+        {
+            var clipIndex = warningClips.Count == 1
+                ? 0
+                : random.NextInclusive(0, warningClips.Count - 1);
+            if (clipIndex < 0 || clipIndex >= warningClips.Count)
+            {
+                return Result(
+                    DarknessAttackMutationStatus.Invalid,
+                    "darkness.warning-rng.out-of-range"
+                );
+            }
+            warningClip = warningClips[clipIndex];
+        }
+        catch (Exception)
+        {
+            return Result(DarknessAttackMutationStatus.Invalid, "darkness.warning-rng.failed");
+        }
+
         string requestId;
         try
         {
@@ -361,6 +426,8 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         state.RemainingSeconds = sampled;
         state.SampledSeconds = sampled;
         state.RngBranch = initial ? "initial-inclusive-5-10" : "repeat-inclusive-5-11";
+        state.WarningClipId = warningClip.ClipId;
+        state.WarningDurationSeconds = warningClip.DurationSeconds;
         state.RequestId = requestId;
         state.WarningClaimActive = false;
         state.CancelReason = string.Empty;
@@ -390,6 +457,8 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         state.State = DarknessAttackOwnerState.Inactive;
         state.RemainingSeconds = 0d;
         state.WarningClaimActive = false;
+        state.WarningClipId = string.Empty;
+        state.WarningDurationSeconds = 0d;
         state.RequestId = string.Empty;
         state.CancelReason = string.IsNullOrWhiteSpace(reason)
             ? "darkness.state.cancelled"
@@ -474,6 +543,10 @@ internal sealed class DarknessAttackStateMachine : IDisposable
 
         internal bool WarningClaimActive { get; set; }
 
+        internal string WarningClipId { get; set; } = string.Empty;
+
+        internal double WarningDurationSeconds { get; set; }
+
         internal string RequestId { get; set; } = string.Empty;
 
         internal int SampledSeconds { get; set; }
@@ -482,7 +555,7 @@ internal sealed class DarknessAttackStateMachine : IDisposable
 
         internal string CancelReason { get; set; } = string.Empty;
 
-        internal DarknessAttackStateSnapshot CreateSnapshot(double warningLeadSeconds)
+        internal DarknessAttackStateSnapshot CreateSnapshot()
         {
             return new DarknessAttackStateSnapshot(
                 Key,
@@ -492,12 +565,14 @@ internal sealed class DarknessAttackStateMachine : IDisposable
                 EvidenceStatus,
                 LightReason,
                 RemainingSeconds,
-                warningLeadSeconds,
+                WarningDurationSeconds,
                 WarningClaimActive,
                 RequestId,
                 SampledSeconds,
                 RngBranch,
-                CancelReason
+                CancelReason,
+                WarningClipId,
+                WarningDurationSeconds
             );
         }
     }

@@ -11,8 +11,8 @@ internal static class ShadowCreatureSfxPolicy
     {
         ShadowCreatureSfxCue.Death => 6,
         ShadowCreatureSfxCue.Hurt => 5,
-        ShadowCreatureSfxCue.AttackDull => 4,
-        ShadowCreatureSfxCue.AttackSharp => 4,
+        ShadowCreatureSfxCue.HurtDull => 5,
+        ShadowCreatureSfxCue.HurtSharp => 5,
         ShadowCreatureSfxCue.Attack => 4,
         ShadowCreatureSfxCue.Taunt => 3,
         ShadowCreatureSfxCue.Chase => 2,
@@ -20,19 +20,17 @@ internal static class ShadowCreatureSfxPolicy
         _ => 0,
     };
 
-    internal static ShadowCreatureSfxCue SelectAttackCue(
+    internal static ShadowCreatureSfxCue SelectAttackCue(ShadowCreatureSpecies species) =>
+        ShadowCreatureSfxCue.Attack;
+
+    internal static ShadowCreatureSfxCue SelectHurtCue(
         ShadowCreatureSpecies species,
-        double healthRatio
-    )
-    {
-        if (!double.IsFinite(healthRatio))
-            throw new ArgumentOutOfRangeException(nameof(healthRatio));
-        return species == ShadowCreatureSpecies.CreeperFear
-            ? healthRatio < 0.5d
-                ? ShadowCreatureSfxCue.AttackSharp
-                : ShadowCreatureSfxCue.AttackDull
-            : ShadowCreatureSfxCue.Attack;
-    }
+        ShadowCreatureSfxHitSource source
+    ) => species == ShadowCreatureSpecies.CreeperFear
+        ? source is ShadowCreatureSfxHitSource.Sword or ShadowCreatureSfxHitSource.Dagger
+            ? ShadowCreatureSfxCue.HurtSharp
+            : ShadowCreatureSfxCue.HurtDull
+        : ShadowCreatureSfxCue.Hurt;
 
     internal static bool IsCueAllowedForHarmlessProjection(ShadowCreatureSfxCue cue) =>
         cue is ShadowCreatureSfxCue.Idle or ShadowCreatureSfxCue.Chase;
@@ -43,9 +41,15 @@ internal static class ShadowCreatureSfxPolicy
     )
     {
         if (species == ShadowCreatureSpecies.CreeperFear)
-            return cue != ShadowCreatureSfxCue.Attack;
-        return cue is not ShadowCreatureSfxCue.AttackDull
-            and not ShadowCreatureSfxCue.AttackSharp;
+            return cue is ShadowCreatureSfxCue.Idle
+                or ShadowCreatureSfxCue.Chase
+                or ShadowCreatureSfxCue.Taunt
+                or ShadowCreatureSfxCue.Attack
+                or ShadowCreatureSfxCue.HurtDull
+                or ShadowCreatureSfxCue.HurtSharp
+                or ShadowCreatureSfxCue.Death;
+        return cue is not ShadowCreatureSfxCue.HurtDull
+            and not ShadowCreatureSfxCue.HurtSharp;
     }
 
     internal static string CueId(
@@ -58,8 +62,8 @@ internal static class ShadowCreatureSfxPolicy
             : "terrorbeak";
         var suffix = cue switch
         {
-            ShadowCreatureSfxCue.AttackDull => "attack-dull",
-            ShadowCreatureSfxCue.AttackSharp => "attack-sharp",
+            ShadowCreatureSfxCue.HurtDull => "hurt-dull",
+            ShadowCreatureSfxCue.HurtSharp => "hurt-sharp",
             _ => cue.ToString().ToLowerInvariant(),
         };
         return string.Concat("sanity.cue.", group, ".", suffix);
@@ -73,12 +77,12 @@ internal static class ShadowCreatureSfxPolicy
     {
         return (species, state, initial) switch
         {
-            (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Chase, true) => (0.25d, 0.75d),
-            (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Chase, false) => (5.5d, 7d),
+            (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Chase, true) => (0.5d, 1.5d),
+            (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Chase, false) => (11d, 14d),
             (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Idle, true) => (1.8d, 3.2d),
             (ShadowCreatureSpecies.CreeperFear, ShadowCreatureSfxCadenceState.Idle, false) => (6d, 8.5d),
-            (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Chase, true) => (0.25d, 0.75d),
-            (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Chase, false) => (6.5d, 8.5d),
+            (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Chase, true) => (0.5d, 1.5d),
+            (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Chase, false) => (13d, 17d),
             (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Idle, true) => (2d, 3.5d),
             (ShadowCreatureSpecies.Terrorbeak, ShadowCreatureSfxCadenceState.Idle, false) => (8d, 11d),
             _ => throw new ArgumentOutOfRangeException(nameof(state)),

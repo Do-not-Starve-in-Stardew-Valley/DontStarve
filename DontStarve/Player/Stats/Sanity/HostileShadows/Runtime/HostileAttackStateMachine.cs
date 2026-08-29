@@ -136,13 +136,34 @@ internal sealed class HostileAttackStateMachine
 
     internal HostileAttackStateMachine(
         HostileAttackRuntimeDefinition definition,
-        IHostileAttackTransitionPolicy? transitionPolicy = null
+        IHostileAttackTransitionPolicy? transitionPolicy = null,
+        string initialStateId = HostileShadowStateIds.Spawn
     )
     {
         this.definition = definition
             ?? throw new ArgumentNullException(nameof(definition));
         this.transitionPolicy = transitionPolicy
             ?? HostileAttackDeferredTransitionPolicy.Instance;
+        if (
+            !string.Equals(initialStateId, HostileShadowStateIds.Spawn, StringComparison.Ordinal)
+            && !string.Equals(initialStateId, HostileShadowStateIds.Taunt, StringComparison.Ordinal)
+        )
+        {
+            throw new ArgumentException(
+                "Only Spawn and Taunt are valid initial hostile-shadow states.",
+                nameof(initialStateId)
+            );
+        }
+
+        stateId = initialStateId;
+        // A conversion has already supplied the one-time arrival Taunt. Mark the first-chase
+        // decision consumed so an owner who is initially out of range does not receive a second
+        // Taunt later when it first enters detection range.
+        firstChaseDecisionMade = string.Equals(
+            initialStateId,
+            HostileShadowStateIds.Taunt,
+            StringComparison.Ordinal
+        );
     }
 
     internal string StateId => stateId;

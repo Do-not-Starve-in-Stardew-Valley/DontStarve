@@ -15,11 +15,40 @@ internal enum ShadowCreatureSfxCue
     Idle,
     Chase,
     Taunt,
-    AttackDull,
-    AttackSharp,
     Attack,
+    HurtDull,
+    HurtSharp,
     Hurt,
     Death,
+}
+
+/// <summary>Pure hit classification passed from the runtime bridge to the audio layer.</summary>
+internal enum ShadowCreatureSfxHitSource
+{
+    Other,
+    Sword,
+    Dagger,
+}
+
+/// <summary>Maps the small weapon fact set available at the runtime hit boundary.</summary>
+internal static class ShadowCreatureSfxHitSourceClassifier
+{
+    internal static ShadowCreatureSfxHitSource From(
+        bool isMeleeWeapon,
+        bool isScythe,
+        int? weaponType
+    )
+    {
+        if (!isMeleeWeapon || isScythe || !weaponType.HasValue)
+            return ShadowCreatureSfxHitSource.Other;
+
+        return weaponType.Value switch
+        {
+            1 => ShadowCreatureSfxHitSource.Dagger,
+            0 or 3 => ShadowCreatureSfxHitSource.Sword,
+            _ => ShadowCreatureSfxHitSource.Other,
+        };
+    }
 }
 
 internal enum ShadowCreatureSfxPlaybackState
@@ -48,6 +77,15 @@ internal readonly record struct ShadowCreatureSfxRequestResult(
         ShadowCreatureSfxRequestStatus.Started
         or ShadowCreatureSfxRequestStatus.SkippedSilent;
 }
+
+/// <summary>Emitted only after an effect instance has successfully started playback.</summary>
+internal readonly record struct ShadowCreatureSfxPlaybackStarted(
+    ShadowCreatureSfxOwnerKey Owner,
+    ShadowCreatureSpecies Species,
+    ShadowCreatureSfxCue Cue,
+    ShadowCreatureSfxSpatial Spatial,
+    string DeduplicationKey
+);
 
 internal readonly record struct ShadowCreatureSfxOwnerKey
 {

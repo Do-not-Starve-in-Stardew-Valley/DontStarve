@@ -11,6 +11,7 @@ internal enum SanityAudioLaneKind
     Whispers,
     Danger,
     DarknessWarning,
+    DarknessAttack,
 }
 
 internal enum SanityAudioPlaybackState
@@ -65,7 +66,9 @@ internal readonly record struct SanityDarknessWarningClaim(
     int ScreenId,
     string SessionId,
     string RequestId,
-    long Revision
+    long Revision,
+    string WarningClipId = "",
+    double WarningDurationSeconds = 0d
 )
 {
     internal SanityAudioClaimKey Key => new(PlayerKey, ScreenId);
@@ -174,7 +177,28 @@ internal interface ISanityProcessAudioOutput : IDisposable
 
     void SetDarknessWarningActive(bool active);
 
+    /// <summary>
+    /// Selects the host-authorized warning clip before the shared warning lane is activated. An
+    /// empty ID is the compatibility path used by older multiplayer messages.
+    /// </summary>
+    void SetDarknessWarningClip(string warningClipId) { }
+
+    /// <summary>Pauses/resumes only the warning one-shot without touching the attack one-shot.</summary>
+    void SetDarknessWarningPaused(bool paused) { }
+
+    /// <summary>
+    /// Plays the settled darkness-attack one-shot. This lane is deliberately independent from
+    /// process pause, local menus, and window focus, so the current instance can finish naturally.
+    /// </summary>
+    void TriggerDarknessAttack() { }
+
     void SetPaused(bool paused);
+
+    /// <summary>
+    /// Pauses only the low-Sanity ambience and whispers pools. Window focus uses this narrow seam so
+    /// one-shot threshold and darkness-warning lanes keep their existing lifecycle.
+    /// </summary>
+    void SetContinuousPoolsPaused(bool paused);
 
     void SetSuspended(bool suspended);
 

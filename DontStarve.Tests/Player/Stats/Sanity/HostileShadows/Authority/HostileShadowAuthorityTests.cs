@@ -71,6 +71,38 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
+    public void Projection_conversion_enters_taunt_while_standalone_spawn_enters_spawn()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.More);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        EnterDanger(fixture, OwnerB, revision: 1);
+
+        var converted = fixture.Authority.TrySpawn(
+            Conversion("conversion-taunt", OwnerA, gameMinute: 0)
+        );
+        // The ordinary interval source is governed by its owner timer; prime that timer before
+        // asserting the materialized state so this test isolates Spawn-vs-Taunt selection.
+        var intervalWait = fixture.Authority.TrySpawn(
+            Interval("interval-wait", OwnerB, gameMinute: 0)
+        );
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, intervalWait.Status);
+        var standalone = fixture.Authority.TrySpawn(
+            Interval("interval-spawn", OwnerB, gameMinute: 60)
+        );
+
+        Assert.True(converted.Spawned, converted.Reason);
+        Assert.True(standalone.Spawned, standalone.Reason);
+        Assert.True(
+            fixture.Authority.TryGetEntity(converted.EntityId!.Value, out var convertedState)
+        );
+        Assert.True(
+            fixture.Authority.TryGetEntity(standalone.EntityId!.Value, out var standaloneState)
+        );
+        Assert.Equal(HostileShadowStateIds.Taunt, convertedState!.StateId);
+        Assert.Equal(HostileShadowStateIds.Spawn, standaloneState!.StateId);
+    }
+
+    [Fact]
     public void Full_cap_pauses_without_budget_consumption_and_vacancy_fills_only_one()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
@@ -130,6 +162,69 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
+    public void Current_danger_snapshot_rehydrates_epoch_after_host_session_reset()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.More);
+        EnterDanger(fixture, OwnerA, revision: 10);
+
+        Assert.True(
+            fixture.Authority.BeginHostSession(
+                new string('b', 32),
+                systemEnabled: true,
+                out var beginReason
+            ),
+            beginReason
+        );
+        Assert.False(fixture.Authority.TryGetConversionEpochRevision(OwnerA, out _));
+
+        var beforeSynchronization = fixture.Authority.TrySpawn(
+            Conversion("conversion-before-sync", OwnerA, gameMinute: 0)
+        );
+        Assert.Equal(HostileShadowSpawnStatus.Rejected, beforeSynchronization.Status);
+
+        Assert.True(
+            fixture.Authority.SynchronizeDangerEpoch(
+                OwnerA,
+                dangerActive: true,
+                tierRevision: 10,
+                out var syncReason
+            ),
+            syncReason
+        );
+        Assert.True(
+            fixture.Authority.TryGetConversionEpochRevision(OwnerA, out var revision)
+        );
+        Assert.Equal(10, revision);
+
+        var afterSynchronization = fixture.Authority.TrySpawn(
+            Conversion("conversion-after-sync", OwnerA, gameMinute: 0)
+        );
+        Assert.True(afterSynchronization.Spawned, afterSynchronization.Reason);
+    }
+
+    [Fact]
+    public void Current_danger_snapshot_does_not_rewrite_epoch_inside_the_same_danger_interval()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.More);
+        EnterDanger(fixture, OwnerA, revision: 10);
+
+        Assert.True(
+            fixture.Authority.SynchronizeDangerEpoch(
+                OwnerA,
+                dangerActive: true,
+                tierRevision: 11,
+                out var reason
+            ),
+            reason
+        );
+
+        Assert.True(
+            fixture.Authority.TryGetConversionEpochRevision(OwnerA, out var revision)
+        );
+        Assert.Equal(10, revision);
+    }
+
+    [Fact]
     public void Duplicate_spawn_request_returns_same_identity_without_second_mutation()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.More);
@@ -143,6 +238,31 @@ public sealed class HostileShadowAuthorityTests
         Assert.Equal(HostileShadowSpawnStatus.Duplicate, duplicate.Status);
         Assert.Equal(first.EntityId, duplicate.EntityId);
         Assert.Equal(1, fixture.Authority.Revision);
+        Assert.Equal(1, fixture.Authority.Count);
+    }
+
+    [Fact]
+    public void Failed_conversion_request_can_retry_with_the_same_correlation_after_vacancy()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var first = fixture.Authority.TrySpawn(Conversion("first", OwnerA, 0));
+        Assert.True(first.Spawned, first.Reason);
+
+        var retryable = fixture.Authority.TrySpawn(Conversion("retryable", OwnerA, 0));
+        Assert.Equal(HostileShadowSpawnStatus.AtCap, retryable.Status);
+        Assert.Null(retryable.EntityId);
+
+        Assert.True(
+            fixture.Authority.CleanupEntity(
+                first.EntityId!.Value,
+                HostileShadowCleanupReasonIds.Natural
+            )
+        );
+
+        var retried = fixture.Authority.TrySpawn(Conversion("retryable", OwnerA, 1));
+        Assert.True(retried.Spawned, retried.Reason);
+        Assert.NotEqual(first.EntityId, retried.EntityId);
         Assert.Equal(1, fixture.Authority.Count);
     }
 

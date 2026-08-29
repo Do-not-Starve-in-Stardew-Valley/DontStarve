@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using DontStarve.Resource.Sanity;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -35,6 +36,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
     private readonly HashSet<int> miniJukeboxUnknownScreens = new();
     private readonly HashSet<int> islandScreens = new();
     private readonly HashSet<string> loggedDiagnostics = new(StringComparer.Ordinal);
+    private Game? focusGame;
     private bool windowInactive;
     private bool wasEventActive;
     private int eventTransitionDiagnosticsLogged;
@@ -72,6 +74,8 @@ internal sealed class SanitySmapiAudioService : IDisposable
         resources.WorldResourcesReleasing += OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
+        TryAttachWindowFocusEvents();
+        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive);
     }
 
     internal SanityProcessAudioSnapshot Snapshot() => coordinator.Snapshot();
@@ -87,6 +91,12 @@ internal sealed class SanitySmapiAudioService : IDisposable
         string requestId
     ) => coordinator.RemoveDarknessWarningClaim(playerKey, screenId, sessionId, requestId);
 
+    internal SanityAudioClaimUpdateResult SetDarknessWarningClaimPlaybackPaused(
+        string playerKey,
+        int screenId,
+        bool paused
+    ) => coordinator.SetDarknessWarningClaimPlaybackPaused(playerKey, screenId, paused);
+
     internal int RemoveDarknessWarningOwner(string playerKey) =>
         coordinator.RemoveDarknessWarningOwner(playerKey);
 
@@ -98,6 +108,11 @@ internal sealed class SanitySmapiAudioService : IDisposable
 
     internal void SetSpecialEventAudioAllowed(bool allowed) =>
         coordinator.SetSpecialEventAudioAllowed(allowed);
+
+    internal void SetDarknessWarningProcessPaused(bool paused) =>
+        coordinator.SetDarknessWarningProcessPaused(paused);
+
+    internal void TriggerDarknessAttack() => coordinator.TriggerDarknessAttack();
 
     internal SanityGameMusicSnapshot GameMusicSnapshot() =>
         gameMusicCoordinator.Snapshot();
@@ -116,6 +131,12 @@ internal sealed class SanitySmapiAudioService : IDisposable
         resources.WorldResourcesReleasing -= OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         helper.Events.GameLoop.DayEnding -= OnDayEnding;
+        if (focusGame is not null)
+        {
+            focusGame.Deactivated -= OnWindowDeactivated;
+            focusGame.Activated -= OnWindowActivated;
+            focusGame = null;
+        }
         ownersByScreen.Clear();
         initializedClaims.Clear();
         dirtyClaims.Clear();
@@ -255,6 +276,11 @@ internal sealed class SanitySmapiAudioService : IDisposable
     {
         if (disposed)
             return;
+
+        // UpdateTicked may stop while the game window is inactive. The direct window hooks do the
+        // timely transition; this attach attempt and IsActive read remain a recovery fallback for
+        // game-instance/window creation or replacement.
+        TryAttachWindowFocusEvents();
 
         // EventCoverageChanged is the normal exit path. This CurrentEvent edge is a fallback for
         // abnormal disappearances: resume the retained claim and wait for a base-tier refresh.
@@ -436,23 +462,24 @@ internal sealed class SanitySmapiAudioService : IDisposable
             screenId,
             Game1.activeClickableMenu is not null
         );
+        // Game1.paused/dialogue are process-wide gates. A clickable menu is additionally tracked
+        // per screen so split-screen menu entry pauses only the warning owned by that screen.
+        SetDarknessWarningProcessPaused(Game1.paused || Game1.dialogueUp);
         if (ownersByScreen.TryGetValue(screenId, out var binding))
         {
-            // DIAG-20260806: 强时间暂停（背包/菜单）不暂停低理智音效——
-            // 主策划要求菜单打开时低 san 音效/低语音效继续播放。
-            coordinator.SetClaimPlaybackPaused(
+            coordinator.SetDarknessWarningClaimPlaybackPaused(
                 binding.PlayerKey,
                 screenId,
-                paused: false
+                paused: localMenuScreens.Contains(screenId)
+                    || Game1.paused
+                    || Game1.dialogueUp
             );
         }
 
-        // DIAG-20260806: Game1.paused（菜单/对话等强暂停）不再计入 processPaused：
-        // 强暂停时原版音乐继续被抑制、低理智音效继续播放；
-        // processPaused 仅保留窗口失焦/进程不活跃（此时应整体静音）。
+        // Window focus pauses the continuous pools and the warning lane. Threshold one-shots and
+        // the dedicated darkness-attack lane are deliberately left playing.
         SetMembership(processPausedScreens, screenId, present: false);
-        windowInactive = Game1.game1 is null || !Game1.game1.IsActive;
-        coordinator.SetProcessPaused(windowInactive);
+        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive);
 
         var location = Game1.currentLocation;
         SetMembership(islandScreens, screenId, IsIslandContext(location));
@@ -696,6 +723,68 @@ internal sealed class SanitySmapiAudioService : IDisposable
         );
     }
 
+    private void OnWindowDeactivated(object? sender, EventArgs e) => SetWindowInactive(true);
+
+    private void OnWindowActivated(object? sender, EventArgs e) => SetWindowInactive(false);
+
+    private void SetWindowInactive(bool inactive)
+    {
+        if (disposed)
+            return;
+
+        windowInactive = inactive;
+        coordinator.SetProcessPaused(inactive);
+    }
+
+    private void TryAttachWindowFocusEvents()
+    {
+        if (disposed || Game1.game1 is null)
+            return;
+
+        Game game;
+        try
+        {
+            game = GameRunner.instance;
+        }
+        catch (Exception exception)
+        {
+            LogDiagnostic(
+                new SanityAudioDiagnostic(
+                    null,
+                    "audio.focus-window-unavailable",
+                    $"Game window focus events were unavailable ({exception.GetType().Name}: {exception.Message})."
+                )
+            );
+            return;
+        }
+
+        if (ReferenceEquals(focusGame, game))
+            return;
+
+        if (focusGame is not null)
+        {
+            focusGame.Deactivated -= OnWindowDeactivated;
+            focusGame.Activated -= OnWindowActivated;
+        }
+
+        try
+        {
+            game.Deactivated += OnWindowDeactivated;
+            game.Activated += OnWindowActivated;
+            focusGame = game;
+        }
+        catch (Exception exception)
+        {
+            LogDiagnostic(
+                new SanityAudioDiagnostic(
+                    null,
+                    "audio.focus-window-subscribe-failed",
+                    $"Game window focus events could not be subscribed ({exception.GetType().Name}: {exception.Message})."
+                )
+            );
+        }
+    }
+
     private void LogDiagnostic(SanityAudioDiagnostic diagnostic)
     {
         if (loggedDiagnostics.Count >= MaximumLoggedDiagnostics)
@@ -733,6 +822,8 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
     private const string DangerCueSetId = "sanity.cue.thresholds";
     private const string DarknessWarningCueSetId = "sanity.cue.darkness";
     private const string DarknessWarningCueId = "sanity.cue.darkness.warning";
+    private const string DarknessAttackCueSetId = "sanity.cue.darkness-attack";
+    private const string DarknessAttackCueId = "sanity.cue.darkness.attack";
     private const string ContinuousPlaybackMode = "RandomContinuousOneShotPool";
     private const string OneShotPlaybackMode = "OneShot";
     private const string CancelableOneShotPlaybackMode = "CancelableOneShot";
@@ -746,12 +837,18 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
     private SanityAudioInstanceLane? whispersLane;
     private SanityAudioInstanceLane? dangerLane;
     private SanityAudioInstanceLane? darknessWarningLane;
+    private SanityAudioInstanceLane? darknessAttackLane;
+    private IReadOnlyDictionary<string, int> darknessWarningClipIndices =
+        new Dictionary<string, int>(StringComparer.Ordinal);
     private bool ambienceDesired;
     private bool whispersDesired;
     private bool dangerDesired;
     private bool darknessWarningDesired;
     private bool darknessWarningTriggered;
+    private string darknessWarningClipId = string.Empty;
+    private bool darknessWarningPaused;
     private bool paused;
+    private bool continuousPoolsPaused;
     private bool suspended;
     private bool specialEventAudioAllowed;
     private bool disposed;
@@ -775,7 +872,8 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         (ambienceLane?.PhysicalInstanceCount ?? 0)
         + (whispersLane?.PhysicalInstanceCount ?? 0)
         + (dangerLane?.PhysicalInstanceCount ?? 0)
-        + (darknessWarningLane?.PhysicalInstanceCount ?? 0);
+        + (darknessWarningLane?.PhysicalInstanceCount ?? 0)
+        + (darknessAttackLane?.PhysicalInstanceCount ?? 0);
 
     public void SetPoolActive(SanityAudioLaneKind lane, bool active)
     {
@@ -821,6 +919,27 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         dangerLane?.TriggerOneShot(soundVolume);
     }
 
+    public void TriggerDarknessAttack()
+    {
+        if (disposed || suspended)
+            return;
+
+        darknessAttackLane ??= CreateLane(SanityAudioLaneKind.DarknessAttack);
+        // There is one attack clip by contract. This lane is intentionally not touched by
+        // process pause, local menus, or window focus, so its current instance can finish.
+        darknessAttackLane?.TriggerOneShot(soundVolume, effectIndex: 0);
+    }
+
+    public void SetDarknessWarningClip(string warningClipId)
+    {
+        if (disposed || darknessWarningTriggered)
+            return;
+
+        darknessWarningClipId = string.IsNullOrWhiteSpace(warningClipId)
+            ? string.Empty
+            : warningClipId;
+    }
+
     public void SetDarknessWarningActive(bool active)
     {
         if (disposed)
@@ -830,6 +949,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         {
             darknessWarningDesired = false;
             darknessWarningTriggered = false;
+            darknessWarningClipId = string.Empty;
             darknessWarningLane?.StopPlayback();
             return;
         }
@@ -840,6 +960,26 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             darknessWarningTriggered = false;
         }
         EnsureDarknessWarning();
+    }
+
+    public void SetDarknessWarningPaused(bool value)
+    {
+        if (disposed || darknessWarningPaused == value)
+            return;
+
+        darknessWarningPaused = value;
+        if (value)
+        {
+            darknessWarningLane?.Pause();
+            return;
+        }
+
+        if (!paused)
+        {
+            darknessWarningLane?.Resume();
+            if (!suspended || specialEventAudioAllowed)
+                EnsureDarknessWarning();
+        }
     }
 
     public void SetPaused(bool value)
@@ -860,12 +1000,33 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         ambienceLane?.Resume();
         whispersLane?.Resume();
         dangerLane?.Resume();
-        darknessWarningLane?.Resume();
+        if (!darknessWarningPaused)
+            darknessWarningLane?.Resume();
         if (!suspended)
         {
             EnsureDesiredPools(reapplyExisting: true);
             EnsureDarknessWarning();
         }
+    }
+
+    public void SetContinuousPoolsPaused(bool value)
+    {
+        if (disposed || continuousPoolsPaused == value)
+            return;
+
+        continuousPoolsPaused = value;
+        if (value)
+        {
+            // Focus pause is intentionally limited to these two continuous low-Sanity pools.
+            ambienceLane?.Pause();
+            whispersLane?.Pause();
+            return;
+        }
+
+        ambienceLane?.Resume();
+        whispersLane?.Resume();
+        if (!paused && !suspended)
+            EnsureDesiredPools(reapplyExisting: true);
     }
 
     public void SetSuspended(bool value)
@@ -881,6 +1042,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             dangerLane?.StopPlayback();
             if (!specialEventAudioAllowed)
                 darknessWarningLane?.StopPlayback();
+            darknessAttackLane?.StopPlayback();
             return;
         }
 
@@ -925,6 +1087,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         whispersLane?.Tick();
         dangerLane?.Tick();
         darknessWarningLane?.Tick();
+        darknessAttackLane?.Tick();
         if (!paused && (!suspended || specialEventAudioAllowed))
         {
             if (!suspended)
@@ -943,7 +1106,10 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         dangerDesired = false;
         darknessWarningDesired = false;
         darknessWarningTriggered = false;
+        darknessWarningClipId = string.Empty;
+        darknessWarningPaused = false;
         paused = false;
+        continuousPoolsPaused = false;
         suspended = false;
         specialEventAudioAllowed = false;
         DisposeLanes();
@@ -970,7 +1136,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             target?.SetContinuousActive(false, VolumeFor(lane));
             return;
         }
-        if (paused || suspended)
+        if (paused || continuousPoolsPaused || suspended)
             return;
 
         target ??= CreateLane(lane);
@@ -991,6 +1157,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             !darknessWarningDesired
             || darknessWarningTriggered
             || paused
+            || darknessWarningPaused
             || (suspended && !specialEventAudioAllowed)
         )
         {
@@ -1000,8 +1167,25 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         darknessWarningLane ??= CreateLane(SanityAudioLaneKind.DarknessWarning);
         if (darknessWarningLane is null)
             return;
-        darknessWarningTriggered = true;
-        darknessWarningLane.TriggerOneShot(soundVolume);
+
+        var effectIndex = 0;
+        if (
+            !string.IsNullOrWhiteSpace(darknessWarningClipId)
+            && !darknessWarningClipIndices.TryGetValue(darknessWarningClipId, out effectIndex)
+        )
+        {
+            FailLane(
+                SanityAudioLaneKind.DarknessWarning,
+                "audio.output.warning-clip-unknown",
+                $"Warning clip '{darknessWarningClipId}' is not declared by the loaded cue set."
+            );
+            darknessWarningTriggered = true;
+            return;
+        }
+
+        var started = darknessWarningLane.TriggerOneShot(soundVolume, effectIndex);
+        if (started || darknessWarningLane.IsFailed)
+            darknessWarningTriggered = true;
     }
 
     private SanityAudioInstanceLane? CreateLane(SanityAudioLaneKind lane)
@@ -1015,17 +1199,31 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             SanityAudioLaneKind.Whispers => WhispersCueSetId,
             SanityAudioLaneKind.Danger => DangerCueSetId,
             SanityAudioLaneKind.DarknessWarning => DarknessWarningCueSetId,
+            SanityAudioLaneKind.DarknessAttack => DarknessAttackCueSetId,
             _ => string.Empty,
         };
         var playbackMode = lane switch
         {
             SanityAudioLaneKind.Danger => OneShotPlaybackMode,
             SanityAudioLaneKind.DarknessWarning => CancelableOneShotPlaybackMode,
+            SanityAudioLaneKind.DarknessAttack => OneShotPlaybackMode,
             _ => ContinuousPlaybackMode,
         };
         var result = resources.LoadAudioCueSet(cueSetId);
-        if (!TryBorrowEffects(lane, cueSetId, playbackMode, result, out var effects))
+        if (
+            !TryBorrowEffects(
+                lane,
+                cueSetId,
+                playbackMode,
+                result,
+                out var effects,
+                out var clipIndices
+            )
+        )
             return null;
+
+        if (lane == SanityAudioLaneKind.DarknessWarning)
+            darknessWarningClipIndices = clipIndices;
 
         return new SanityAudioInstanceLane(
             lane,
@@ -1042,10 +1240,12 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         string cueSetId,
         string playbackMode,
         SanitySlotResourceResult result,
-        out IReadOnlyList<ISanityAudioEffect> effects
+        out IReadOnlyList<ISanityAudioEffect> effects,
+        out IReadOnlyDictionary<string, int> clipIndices
     )
     {
         effects = Array.Empty<ISanityAudioEffect>();
+        clipIndices = new Dictionary<string, int>(StringComparer.Ordinal);
         var allowPlaceholder = lane == SanityAudioLaneKind.DarknessWarning;
         if (!result.Success || result.CueSet is null)
         {
@@ -1096,6 +1296,10 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
                 lane == SanityAudioLaneKind.DarknessWarning
                 && !string.Equals(cue.CueId, DarknessWarningCueId, StringComparison.Ordinal)
             )
+            || (
+                lane == SanityAudioLaneKind.DarknessAttack
+                && !string.Equals(cue.CueId, DarknessAttackCueId, StringComparison.Ordinal)
+            )
             || !string.Equals(cue.PlaybackMode, playbackMode, StringComparison.Ordinal)
             || cue.Clips.Count == 0
             || cue.Clips.Count != runtime.PhysicalResources.Count
@@ -1125,7 +1329,22 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             borrowed[index] = new XnaSanityAudioEffect(soundResource);
         }
 
+        var mapped = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < cue.Clips.Count; index++)
+        {
+            var clipId = cue.Clips[index].ClipId;
+            if (!mapped.TryAdd(clipId, index))
+            {
+                return FailLane(
+                    lane,
+                    "audio.output.clip-id-duplicate",
+                    $"Cue set {cueSetId} contains a duplicate clip ID '{clipId}'."
+                );
+            }
+        }
+
         effects = borrowed;
+        clipIndices = mapped;
         return true;
     }
 
@@ -1188,6 +1407,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         whispersLane?.SetVolume(soundVolume);
         dangerLane?.SetVolume(soundVolume);
         darknessWarningLane?.SetVolume(soundVolume);
+        darknessAttackLane?.SetVolume(soundVolume);
     }
 
     private float VolumeFor(SanityAudioLaneKind lane)
@@ -1203,10 +1423,13 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         whispersLane?.Dispose();
         dangerLane?.Dispose();
         darknessWarningLane?.Dispose();
+        darknessAttackLane?.Dispose();
         ambienceLane = null;
         whispersLane = null;
         dangerLane = null;
         darknessWarningLane = null;
+        darknessAttackLane = null;
+        darknessWarningClipIndices = new Dictionary<string, int>(StringComparer.Ordinal);
     }
 }
 

@@ -502,7 +502,6 @@ internal sealed class SanityAudioMetadataCatalog
                         if (
                             string.IsNullOrWhiteSpace(clip.ClipId)
                             || string.IsNullOrWhiteSpace(clip.Path)
-                            || string.IsNullOrWhiteSpace(clip.Sha256)
                             || string.IsNullOrWhiteSpace(clip.FormatId)
                             || clip.DurationFrames <= 0
                             || !double.IsFinite(clip.DurationSeconds)

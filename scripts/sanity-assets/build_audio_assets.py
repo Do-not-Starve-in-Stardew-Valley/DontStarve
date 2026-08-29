@@ -107,7 +107,6 @@ def source_specs() -> list[dict[str, Any]]:
 
 
 PLACEHOLDERS = (
-    ("sanity.clip.darkness.warning", "Events/darkness-warning.wav", 330),
     ("sanity.clip.dark-hand.appear", "Creatures/dark-hand/appear.wav", 370),
     ("sanity.clip.dark-hand.interact", "Creatures/dark-hand/interact.wav", 410),
     ("sanity.clip.dark-hand.disappear", "Creatures/dark-hand/disappear.wav", 450),
@@ -119,6 +118,14 @@ PLACEHOLDERS = (
     ("sanity.clip.terrorbeak.attack", "Creatures/terrorbeak/attack.wav", 690),
     ("sanity.clip.terrorbeak.hurt", "Creatures/terrorbeak/hurt.wav", 730),
     ("sanity.clip.terrorbeak.death", "Creatures/terrorbeak/death.wav", 770),
+)
+
+FINAL_EVENT_CLIPS = (
+    ("sanity.clip.darkness.warning.01", "Events/darkness-warning-01.wav"),
+    ("sanity.clip.darkness.warning.02", "Events/darkness-warning-02.wav"),
+    ("sanity.clip.darkness.warning.03", "Events/darkness-warning-03.wav"),
+    ("sanity.clip.darkness.warning.04", "Events/darkness-warning-04.wav"),
+    ("sanity.clip.darkness.attack", "Events/darkness-attack.wav"),
 )
 
 
@@ -521,6 +528,31 @@ def build_placeholder_clips(repository_root: Path) -> dict[str, dict[str, Any]]:
     return clips
 
 
+def build_existing_final_clips(repository_root: Path) -> dict[str, dict[str, Any]]:
+    clips: dict[str, dict[str, Any]] = {}
+    for clip_id, relative_output in FINAL_EVENT_CLIPS:
+        output = Path("DontStarve/Asset/Sanity/Audio") / relative_output
+        rate, samples, container_evidence = read_pcm16_stereo(repository_root / output)
+        evidence = audio_evidence(samples, rate)
+        source = {
+            "Status": "AvailableReadOnlyEvidence",
+            "EvidenceId": "ART-10",
+            "Sha256": sha256_file(repository_root / output),
+            "Bytes": (repository_root / output).stat().st_size,
+            "Format": source_format(rate, evidence["Frames"]),
+            "ContainerEvidence": container_evidence,
+            **evidence,
+        }
+        clips[clip_id] = clip_record(
+            clip_id,
+            output,
+            samples,
+            source=source,
+            placeholder=False,
+        )
+    return clips
+
+
 def cue(
     cue_id: str,
     playback_mode: str,
@@ -630,10 +662,32 @@ def build_metadata(clips: dict[str, dict[str, Any]]) -> dict[str, Any]:
                 cue(
                     "sanity.cue.darkness.warning",
                     "CancelableOneShot",
-                    ["sanity.clip.darkness.warning"],
+                    [
+                        "sanity.clip.darkness.warning.01",
+                        "sanity.clip.darkness.warning.02",
+                        "sanity.clip.darkness.warning.03",
+                        "sanity.clip.darkness.warning.04",
+                    ],
                     clips,
                     required=True,
-                    placeholder=True,
+                    placeholder=False,
+                ),
+            ],
+        ),
+        cue_set(
+            "sanity.cue.darkness-attack",
+            "darkness-attack",
+            "LazyPerCueSetBounded",
+            "ReleaseOnWorldTitleDispose",
+            1,
+            [
+                cue(
+                    "sanity.cue.darkness.attack",
+                    "OneShot",
+                    ["sanity.clip.darkness.attack"],
+                    clips,
+                    required=True,
+                    placeholder=False,
                 )
             ],
         ),
@@ -734,8 +788,8 @@ def update_manifest(repository_root: Path, audio_metadata_sha256: str) -> Path:
             slot["Path"] = "Asset/Sanity/Audio/audio-cues.json"
             slot["Sha256"] = audio_metadata_sha256
             cue_count += 1
-    if cue_count != 17:
-        raise ValueError(f"expected 17 cue slots in sanity-assets.json, found {cue_count}")
+    if cue_count != 23:
+        raise ValueError(f"expected 23 cue slots in sanity-assets.json, found {cue_count}")
     write_json(path, manifest)
     return path
 
@@ -788,6 +842,7 @@ def build_template(metadata: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     clips, recipe_inputs = build_real_clips(repository_root)
+    clips.update(build_existing_final_clips(repository_root))
     clips.update(build_placeholder_clips(repository_root))
 
     metadata = build_metadata(clips)

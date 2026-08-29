@@ -401,7 +401,7 @@ public sealed class DarknessAttackStateMachineTests
     }
 
     [Fact]
-    public void Placeholder_warning_metadata_is_available_without_physical_load()
+    public void Final_warning_metadata_is_available_without_physical_load()
     {
         var factory = new CountingPhysicalFactory();
         using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
@@ -409,12 +409,12 @@ public sealed class DarknessAttackStateMachineTests
         var result = loader.GetCueMetadata(DarknessAttackContract.WarningCueId);
 
         Assert.True(result.Success, result.Diagnostic.Reason);
-        Assert.True(result.Diagnostic.IsPlaceholder);
+        Assert.False(result.Diagnostic.IsPlaceholder);
         var cue = Assert.IsType<SanityCueDefinition>(result.Cue);
         Assert.Equal("CancelableOneShot", cue.PlaybackMode);
-        var clip = Assert.Single(cue.Clips);
-        Assert.Equal(21168, clip.DurationFrames);
-        Assert.Equal(0.48d, clip.DurationSeconds, 6);
+        Assert.Equal(4, cue.Clips.Count);
+        Assert.Equal(99451, cue.Clips[0].DurationFrames);
+        Assert.Equal(2.255125d, cue.Clips[0].DurationSeconds, 6);
         Assert.Equal(0, factory.CreateCount);
         Assert.Equal(0, loader.Snapshot().PhysicalResourceCount);
     }
@@ -446,7 +446,7 @@ public sealed class DarknessAttackStateMachineTests
         Assert.Contains("OnSessionClearing", runtimeSource, StringComparison.Ordinal);
         Assert.Contains("allowPlaceholder", audioSource, StringComparison.Ordinal);
         Assert.Contains("DarknessWarningCueSetId", audioSource, StringComparison.Ordinal);
-        Assert.Equal(4, SanityProcessAudioCoordinator.MaximumPhysicalInstances);
+        Assert.Equal(5, SanityProcessAudioCoordinator.MaximumPhysicalInstances);
     }
 
     private static string ShippedModRoot =>
@@ -597,6 +597,8 @@ public sealed class DarknessAttackStateMachineTests
         }
 
         public void SetPaused(bool paused) { }
+
+        public void SetContinuousPoolsPaused(bool paused) { }
 
         public void SetSuspended(bool suspended) { }
 

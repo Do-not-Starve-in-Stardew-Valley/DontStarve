@@ -13,7 +13,7 @@ namespace DontStarve.Player.Stats.Sanity.Audio;
 internal sealed class SanityProcessAudioCoordinator : IDisposable
 {
     internal const int MaximumLocalClaims = 16;
-    internal const int MaximumPhysicalInstances = 4;
+    internal const int MaximumPhysicalInstances = 5;
 
     private const int MaximumDiagnosticCodes = 32;
 
@@ -29,6 +29,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         darknessWarningClaims = new();
     private readonly Dictionary<SanityAudioClaimKey, DarknessWarningReceipt>
         darknessWarningReceipts = new();
+    private readonly HashSet<SanityAudioClaimKey> locallyPausedDarknessWarnings = new();
     private readonly SortedSet<SanityAudioOwnerClaim> orderedClaims =
         new(SanityAudioWinnerComparer.Instance);
     private readonly HashSet<string> diagnosticCodes = new(StringComparer.Ordinal);
@@ -40,6 +41,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     private int aggregateDangerClaimCount;
     private bool dangerArmed = true;
     private bool processPaused;
+    private bool darknessWarningProcessPaused;
     private bool eventSuspended;
     private bool specialEventAudioAllowed;
     private bool disposed;
@@ -230,9 +232,14 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         if (!wasActive)
         {
             SafeOutput(
-                () => output.SetDarknessWarningActive(true),
+                () =>
+                {
+                    output.SetDarknessWarningClip(claim.WarningClipId);
+                    output.SetDarknessWarningActive(true);
+                },
                 "audio.output.darkness-warning-failed"
             );
+            ApplyDarknessWarningPause();
         }
         return Result(
             SanityAudioClaimUpdateStatus.Applied,
@@ -264,6 +271,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         }
 
         darknessWarningClaims.Remove(key);
+        locallyPausedDarknessWarnings.Remove(key);
         generation++;
         if (darknessWarningClaims.Count == 0)
         {
@@ -272,6 +280,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 "audio.output.darkness-warning-failed"
             );
         }
+        ApplyDarknessWarningPause();
         return Result(
             SanityAudioClaimUpdateStatus.Removed,
             "audio.darkness-warning.removed"
@@ -306,6 +315,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         var hadState = darknessWarningClaims.Count > 0 || darknessWarningReceipts.Count > 0;
         darknessWarningClaims.Clear();
         darknessWarningReceipts.Clear();
+        locallyPausedDarknessWarnings.Clear();
         if (hadState)
         {
             generation++;
@@ -314,6 +324,36 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 "audio.output.darkness-warning-failed"
             );
         }
+        ApplyDarknessWarningPause();
+    }
+
+    internal SanityAudioClaimUpdateResult SetDarknessWarningClaimPlaybackPaused(
+        string playerKey,
+        int screenId,
+        bool paused
+    )
+    {
+        if (disposed)
+            return Result(SanityAudioClaimUpdateStatus.Disposed, "audio.coordinator.disposed");
+
+        var key = new SanityAudioClaimKey(playerKey, screenId);
+        var changed = paused
+            ? locallyPausedDarknessWarnings.Add(key)
+            : locallyPausedDarknessWarnings.Remove(key);
+        if (!changed)
+            return Result(
+                SanityAudioClaimUpdateStatus.NoChange,
+                "audio.darkness-warning.pause-unchanged"
+            );
+
+        generation++;
+        ApplyDarknessWarningPause();
+        return Result(
+            SanityAudioClaimUpdateStatus.Applied,
+            paused
+                ? "audio.darkness-warning.locally-paused"
+                : "audio.darkness-warning.locally-resumed"
+        );
     }
 
     internal int RemoveOwner(string playerKey)
@@ -371,8 +411,38 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return;
 
         processPaused = paused;
+        darknessWarningProcessPaused = paused;
         generation++;
-        SafeOutput(() => output.SetPaused(paused), "audio.output.pause-failed");
+        // Focus pause is intentionally narrower than the legacy all-lane SetPaused seam: the
+        // low-Sanity ambience/whispers clips must pause in place, while threshold one-shots and
+        // darkness warnings keep their existing behavior.
+        SafeOutput(
+            () => output.SetContinuousPoolsPaused(paused),
+            "audio.output.continuous-pools-pause-failed"
+        );
+        ApplyDarknessWarningPause();
+    }
+
+    /// <summary>
+    /// Game1.paused/dialogue and local menus have different effects on the ordinary tier lanes.
+    /// They still share this process-level warning pause so the selected warning instance resumes
+    /// in place instead of being recreated.
+    /// </summary>
+    internal void SetDarknessWarningProcessPaused(bool paused)
+    {
+        if (disposed || darknessWarningProcessPaused == paused)
+            return;
+
+        darknessWarningProcessPaused = paused;
+        generation++;
+        ApplyDarknessWarningPause();
+    }
+
+    internal void TriggerDarknessAttack()
+    {
+        if (disposed)
+            return;
+        SafeOutput(output.TriggerDarknessAttack, "audio.output.darkness-attack-failed");
     }
 
     // Compatibility entrypoint for older callers/tests. New production code uses
@@ -442,8 +512,10 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         aggregateDangerClaimCount = 0;
         darknessWarningClaims.Clear();
         darknessWarningReceipts.Clear();
+        locallyPausedDarknessWarnings.Clear();
         dangerArmed = true;
         processPaused = false;
+        darknessWarningProcessPaused = false;
         eventSuspended = false;
         specialEventAudioAllowed = false;
         if (hadState)
@@ -562,6 +634,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 "audio.output.darkness-warning-failed"
             );
         }
+        locallyPausedDarknessWarnings.RemoveWhere(key => !darknessWarningClaims.ContainsKey(key));
+        ApplyDarknessWarningPause();
         return removals.Count;
     }
 
@@ -586,6 +660,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return 0;
         foreach (var key in removals)
             darknessWarningClaims.Remove(key);
+        foreach (var key in removals)
+            locallyPausedDarknessWarnings.Remove(key);
         generation++;
         if (darknessWarningClaims.Count == 0)
         {
@@ -593,6 +669,10 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 () => output.SetDarknessWarningActive(false),
                 "audio.output.darkness-warning-failed"
             );
+        }
+        else
+        {
+            ApplyDarknessWarningPause();
         }
         return removals.Count;
     }
@@ -679,9 +759,32 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return;
         dangerArmed = false;
         // A locally-paused owner still consumes the aggregate entry receipt. This prevents a
-        // menu close or winner switch from fabricating a new 15% edge.
-        if (!processPaused && !eventSuspended && dangerCount > 0)
+        // menu close or winner switch from fabricating a new 15% edge. Process/focus pause only
+        // pauses continuous pools; an actual Danger entry must still play its one-shot now.
+        if (!eventSuspended && dangerCount > 0)
             SafeOutput(output.TriggerDanger, "audio.output.danger-trigger-failed");
+    }
+
+    private void ApplyDarknessWarningPause()
+    {
+        var shouldPause = darknessWarningProcessPaused;
+        if (!shouldPause && darknessWarningClaims.Count > 0)
+        {
+            shouldPause = true;
+            foreach (var key in darknessWarningClaims.Keys)
+            {
+                if (!locallyPausedDarknessWarnings.Contains(key))
+                {
+                    shouldPause = false;
+                    break;
+                }
+            }
+        }
+
+        SafeOutput(
+            () => output.SetDarknessWarningPaused(shouldPause),
+            "audio.output.darkness-warning-pause-failed"
+        );
     }
 
     private void SafeOutput(Action action, string code)
@@ -752,6 +855,23 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return "audio.darkness-warning.request-id-invalid";
         if (claim.Revision < 0)
             return "audio.darkness-warning.revision-invalid";
+        if (
+            !string.IsNullOrWhiteSpace(claim.WarningClipId)
+            && claim.WarningClipId.Length > 256
+        )
+        {
+            return "audio.darkness-warning.clip-id-invalid";
+        }
+        if (
+            !string.IsNullOrWhiteSpace(claim.WarningClipId)
+            && (
+                !double.IsFinite(claim.WarningDurationSeconds)
+                || claim.WarningDurationSeconds <= 0d
+            )
+        )
+        {
+            return "audio.darkness-warning.duration-invalid";
+        }
         return null;
     }
 

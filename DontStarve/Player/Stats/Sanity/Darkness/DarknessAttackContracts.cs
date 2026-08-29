@@ -9,6 +9,8 @@ internal static class DarknessAttackContract
 {
     internal const string ContractVersion = "darkness-countdown-v1";
     internal const string WarningCueId = "sanity.cue.darkness.warning";
+    internal const string AttackCueId = "sanity.cue.darkness.attack";
+    internal const int WarningClipCount = 4;
     internal const int InitialMinimumSeconds = 5;
     internal const int InitialMaximumSeconds = 10;
     internal const int RepeatMinimumSeconds = 5;
@@ -78,6 +80,16 @@ internal interface IDarknessAttackRandom
     int NextInclusive(int minimum, int maximum);
 }
 
+/// <summary>
+/// The warning selection is part of the host-owned countdown state. Keeping the clip ID and its
+/// measured duration together prevents a client from selecting a different sound or using a
+/// stale lead time when the four warning clips have different lengths.
+/// </summary>
+internal readonly record struct DarknessWarningClip(
+    string ClipId,
+    double DurationSeconds
+);
+
 internal interface IDarknessAttackRequestIdSource
 {
     string NextRequestId(DarknessAttackOwnerKey key);
@@ -128,7 +140,9 @@ internal readonly record struct DarknessAttackUpdateResult(
     DarknessAttackPromptKind Prompt,
     DarknessWarningClaimAction WarningClaimAction,
     string WarningRequestId,
-    DarknessAttackExpiryIntent? ExpiryIntent
+    DarknessAttackExpiryIntent? ExpiryIntent,
+    string WarningClipId = "",
+    double WarningDurationSeconds = 0d
 )
 {
     internal static DarknessAttackUpdateResult NoChange(string reason) =>
@@ -157,7 +171,9 @@ internal sealed class DarknessAttackStateSnapshot
         string requestId,
         int sampledSeconds,
         string rngBranch,
-        string cancelReason
+        string cancelReason,
+        string warningClipId = "",
+        double warningDurationSeconds = 0d
     )
     {
         Key = key;
@@ -168,6 +184,8 @@ internal sealed class DarknessAttackStateSnapshot
         LightReason = lightReason;
         RemainingSeconds = remainingSeconds;
         WarningLeadSeconds = warningLeadSeconds;
+        WarningClipId = warningClipId;
+        WarningDurationSeconds = warningDurationSeconds;
         WarningClaimActive = warningClaimActive;
         RequestId = requestId;
         SampledSeconds = sampledSeconds;
@@ -190,6 +208,10 @@ internal sealed class DarknessAttackStateSnapshot
     internal double RemainingSeconds { get; }
 
     internal double WarningLeadSeconds { get; }
+
+    internal string WarningClipId { get; }
+
+    internal double WarningDurationSeconds { get; }
 
     internal bool WarningClaimActive { get; }
 

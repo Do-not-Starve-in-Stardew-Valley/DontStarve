@@ -30,6 +30,20 @@ internal static class SanityAssetManifestParser
         StringComparer.Ordinal
     );
 
+    private static readonly HashSet<string> RequiredSlotProperties = new(
+        new[]
+        {
+            "SlotId",
+            "Path",
+            "Kind",
+            "IsPlaceholder",
+            "ContractVersion",
+            "RequiredForRelease",
+            "CreditGroup",
+        },
+        StringComparer.Ordinal
+    );
+
     internal static SanityAssetManifestParseResult Parse(string json)
     {
         JsonDocument document;
@@ -105,7 +119,7 @@ internal static class SanityAssetManifestParser
         slot = null;
         if (
             element.ValueKind != JsonValueKind.Object
-            || !TryCollectExactProperties(element, SlotProperties, out var values)
+            || !TryCollectSlotProperties(element, out var values)
             || !TryReadString(values, "SlotId", out var slotId)
             || !TryReadString(values, "Path", out var path)
             || !TryReadString(values, "Kind", out var kindText)
@@ -130,6 +144,32 @@ internal static class SanityAssetManifestParser
             requiredForRelease,
             creditGroup
         );
+        return true;
+    }
+
+    private static bool TryCollectSlotProperties(
+        JsonElement element,
+        out Dictionary<string, JsonElement> values
+    )
+    {
+        values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var property in element.EnumerateObject())
+        {
+            if (
+                !SlotProperties.Contains(property.Name)
+                || !values.TryAdd(property.Name, property.Value)
+            )
+            {
+                return false;
+            }
+        }
+
+        foreach (var requiredProperty in RequiredSlotProperties)
+        {
+            if (!values.ContainsKey(requiredProperty))
+                return false;
+        }
+
         return true;
     }
 
@@ -205,7 +245,7 @@ internal static class SanityAssetManifestParser
     {
         value = null;
         if (!values.TryGetValue(propertyName, out var element))
-            return false;
+            return true;
 
         if (element.ValueKind == JsonValueKind.Null)
             return true;

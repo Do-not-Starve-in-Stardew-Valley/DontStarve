@@ -775,6 +775,15 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             spawnedAtMinute: 0
         );
         Assert.True(index.TryAdd(instance, out var reason), reason);
+        Assert.True(
+            instance.AdvanceFrame(
+                checked(policy.FrameCount * policy.SpawnFrameDurationMilliseconds)
+            )
+        );
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Idle,
+            instance.AnimationState
+        );
         return instance;
     }
 

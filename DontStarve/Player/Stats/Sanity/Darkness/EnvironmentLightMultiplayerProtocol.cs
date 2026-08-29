@@ -369,6 +369,9 @@ internal sealed class EnvironmentLightPresentationMessage
     public string Kind { get; set; } = string.Empty;
     public string WarningAction { get; set; } = string.Empty;
     public string WarningRequestId { get; set; } = string.Empty;
+    public string WarningClipId { get; set; } = string.Empty;
+    public double WarningDurationSeconds { get; set; }
+    public double PresentationDurationSeconds { get; set; }
     public long ObservationRevision { get; set; }
     public string Reason { get; set; } = string.Empty;
 }
@@ -388,6 +391,9 @@ internal interface IEnvironmentLightRemotePresentationSink
         DarknessWarningClaimAction warningAction,
         string warningRequestId,
         long observationRevision,
-        string reason
+        string reason,
+        string warningClipId = "",
+        double warningDurationSeconds = 0d,
+        double presentationDurationSeconds = 0d
     );
 }

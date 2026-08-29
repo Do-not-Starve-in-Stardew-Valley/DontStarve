@@ -245,19 +245,28 @@ internal static class SanityAssetValidator
 
             if (sharedPaths.TryGetValue(slot.Path, out var existing))
             {
-                if (
-                    existing.Kind != slot.Kind
-                    || !string.Equals(existing.Sha256, slot.Sha256, StringComparison.OrdinalIgnoreCase)
-                )
+                if (existing.Kind != slot.Kind)
                 {
                     AddError(
                         issues,
                         slot.SlotId,
                         slot.Path,
                         "manifest.shared-path-conflict",
-                        "Slots sharing one path must declare the same Kind and Sha256."
+                        "Slots sharing one path must declare the same Kind."
                     );
                     canInspectFile = false;
+                }
+                else if (
+                    !string.Equals(existing.Sha256, slot.Sha256, StringComparison.OrdinalIgnoreCase)
+                )
+                {
+                    AddWarning(
+                        issues,
+                        slot.SlotId,
+                        slot.Path,
+                        "manifest.shared-path-hash-conflict",
+                        "Slots sharing one path declare different advisory SHA-256 values; the path and file remain authoritative."
+                    );
                 }
             }
             else
@@ -328,32 +337,32 @@ internal static class SanityAssetValidator
 
             if (string.IsNullOrWhiteSpace(slot.Sha256))
             {
-                AddError(
+                AddWarning(
                     issues,
                     slot.SlotId,
                     slot.Path,
                     "asset.hash-missing",
-                    "An existing asset must declare its SHA-256."
+                    "The asset is identified by its deployment-relative path; a missing SHA-256 is advisory only."
                 );
             }
             else if (!SanityAssetFileInspector.IsSha256(slot.Sha256))
             {
-                AddError(
+                AddWarning(
                     issues,
                     slot.SlotId,
                     slot.Path,
                     "asset.hash-invalid",
-                    "Sha256 must be exactly 64 hexadecimal characters."
+                    "The declared SHA-256 is malformed; the deployment-relative path remains authoritative."
                 );
             }
             else if (!string.Equals(slot.Sha256, inspection.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                AddError(
+                AddWarning(
                     issues,
                     slot.SlotId,
                     slot.Path,
                     "asset.hash-mismatch",
-                    $"Declared SHA-256 does not match the file for '{slot.Path}'."
+                    $"Declared SHA-256 does not match '{slot.Path}'; the file is still eligible by path and format."
                 );
             }
 

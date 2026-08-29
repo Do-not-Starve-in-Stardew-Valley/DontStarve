@@ -34,7 +34,7 @@ public sealed class CreeperFearAssetFactGateTests
             .Where(slot => slot.SlotId.Contains("creeper-fear", StringComparison.Ordinal))
             .ToArray();
 
-        Assert.Equal(12, slots.Length);
+        Assert.Equal(15, slots.Length);
         var sprite = Assert.Single(slots.Where(slot => slot.SlotId == SpriteSlotId));
         Assert.Equal(SpritePath, sprite.Path);
         Assert.Equal(SpriteSha256, sprite.Sha256);
@@ -84,8 +84,11 @@ public sealed class CreeperFearAssetFactGateTests
             new[]
             {
                 "sanity.cue.creeper-fear.attack",
+                "sanity.cue.creeper-fear.chase",
                 "sanity.cue.creeper-fear.death",
-                "sanity.cue.creeper-fear.hurt",
+                "sanity.cue.creeper-fear.hurt-dull",
+                "sanity.cue.creeper-fear.hurt-sharp",
+                "sanity.cue.creeper-fear.idle",
                 "sanity.cue.creeper-fear.taunt",
             },
             cues.Select(slot => slot.SlotId)
@@ -93,9 +96,9 @@ public sealed class CreeperFearAssetFactGateTests
         Assert.All(cues, slot =>
         {
             Assert.Equal("Asset/Sanity/Audio/audio-cues.json", slot.Path);
-            Assert.True(slot.IsPlaceholder);
+            Assert.False(slot.IsPlaceholder);
             Assert.True(slot.RequiredForRelease);
-            Assert.Equal("DEV-PLACEHOLDER", slot.CreditGroup);
+            Assert.Equal("ART-05", slot.CreditGroup);
         });
 
         var development = SanityAssetValidator.ValidateFromFiles(
@@ -125,7 +128,7 @@ public sealed class CreeperFearAssetFactGateTests
             release.Issues,
             issue =>
                 issue.SlotId == "sanity.cue.creeper-fear.attack"
-                && issue.Code == "release.dev-credit-group"
+                && issue.Code == "release.credit-placeholder"
         );
     }
 
@@ -186,31 +189,48 @@ public sealed class CreeperFearAssetFactGateTests
             new[]
             {
                 "sanity.cue.creeper-fear.attack",
+                "sanity.cue.creeper-fear.chase",
                 "sanity.cue.creeper-fear.death",
-                "sanity.cue.creeper-fear.hurt",
+                "sanity.cue.creeper-fear.hurt-dull",
+                "sanity.cue.creeper-fear.hurt-sharp",
+                "sanity.cue.creeper-fear.idle",
                 "sanity.cue.creeper-fear.taunt",
             },
             definition.Cues.Select(cue => cue.CueId).OrderBy(id => id, StringComparer.Ordinal)
         );
+        var expectedClipCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["sanity.cue.creeper-fear.attack"] = 6,
+            ["sanity.cue.creeper-fear.chase"] = 8,
+            ["sanity.cue.creeper-fear.death"] = 9,
+            ["sanity.cue.creeper-fear.hurt-dull"] = 5,
+            ["sanity.cue.creeper-fear.hurt-sharp"] = 8,
+            ["sanity.cue.creeper-fear.idle"] = 8,
+            ["sanity.cue.creeper-fear.taunt"] = 6,
+        };
         Assert.All(definition.Cues, cue =>
         {
             Assert.Equal("OneShot", cue.PlaybackMode);
             Assert.True(cue.Enabled);
             Assert.True(cue.RequiredForRelease);
-            Assert.True(cue.IsPlaceholder);
+            Assert.False(cue.IsPlaceholder);
             Assert.Equal("PendingRealMachine", cue.ListeningStatus);
-            var clip = Assert.Single(cue.Clips);
-            Assert.StartsWith(
-                "Asset/Sanity/Audio/Creatures/creeper-fear/",
-                clip.Path,
-                StringComparison.Ordinal
-            );
-            Assert.True(clip.IsPlaceholder);
-            Assert.Equal(21168, clip.DurationFrames);
-            Assert.Equal(0.48d, clip.DurationSeconds);
+            Assert.Equal(expectedClipCounts[cue.CueId], cue.Clips.Count);
+            Assert.All(cue.Clips, clip =>
+            {
+                Assert.StartsWith(
+                    "Asset/Sanity/Audio/Creatures/shadow_creeper_fear/",
+                    clip.Path,
+                    StringComparison.Ordinal
+                );
+                Assert.Equal("sanity.wav.pcm-s16-stereo-48000-v1", clip.FormatId);
+                Assert.False(clip.IsPlaceholder);
+                Assert.True(clip.DurationFrames > 0);
+                Assert.True(clip.DurationSeconds > 0d);
+            });
         });
         Assert.Equal(1, factory.TextureCreates);
-        Assert.Equal(4, factory.SoundCreates);
+        Assert.Equal(50, factory.SoundCreates);
     }
 
     [Fact]

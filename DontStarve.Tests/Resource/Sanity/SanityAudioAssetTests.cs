@@ -34,8 +34,8 @@ public sealed class SanityAudioAssetTests
             new[] { "sanity.cue.sanity-change.gain", "sanity.cue.sanity-change.loss" },
             result.DisabledCueIds
         );
-        Assert.Equal(6, result.PlaceholderCueIds.Count);
-        Assert.Equal(22, result.PendingRealMachineCueIds.Count);
+        Assert.Equal(5, result.PlaceholderCueIds.Count);
+        Assert.Equal(23, result.PendingRealMachineCueIds.Count);
 
         var json = File.ReadAllText(MetadataPath);
         Assert.DoesNotContain("references/", json, StringComparison.OrdinalIgnoreCase);
@@ -63,9 +63,9 @@ public sealed class SanityAudioAssetTests
         );
 
         Assert.False(result.Success);
-        Assert.Equal(34, result.Issues.Count(issue => issue.Code == "release.asset-placeholder"));
-        Assert.Equal(11, result.Issues.Count(issue => issue.Code == "release.dev-credit-group"));
-        Assert.Equal(55, result.Issues.Count(issue => issue.Code == "release.credit-placeholder"));
+        Assert.Equal(33, result.Issues.Count(issue => issue.Code == "release.asset-placeholder"));
+        Assert.Equal(10, result.Issues.Count(issue => issue.Code == "release.dev-credit-group"));
+        Assert.Equal(56, result.Issues.Count(issue => issue.Code == "release.credit-placeholder"));
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public sealed class SanityAudioAssetTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(MetadataPath));
         var clips = AllClips(document.RootElement).ToArray();
-        Assert.Equal(140, clips.Length);
-        Assert.Equal(140, clips.Select(clip => clip.GetProperty("ClipId").GetString()).Distinct().Count());
-        Assert.Equal(140, clips.Select(clip => clip.GetProperty("Path").GetString()).Distinct().Count());
+        Assert.Equal(144, clips.Length);
+        Assert.Equal(144, clips.Select(clip => clip.GetProperty("ClipId").GetString()).Distinct().Count());
+        Assert.Equal(144, clips.Select(clip => clip.GetProperty("Path").GetString()).Distinct().Count());
 
         foreach (var clip in clips)
         {
@@ -117,8 +117,8 @@ public sealed class SanityAudioAssetTests
         var clips = AllClips(document.RootElement).ToArray();
         var real = clips.Where(clip => !clip.GetProperty("IsPlaceholder").GetBoolean()).ToArray();
         var placeholders = clips.Where(clip => clip.GetProperty("IsPlaceholder").GetBoolean()).ToArray();
-        Assert.Equal(136, real.Length);
-        Assert.Equal(4, placeholders.Length);
+        Assert.Equal(141, real.Length);
+        Assert.Equal(3, placeholders.Length);
 
         foreach (var clip in real)
         {
@@ -152,7 +152,7 @@ public sealed class SanityAudioAssetTests
         var root = document.RootElement;
         Assert.Equal("sanity.wav.pcm-s16-stereo-44100-v1", root.GetProperty("RuntimeFormat").GetProperty("FormatId").GetString());
         var sets = root.GetProperty("CueSets").EnumerateArray().ToArray();
-        Assert.Equal(8, sets.Length);
+        Assert.Equal(9, sets.Length);
         Assert.All(sets, set =>
         {
             Assert.False(string.IsNullOrWhiteSpace(set.GetProperty("Group").GetString()));
@@ -219,15 +219,24 @@ public sealed class SanityAudioAssetTests
     }
 
     [Fact]
-    public void ValidatorRejectsStaleFileHashAndDuration()
+    public void ValidatorWarnsStaleFileHashButRejectsStaleDuration()
     {
-        AssertMetadataRejected(
+        AssertMetadataWarning(
             root => FirstClip(root)["Sha256"] = new string('0', 64),
             "audio.clip.hash-mismatch"
         );
         AssertMetadataRejected(
             root => FirstClip(root)["DurationFrames"] = FirstClip(root)["DurationFrames"]!.GetValue<long>() + 1,
             "audio.clip.duration-frames-mismatch"
+        );
+    }
+
+    [Fact]
+    public void ValidatorAllowsMissingClipHashWhenThePathAndWavAreValid()
+    {
+        AssertMetadataWarning(
+            root => FirstClip(root).Remove("Sha256"),
+            "audio.clip.hash-missing"
         );
     }
 
@@ -366,6 +375,22 @@ public sealed class SanityAudioAssetTests
         );
         Assert.False(result.Success);
         Assert.Contains(result.Issues, issue => issue.Code == expectedCode);
+    }
+
+    private static void AssertMetadataWarning(Action<JsonObject> mutate, string expectedCode)
+    {
+        var root = ReadMetadataNode();
+        mutate(root);
+        var result = SanityAudioContractValidator.Validate(
+            root.ToJsonString(),
+            File.ReadAllText(ManifestPath),
+            ShippedModRoot
+        );
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Issues));
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == expectedCode && !issue.IsBlocking
+        );
     }
 
     private static byte[] BuildWav(

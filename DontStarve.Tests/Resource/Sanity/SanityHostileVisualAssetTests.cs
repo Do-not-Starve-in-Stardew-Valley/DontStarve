@@ -336,7 +336,7 @@ public sealed class SanityHostileVisualAssetTests
         Assert.True(development.Success);
         Assert.DoesNotContain(development.Issues, issue => issue.Code == "asset.required-missing");
         Assert.DoesNotContain(development.Issues, issue => issue.Code == "asset.optional-missing");
-        Assert.Equal(50, development.PendingReplacementSlotIds.Count);
+        Assert.Equal(56, development.PendingReplacementSlotIds.Count);
     }
 
     [Fact]

@@ -258,16 +258,19 @@ public sealed class EnvironmentLightApiFactProbeTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(AudioCueMetadataPath));
         var cueSets = document.RootElement.GetProperty("CueSets").EnumerateArray().ToArray();
-        var darkness = Assert.Single(
-            cueSets.Where(value => value.GetProperty("CueSetId").GetString() == "sanity.cue.darkness")
-        );
+        var darkness = Assert.Single(cueSets, value => value.GetProperty("CueSetId").GetString() == "sanity.cue.darkness");
+        var attackSet = Assert.Single(cueSets, value => value.GetProperty("CueSetId").GetString() == "sanity.cue.darkness-attack");
         var cue = Assert.Single(darkness.GetProperty("Cues").EnumerateArray());
-        Assert.Equal("sanity.cue.darkness.warning", cue.GetProperty("CueId").GetString());
+        var attack = Assert.Single(attackSet.GetProperty("Cues").EnumerateArray());
         Assert.Equal("CancelableOneShot", cue.GetProperty("PlaybackMode").GetString());
-        Assert.True(cue.GetProperty("IsPlaceholder").GetBoolean());
+        Assert.False(cue.GetProperty("IsPlaceholder").GetBoolean());
+        Assert.Equal(4, cue.GetProperty("Clips").GetArrayLength());
+        Assert.Equal("OneShot", attack.GetProperty("PlaybackMode").GetString());
+        Assert.False(attack.GetProperty("IsPlaceholder").GetBoolean());
+        Assert.Single(attack.GetProperty("Clips").EnumerateArray());
 
         Assert.Equal(
-            new[] { "Ambience", "Whispers", "Danger", "DarknessWarning" },
+            new[] { "Ambience", "Whispers", "Danger", "DarknessWarning", "DarknessAttack" },
             Enum.GetNames(typeof(SanityAudioLaneKind))
         );
         var methods = typeof(ISanityProcessAudioOutput)
@@ -281,14 +284,18 @@ public sealed class EnvironmentLightApiFactProbeTests
             {
                 "Clear",
                 "InvalidateResources",
+                "SetContinuousPoolsPaused",
                 "SetDangerActive",
                 "SetDarknessWarningActive",
+                "SetDarknessWarningClip",
+                "SetDarknessWarningPaused",
                 "SetPaused",
                 "SetPoolActive",
                 "SetSpecialEventAudioAllowed",
                 "SetSuspended",
                 "Tick",
                 "TriggerDanger",
+                "TriggerDarknessAttack",
             },
             methods
         );

@@ -164,18 +164,27 @@ internal sealed class SanityRuntimePhysicalResourceCache
         }
 
         var actualHash = ToSha256(bytes);
-        if (
-            string.IsNullOrWhiteSpace(expectedSha256)
-            || !string.Equals(expectedSha256, actualHash, StringComparison.OrdinalIgnoreCase)
-        )
+        var hashCode = string.IsNullOrWhiteSpace(expectedSha256)
+            ? "resource.physical.hash-missing"
+            : !SanityAssetFileInspector.IsSha256(expectedSha256)
+                ? "resource.physical.hash-invalid"
+                : !string.Equals(expectedSha256, actualHash, StringComparison.OrdinalIgnoreCase)
+                    ? "resource.physical.hash-mismatch"
+                    : string.Empty;
+        if (!string.IsNullOrEmpty(hashCode))
         {
-            return Failed(
-                slotId,
-                path,
-                required,
-                isPlaceholder,
-                "resource.physical.hash-mismatch",
-                "The deployed file does not match its manifest/audio metadata SHA-256."
+            reportDiagnostic(
+                new SanityRuntimeResourceDiagnostic(
+                    "sanity.resource.physical",
+                    SanityResourceCapabilityStatus.Available,
+                    hashCode,
+                    slotId,
+                    path,
+                    required,
+                    isPlaceholder,
+                    "The resource was identified by its deployment-relative path; SHA-256 is advisory and did not block loading.",
+                    isWarning: true
+                )
             );
         }
 

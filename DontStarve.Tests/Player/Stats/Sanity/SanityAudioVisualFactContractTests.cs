@@ -136,20 +136,22 @@ public sealed class SanityAudioVisualFactContractTests
     }
 
     [Fact]
-    public void AudioMetadataHasEightCueSetsSeventeenCuesAndThirtyFiveBorrowedEffects()
+    public void AudioMetadataHasNineCueSetsTwentyThreeCuesAndOneHundredFortyFourPhysicalClips()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(AudioCueMetadataPath));
         var cueSets = document.RootElement.GetProperty("CueSets").EnumerateArray().ToArray();
         var cues = cueSets.SelectMany(value => value.GetProperty("Cues").EnumerateArray()).ToArray();
         var clips = cues.SelectMany(value => value.GetProperty("Clips").EnumerateArray()).ToArray();
 
-        Assert.Equal(8, cueSets.Length);
-        Assert.Equal(17, cues.Length);
-        Assert.Equal(35, clips.Length);
+        Assert.Equal(9, cueSets.Length);
+        Assert.Equal(23, cues.Length);
+        Assert.Equal(144, clips.Length);
         AssertCueSet(cueSets, "sanity.cue.ambience", 1, "RandomContinuousOneShotPool", 11);
         AssertCueSet(cueSets, "sanity.cue.whispers", 1, "RandomContinuousOneShotPool", 11);
         AssertCueSet(cueSets, "sanity.cue.thresholds", 1, "OneShot", 1);
         AssertCueSet(cueSets, "sanity.cue.sanity-change", 0, "Disabled", 0);
+        AssertCueSet(cueSets, "sanity.cue.darkness", 1, "CancelableOneShot", 4);
+        AssertCueSet(cueSets, "sanity.cue.darkness-attack", 1, "OneShot", 1);
     }
 
     [Fact]

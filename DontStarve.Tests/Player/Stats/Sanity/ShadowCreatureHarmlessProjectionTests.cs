@@ -40,6 +40,40 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         Assert.Equal(100, policies[1].MoveFrameDurationMilliseconds);
     }
 
+    [Theory]
+    [InlineData(0, 75d)]
+    [InlineData(1, 180d)]
+    public void Harmless_shadow_wander_speed_matches_the_same_species_hostile_half_speed(
+        int policyIndex,
+        double expectedPixelsAfterOneSecond
+    )
+    {
+        var instance = new ShadowCreatureHarmlessProjectionInstance(
+            $"wander-speed-{policyIndex}",
+            Owner(OwnerA),
+            ShadowCreatureHarmlessProjectionCatalog.Policies[policyIndex],
+            new HarmlessProjectionWorldPoint(0, 0),
+            spawnedAtMinute: 0
+        );
+        SetWanderTarget(instance, new HarmlessProjectionWorldPoint(1_000, 0));
+
+        var behaviorEvent = instance.AdvanceBehavior(
+            elapsedMilliseconds: 1_000,
+            playerWorldPixel: new HarmlessProjectionWorldPoint(640, 640)
+        );
+
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionBehaviorEvent.None,
+            behaviorEvent
+        );
+        Assert.Equal(expectedPixelsAfterOneSecond, (double)instance.WorldPixel.X, precision: 6);
+        Assert.Equal(0d, (double)instance.WorldPixel.Y, precision: 6);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Moving,
+            instance.AnimationState
+        );
+    }
+
     [Fact]
     public void Harmless_catalog_registers_taunt_and_death_as_dormant_actions()
     {
@@ -494,6 +528,86 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
+    public void Current_danger_snapshot_rehydrates_missing_phase_for_projection_conversion()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+
+        // Models a debug projection registered after the initial tier event was missed by the
+        // owner-local coordinator. The host repairs this phase from the current tier snapshot.
+        coordinator.SynchronizeOwnerTierState(
+            OwnerA,
+            shadowTierActive: true,
+            dangerTierActive: true
+        );
+        var instance = AddDirect(index, owner, "danger-snapshot-rehydrated", x: 320);
+
+        var result = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 2,
+            elapsedMilliseconds: 1000,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, result.Status);
+        Assert.Single(sink.Intents);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+    }
+
+    [Fact]
+    public void Danger_spawned_projection_waits_for_spawn_animation_before_conversion()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
+            gameMinute: 0
+        );
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            gameMinute: 1
+        );
+        var instance = AddDirect(index, owner, "danger-spawn-animation", x: 320);
+
+        var duringSpawn = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 1,
+            elapsedMilliseconds: 100,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, duringSpawn.Status);
+        Assert.Empty(sink.Intents);
+        Assert.False(instance.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
+            instance.AnimationState
+        );
+
+        var afterSpawn = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 1,
+            elapsedMilliseconds: 300,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, afterSpawn.Status);
+        Assert.Single(sink.Intents);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+    }
+
+    [Fact]
     public void High_sanity_far_fade_never_creates_a_compensation()
     {
         var index = new ShadowCreatureHarmlessProjectionIndex();
@@ -624,7 +738,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
     }
 
     [Fact]
-    public void Danger_entry_converts_even_while_generation_animation_is_running()
+    public void Danger_entry_defers_conversion_until_generation_animation_finishes()
     {
         var index = new ShadowCreatureHarmlessProjectionIndex();
         var sink = new RecordingSink();
@@ -645,14 +759,14 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             gameMinute: 1
         );
 
-        Assert.Equal(1, firstDangerEntry.IntentCount);
+        Assert.Equal(0, firstDangerEntry.IntentCount);
         Assert.Equal(
             ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
             instance.AnimationState
         );
-        Assert.True(instance.IsCleanedUp);
-        Assert.Single(sink.Intents);
-        Assert.Equal(0, index.CountForOwner(OwnerA));
+        Assert.False(instance.IsCleanedUp);
+        Assert.Empty(sink.Intents);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
 
         coordinator.UpdateOwner(
             owner,
@@ -667,6 +781,19 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
             instance.AnimationState
         );
+        Assert.Empty(sink.Intents);
+        Assert.False(instance.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+
+        coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 1,
+            elapsedMilliseconds: 40,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
         Assert.Single(sink.Intents);
         Assert.Equal(instance.CorrelationId, sink.Intents[0].CorrelationId);
         Assert.True(instance.IsCleanedUp);
@@ -689,6 +816,8 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         var owner = Owner(OwnerA);
         var first = AddDirect(index, owner, "conversion-a", x: 320, policyIndex: 0);
         var second = AddDirect(index, owner, "conversion-b", x: 640, policyIndex: 1);
+        CompleteSpawnAnimation(first);
+        CompleteSpawnAnimation(second);
 
         var result = coordinator.ApplyStateEvent(
             TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
@@ -723,6 +852,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             0
         );
         var removed = AddDirect(index, Owner(OwnerA), "status-correlation", x: 320);
+        CompleteSpawnAnimation(removed);
 
         var first = coordinator.ApplyStateEvent(
             TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
@@ -757,7 +887,8 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
             0
         );
-        AddDirect(index, Owner(OwnerA), "throwing-correlation", x: 320);
+        var throwing = AddDirect(index, Owner(OwnerA), "throwing-correlation", x: 320);
+        CompleteSpawnAnimation(throwing);
 
         coordinator.ApplyStateEvent(
             TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
@@ -775,6 +906,226 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         Assert.Equal(1, index.Count);
     }
 
+    [Theory]
+    [InlineData((int)ShadowProjectionConversionSubmissionStatus.Failed)]
+    [InlineData((int)ShadowProjectionConversionSubmissionStatus.Rejected)]
+    public void Failed_or_rejected_conversion_is_retried_on_the_next_danger_update(
+        int firstStatusValue
+    )
+    {
+        var firstStatus = (ShadowProjectionConversionSubmissionStatus)firstStatusValue;
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        sink.StatusSequence.Enqueue(firstStatus);
+        sink.StatusSequence.Enqueue(ShadowProjectionConversionSubmissionStatus.Confirmed);
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
+            0
+        );
+        var instance = AddDirect(index, owner, "retryable-conversion", x: 320);
+        CompleteSpawnAnimation(instance);
+
+        var first = coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            90
+        );
+
+        Assert.Equal(1, first.IntentCount);
+        Assert.False(instance.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+        Assert.Equal(firstStatus, Assert.Single(coordinator.SnapshotConversionEvidence()).Submission.Status);
+
+        var retry = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 90,
+            elapsedMilliseconds: 16,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, retry.Status);
+        Assert.Equal(2, sink.CallCount);
+        Assert.Equal(2, sink.Intents.Count);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+        var evidence = Assert.Single(coordinator.SnapshotConversionEvidence());
+        Assert.Equal(ShadowProjectionConversionSubmissionStatus.Confirmed, evidence.Submission.Status);
+    }
+
+    [Fact]
+    public void Danger_exit_continues_pending_spawn_animation_until_danger_reentry()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
+            0
+        );
+        var instance = AddDirect(index, owner, "danger-exit-pending-spawn", x: 320);
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            1
+        );
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierExited, OwnerA, SanityTierIds.Danger),
+            2
+        );
+
+        var stillSpawning = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 2,
+            elapsedMilliseconds: 360,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, stillSpawning.Status);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Spawning,
+            instance.AnimationState
+        );
+        Assert.Empty(sink.Intents);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+
+        var finished = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 2,
+            elapsedMilliseconds: 40,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, finished.Status);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Idle,
+            instance.AnimationState
+        );
+        Assert.Empty(sink.Intents);
+        Assert.False(instance.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            3
+        );
+
+        Assert.Single(sink.Intents);
+        Assert.True(instance.IsCleanedUp);
+        Assert.Equal(0, index.CountForOwner(OwnerA));
+    }
+
+    [Theory]
+    [InlineData(0, 75d)]
+    [InlineData(1, 180d)]
+    public void Danger_exit_keeps_existing_binding_projection_behavior_alive(
+        int policyIndex,
+        double expectedPixelsAfterOneSecond
+    )
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var coordinator = CreateCoordinator(
+            index,
+            new NeverPermitAuthority(),
+            new RecordingSink()
+        );
+        var owner = Owner(OwnerA);
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
+            gameMinute: 0
+        );
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            gameMinute: 1
+        );
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierExited, OwnerA, SanityTierIds.Danger),
+            gameMinute: 2
+        );
+
+        var instance = AddDirect(
+            index,
+            owner,
+            $"danger-exit-binding-{policyIndex}",
+            x: 320,
+            policyIndex: policyIndex
+        );
+        instance.SetBindingProjection(protectionMilliseconds: 10_000);
+        SetWanderTarget(instance, new HarmlessProjectionWorldPoint(1_000, 0));
+
+        var result = coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 2,
+            elapsedMilliseconds: 1_000,
+            new FakeSpawnFactory()
+        );
+
+        Assert.Equal(ShadowCreatureProjectionUpdateStatus.ConversionLocked, result.Status);
+        Assert.Equal(
+            320d + expectedPixelsAfterOneSecond,
+            (double)instance.WorldPixel.X,
+            precision: 6
+        );
+        Assert.Equal(0d, (double)instance.WorldPixel.Y, precision: 6);
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Moving,
+            instance.AnimationState
+        );
+        Assert.False(instance.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+    }
+
+    [Fact]
+    public void Danger_conversion_handles_spawning_idle_and_binding_instances_independently()
+    {
+        var index = new ShadowCreatureHarmlessProjectionIndex();
+        var sink = new RecordingSink();
+        var coordinator = CreateCoordinator(index, new NeverPermitAuthority(), sink);
+        var owner = Owner(OwnerA);
+        coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.ShadowCreatures),
+            0
+        );
+        var spawning = AddDirect(index, owner, "mixed-spawning", x: 320);
+        var idle = AddDirect(index, owner, "mixed-idle", x: 640, policyIndex: 1);
+        CompleteSpawnAnimation(idle);
+        var binding = AddDirect(index, owner, "mixed-binding", x: 960);
+        binding.SetBindingProjection(protectionMilliseconds: 10_000);
+
+        var first = coordinator.ApplyStateEvent(
+            TierEvent(SanityStateEventKind.TierEntered, OwnerA, SanityTierIds.Danger),
+            1
+        );
+
+        Assert.Equal(1, first.IntentCount);
+        Assert.Single(sink.Intents);
+        Assert.False(spawning.IsCleanedUp);
+        Assert.True(idle.IsCleanedUp);
+        Assert.False(binding.IsCleanedUp);
+        Assert.Equal(2, index.CountForOwner(OwnerA));
+
+        coordinator.UpdateOwner(
+            owner,
+            new HarmlessProjectionWorldPoint(0, 0),
+            gameMinute: 1,
+            elapsedMilliseconds: 400,
+            new FakeSpawnFactory(),
+            advanceMovement: false
+        );
+
+        Assert.Equal(2, sink.Intents.Count);
+        Assert.True(spawning.IsCleanedUp);
+        Assert.False(binding.IsCleanedUp);
+        Assert.Equal(1, index.CountForOwner(OwnerA));
+    }
+
     [Fact]
     public void DangerExitStaysLockedUntilAFreshShadowTierEntryAndNewPermit()
     {
@@ -787,6 +1138,7 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             "old-local-instance",
             x: 320
         );
+        CompleteSpawnAnimation(oldInstance);
         harness.Publish(
             SanityStateEventKind.TierEntered,
             OwnerA,
@@ -976,6 +1328,36 @@ public sealed class ShadowCreatureHarmlessProjectionTests
         );
         Assert.True(index.TryAdd(instance, out var reason), reason);
         return instance;
+    }
+
+    private static void SetWanderTarget(
+        ShadowCreatureHarmlessProjectionInstance instance,
+        HarmlessProjectionWorldPoint target
+    )
+    {
+        var targetField = typeof(ShadowCreatureHarmlessProjectionInstance).GetField(
+            "wanderTargetPixel",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+        );
+
+        Assert.NotNull(targetField);
+        targetField!.SetValue(instance, target);
+    }
+
+    private static void CompleteSpawnAnimation(
+        ShadowCreatureHarmlessProjectionInstance instance
+    )
+    {
+        var policy = instance.Policy;
+        Assert.True(
+            instance.AdvanceFrame(
+                checked(policy.FrameCount * policy.SpawnFrameDurationMilliseconds)
+            )
+        );
+        Assert.Equal(
+            ShadowCreatureHarmlessProjectionInstance.ShadowCreatureProjectionAnimationState.Idle,
+            instance.AnimationState
+        );
     }
 
     private static SanityShadowSpawnPermit Permit(
@@ -1247,6 +1629,9 @@ public sealed class ShadowCreatureHarmlessProjectionTests
 
         internal int CallCount { get; private set; }
 
+        internal Queue<ShadowProjectionConversionSubmissionStatus> StatusSequence { get; } =
+            new();
+
         internal Action<ShadowProjectionConversionIntent>? OnRecord { get; set; }
 
         internal List<ShadowProjectionConversionIntent> Intents { get; } = new();
@@ -1260,9 +1645,10 @@ public sealed class ShadowCreatureHarmlessProjectionTests
             if (Throw)
                 throw new InvalidOperationException("test sink failure");
             Intents.Add(intent);
+            var status = StatusSequence.Count > 0 ? StatusSequence.Dequeue() : Status;
             return new ShadowProjectionConversionSubmissionResult(
-                Status,
-                $"test.{Status.ToString().ToLowerInvariant()}"
+                status,
+                $"test.{status.ToString().ToLowerInvariant()}"
             );
         }
     }

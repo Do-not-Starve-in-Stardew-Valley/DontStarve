@@ -85,6 +85,42 @@ public sealed class SanityAudioRuntimeContractTests
         Assert.DoesNotContain("references", source, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Focus_lifecycle_is_direct_and_only_pauses_continuous_sanity_pools()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+
+        Assert.Contains("game.Deactivated += OnWindowDeactivated", source, StringComparison.Ordinal);
+        Assert.Contains("game.Activated += OnWindowActivated", source, StringComparison.Ordinal);
+        Assert.Contains("TryAttachWindowFocusEvents();", source, StringComparison.Ordinal);
+        Assert.Contains("SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive)", source, StringComparison.Ordinal);
+
+        var start = source.IndexOf(
+            "public void SetContinuousPoolsPaused",
+            StringComparison.Ordinal
+        );
+        var end = source.IndexOf("public void SetSuspended", start, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        var focusOutput = source.Substring(start, end - start);
+        Assert.Contains("ambienceLane?.Pause()", focusOutput, StringComparison.Ordinal);
+        Assert.Contains("whispersLane?.Pause()", focusOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("dangerLane?.Pause()", focusOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("darknessWarningLane?.Pause()", focusOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Process_audio_contract_keeps_default_warning_clip_pause_and_attack_seams_with_five_instance_budget()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+
+        Assert.Contains("public void SetDarknessWarningClip(string warningClipId)", source, StringComparison.Ordinal);
+        Assert.Contains("public void SetDarknessWarningPaused(bool value)", source, StringComparison.Ordinal);
+        Assert.Contains("public void TriggerDarknessAttack()", source, StringComparison.Ordinal);
+        Assert.Contains("coordinator.SetDarknessWarningClaimPlaybackPaused", source, StringComparison.Ordinal);
+        Assert.Contains("coordinator.TriggerDarknessAttack()", source, StringComparison.Ordinal);
+    }
+
     private static string ReadSource(string folder, string fileName)
     {
         return File.ReadAllText(

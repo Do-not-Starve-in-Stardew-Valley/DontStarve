@@ -520,6 +520,8 @@ public sealed class SanityGameMusicCoordinatorTests
 
         public void SetPaused(bool paused) { }
 
+        public void SetContinuousPoolsPaused(bool paused) { }
+
         public void SetSuspended(bool suspended) { }
 
         public void InvalidateResources() { }

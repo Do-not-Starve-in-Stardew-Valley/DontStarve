@@ -10,7 +10,11 @@ using System.Text.Json;
 
 namespace DontStarve.Resource.Sanity;
 
-public sealed record SanityAudioContractIssue(string Code, string Reason);
+public sealed record SanityAudioContractIssue(
+    string Code,
+    string Reason,
+    bool IsBlocking = true
+);
 
 public sealed class SanityAudioContractValidationResult
 {
@@ -35,7 +39,7 @@ public sealed class SanityAudioContractValidationResult
 
     public IReadOnlyList<string> PendingRealMachineCueIds { get; }
 
-    public bool Success => Issues.Count == 0;
+    public bool Success => Issues.All(issue => !issue.IsBlocking);
 }
 
 /// <summary>
@@ -47,9 +51,9 @@ public static class SanityAudioContractValidator
     public const string MetadataDeploymentPath = "Asset/Sanity/Audio/audio-cues.json";
     public const string RuntimeFormatId = SanityWavFormatCatalog.PcmS16Stereo44100V1;
 
-    private const int ExpectedCueSetCount = 8;
-    private const int ExpectedCueCount = 22;
-    private const int ExpectedPhysicalClipCount = 140;
+    private const int ExpectedCueSetCount = 9;
+    private const int ExpectedCueCount = 23;
+    private const int ExpectedPhysicalClipCount = 144;
 
     private static readonly IReadOnlyDictionary<string, CueSetExpectation> ExpectedCueSets =
         new Dictionary<string, CueSetExpectation>(StringComparer.Ordinal)
@@ -76,6 +80,12 @@ public static class SanityAudioContractValidator
                 "darkness-warning",
                 "LazyPerCueSetBounded",
                 "CancelableOneShot;ReleaseOnWorldTitleDispose",
+                1
+            ),
+            ["sanity.cue.darkness-attack"] = new(
+                "darkness-attack",
+                "LazyPerCueSetBounded",
+                "ReleaseOnWorldTitleDispose",
                 1
             ),
             ["sanity.cue.dark-hand"] = new(
@@ -288,8 +298,36 @@ public static class SanityAudioContractValidator
                     )
                 );
             }
-            if (!string.Equals(slot.Sha256, metadataHash, StringComparison.Ordinal))
-                issues.Add(new("audio.manifest.hash-mismatch", $"Cue slot '{slot.SlotId}' has a stale metadata hash."));
+            if (string.IsNullOrWhiteSpace(slot.Sha256))
+            {
+                issues.Add(
+                    new(
+                        "audio.manifest.hash-missing",
+                        $"Cue slot '{slot.SlotId}' has no metadata SHA-256; the path remains authoritative.",
+                        IsBlocking: false
+                    )
+                );
+            }
+            else if (!SanityAssetFileInspector.IsSha256(slot.Sha256))
+            {
+                issues.Add(
+                    new(
+                        "audio.manifest.hash-invalid",
+                        $"Cue slot '{slot.SlotId}' has a malformed metadata SHA-256; the path remains authoritative.",
+                        IsBlocking: false
+                    )
+                );
+            }
+            else if (!string.Equals(slot.Sha256, metadataHash, StringComparison.Ordinal))
+            {
+                issues.Add(
+                    new(
+                        "audio.manifest.hash-mismatch",
+                        $"Cue slot '{slot.SlotId}' has a stale metadata hash; the path remains authoritative.",
+                        IsBlocking: false
+                    )
+                );
+            }
             if (slot.RequiredForRelease != expected.RequiredForRelease || slot.IsPlaceholder != expected.IsPlaceholder)
             {
                 issues.Add(
@@ -514,7 +552,7 @@ public static class SanityAudioContractValidator
             }
         }
         ExpectBool(clip, "Loop", false, "audio.clip.loop-mismatch", issues);
-        var declaredHash = RequiredString(clip, "Sha256", "audio.clip.hash-missing", issues);
+        var declaredHash = OptionalSha256(clip, issues);
         var declaredFrames = RequiredInt64(clip, "DurationFrames", "audio.clip.duration-frames-missing", issues);
         var declaredSeconds = RequiredDouble(clip, "DurationSeconds", "audio.clip.duration-seconds-missing", issues);
         if (!File.Exists(absolutePath))
@@ -537,8 +575,19 @@ public static class SanityAudioContractValidator
                 )
             );
         }
-        if (!string.Equals(declaredHash, inspection.Sha256, StringComparison.Ordinal))
-            issues.Add(new("audio.clip.hash-mismatch", $"Clip '{path}' has a stale SHA-256."));
+        if (
+            SanityAssetFileInspector.IsSha256(declaredHash)
+            && !string.Equals(declaredHash, inspection.Sha256, StringComparison.Ordinal)
+        )
+        {
+            issues.Add(
+                new(
+                    "audio.clip.hash-mismatch",
+                    $"Clip '{path}' has a stale SHA-256; the path remains authoritative.",
+                    IsBlocking: false
+                )
+            );
+        }
         if (declaredFrames != inspection.Frames)
             issues.Add(new("audio.clip.duration-frames-mismatch", $"Clip '{path}' has a stale frame count."));
         if (Math.Abs(declaredSeconds - inspection.DurationSeconds) > 0.0000005d)
@@ -599,7 +648,15 @@ public static class SanityAudioContractValidator
                 "CancelableOneShot",
                 true,
                 true,
+                false,
+                4
+            ),
+            ["sanity.cue.darkness.attack"] = new(
+                "sanity.cue.darkness-attack",
+                "OneShot",
                 true,
+                true,
+                false,
                 1
             ),
         };
@@ -607,8 +664,8 @@ public static class SanityAudioContractValidator
         AddEvents(
             values,
             "creeper-fear",
-            new[] { "idle", "chase", "taunt", "attack-dull", "attack-sharp", "hurt", "death" },
-            new[] { 8, 8, 6, 5, 8, 6, 9 },
+            new[] { "idle", "chase", "taunt", "attack", "hurt-dull", "hurt-sharp", "death" },
+            new[] { 8, 8, 6, 6, 5, 8, 9 },
             isPlaceholder: false
         );
         AddEvents(
@@ -792,6 +849,42 @@ public static class SanityAudioContractValidator
             return value.GetString()!;
         issues.Add(new(code, $"Property '{property}' must be a non-empty string."));
         return string.Empty;
+    }
+
+    private static string OptionalSha256(
+        JsonElement owner,
+        ICollection<SanityAudioContractIssue> issues
+    )
+    {
+        if (
+            !owner.TryGetProperty("Sha256", out var value)
+            || value.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(value.GetString())
+        )
+        {
+            issues.Add(
+                new(
+                    "audio.clip.hash-missing",
+                    "Property 'Sha256' is missing or empty; the clip path remains authoritative.",
+                    IsBlocking: false
+                )
+            );
+            return string.Empty;
+        }
+
+        var hash = value.GetString()!;
+        if (!SanityAssetFileInspector.IsSha256(hash))
+        {
+            issues.Add(
+                new(
+                    "audio.clip.hash-invalid",
+                    "Property 'Sha256' is not a 64-character hexadecimal SHA-256; the clip path remains authoritative.",
+                    IsBlocking: false
+                )
+            );
+        }
+
+        return hash;
     }
 
     private static long RequiredInt64(

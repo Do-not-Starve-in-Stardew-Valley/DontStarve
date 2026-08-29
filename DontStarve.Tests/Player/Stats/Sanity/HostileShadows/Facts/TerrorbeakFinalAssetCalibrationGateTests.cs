@@ -18,16 +18,20 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
         "sanity.animation.terrorbeak.taunt",
         "sanity.asset.terrorbeak.sprite",
         "sanity.cue.terrorbeak.attack",
+        "sanity.cue.terrorbeak.chase",
         "sanity.cue.terrorbeak.death",
         "sanity.cue.terrorbeak.hurt",
+        "sanity.cue.terrorbeak.idle",
         "sanity.cue.terrorbeak.taunt",
     };
 
     private static readonly string[] CueIds =
     {
         "sanity.cue.terrorbeak.attack",
+        "sanity.cue.terrorbeak.chase",
         "sanity.cue.terrorbeak.death",
         "sanity.cue.terrorbeak.hurt",
+        "sanity.cue.terrorbeak.idle",
         "sanity.cue.terrorbeak.taunt",
     };
 
@@ -93,13 +97,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
         foreach (var cueSlotId in CueIds)
         {
             Assert.Equal(
-                new[]
-                {
-                    "release.asset-placeholder",
-                    "release.credit-placeholder",
-                    "release.dev-credit-group",
-                    "release.permission-insufficient",
-                },
+                new[] { "release.credit-placeholder" },
                 ReleaseCodes(release, cueSlotId)
             );
         }
@@ -175,7 +173,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
     }
 
     [Fact]
-    public void Four_actor_cues_are_valid_placeholder_wavs_not_final_audio_or_listening_evidence()
+    public void All_actor_cues_are_real_audio_while_listening_evidence_remains_pending()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(AudioMetadataPath));
         var cueSet = Assert.Single(
@@ -196,41 +194,37 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
             .ToArray();
         Assert.Equal(CueIds, cues.Select(cue => cue.GetProperty("CueId").GetString()));
 
-        var expectedFrequencyByCue = new Dictionary<string, int>(StringComparer.Ordinal)
+        var expectedClipCounts = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["sanity.cue.terrorbeak.attack"] = 690,
-            ["sanity.cue.terrorbeak.death"] = 770,
-            ["sanity.cue.terrorbeak.hurt"] = 730,
-            ["sanity.cue.terrorbeak.taunt"] = 650,
+            ["sanity.cue.terrorbeak.attack"] = 6,
+            ["sanity.cue.terrorbeak.chase"] = 14,
+            ["sanity.cue.terrorbeak.death"] = 11,
+            ["sanity.cue.terrorbeak.hurt"] = 6,
+            ["sanity.cue.terrorbeak.idle"] = 16,
+            ["sanity.cue.terrorbeak.taunt"] = 10,
         };
         foreach (var cue in cues)
         {
             var cueId = cue.GetProperty("CueId").GetString()!;
             Assert.True(cue.GetProperty("Enabled").GetBoolean());
             Assert.True(cue.GetProperty("RequiredForRelease").GetBoolean());
-            Assert.True(cue.GetProperty("IsPlaceholder").GetBoolean());
+            Assert.False(cue.GetProperty("IsPlaceholder").GetBoolean());
             Assert.Equal("PendingRealMachine", cue.GetProperty("ListeningStatus").GetString());
 
-            var clip = Assert.Single(cue.GetProperty("Clips").EnumerateArray());
-            Assert.True(clip.GetProperty("IsPlaceholder").GetBoolean());
-            Assert.Equal("MissingFinalAsset", clip.GetProperty("SourceEvidence").GetProperty("Status").GetString());
-            Assert.Equal("sanity4-missing-asset-ledger", clip.GetProperty("SourceEvidence").GetProperty("EvidenceId").GetString());
-            Assert.Equal("PendingRealMachine", clip.GetProperty("ListeningEvidence").GetProperty("OverallStatus").GetString());
-            var generator = clip.GetProperty("PlaceholderGenerator");
-            Assert.Equal("DEV-PLACEHOLDER-TRIPLE-TRIANGLE-BEEP", generator.GetProperty("Kind").GetString());
-            Assert.Equal(expectedFrequencyByCue[cueId], generator.GetProperty("BaseFrequencyHz").GetInt32());
-            Assert.False(generator.GetProperty("FinalAssetEligible").GetBoolean());
-
-            var inspection = SanityWavInspector.InspectFile(
-                ResolveShippedPath(clip.GetProperty("Path").GetString()!)
-            );
-            Assert.True(inspection.Success, string.Join(Environment.NewLine, inspection.Issues));
-            Assert.Equal(1, inspection.FormatCode);
-            Assert.Equal(2, inspection.Channels);
-            Assert.Equal(44100, inspection.SampleRateHz);
-            Assert.Equal(16, inspection.BitsPerSample);
-            Assert.Equal(21168, inspection.Frames);
-            Assert.Equal(clip.GetProperty("Sha256").GetString(), inspection.Sha256);
+            var clips = cue.GetProperty("Clips").EnumerateArray().ToArray();
+            Assert.Equal(expectedClipCounts[cueId], clips.Length);
+            Assert.All(clips, clip =>
+            {
+                Assert.StartsWith(
+                    "Asset/Sanity/Audio/Creatures/shadow_terrorbeak/",
+                    clip.GetProperty("Path").GetString(),
+                    StringComparison.Ordinal
+                );
+                Assert.Equal("sanity.wav.pcm-s16-stereo-48000-v1", clip.GetProperty("FormatId").GetString());
+                Assert.False(clip.GetProperty("IsPlaceholder").GetBoolean());
+                Assert.Equal("AvailableReadOnlyEvidence", clip.GetProperty("SourceEvidence").GetProperty("Status").GetString());
+                Assert.Equal("PendingRealMachine", clip.GetProperty("ListeningEvidence").GetProperty("OverallStatus").GetString());
+            });
         }
     }
 
@@ -248,8 +242,11 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
             ShippedModRoot
         );
         Assert.True(audio.Success, string.Join(Environment.NewLine, audio.Issues));
-        Assert.All(CueIds, cueId => Assert.Contains(cueId, audio.PlaceholderCueIds));
-        Assert.All(CueIds, cueId => Assert.Contains(cueId, audio.PendingRealMachineCueIds));
+        Assert.All(CueIds, cueId =>
+        {
+            Assert.DoesNotContain(cueId, audio.PlaceholderCueIds);
+            Assert.Contains(cueId, audio.PendingRealMachineCueIds);
+        });
 
         using var document = JsonDocument.Parse(bindingJson);
         var binding = Assert.Single(

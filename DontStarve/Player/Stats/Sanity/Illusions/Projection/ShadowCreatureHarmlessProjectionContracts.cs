@@ -29,7 +29,8 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
         string tauntVisualSlotId,
         IReadOnlyList<string> allVisualSlotIds,
         SanityResourcePoint expectedPivotSourcePx,
-        double expectedDrawScale
+        double expectedDrawScale,
+        double wanderSpeedPixelsPerSecond
     )
     {
         SpeciesId = RequireId(speciesId, nameof(speciesId));
@@ -50,6 +51,13 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
             throw new ArgumentOutOfRangeException(nameof(moveFrameDurationMilliseconds));
         if (expectedDrawScale <= 0d || !double.IsFinite(expectedDrawScale))
             throw new ArgumentOutOfRangeException(nameof(expectedDrawScale));
+        if (
+            wanderSpeedPixelsPerSecond <= 0d
+            || !double.IsFinite(wanderSpeedPixelsPerSecond)
+        )
+        {
+            throw new ArgumentOutOfRangeException(nameof(wanderSpeedPixelsPerSecond));
+        }
         FrameCount = frameCount;
         FrameDurationMilliseconds = frameDurationMilliseconds;
         SpawnFrameDurationMilliseconds = spawnFrameDurationMilliseconds;
@@ -82,6 +90,7 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
         );
         ExpectedPivotSourcePx = expectedPivotSourcePx;
         ExpectedDrawScale = expectedDrawScale;
+        WanderSpeedPixelsPerSecond = wanderSpeedPixelsPerSecond;
     }
 
     internal string SpeciesId { get; }
@@ -123,6 +132,9 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
     internal SanityResourcePoint ExpectedPivotSourcePx { get; }
 
     internal double ExpectedDrawScale { get; }
+
+    /// <summary>该无害影怪在无目标游荡时的世界像素速度。</summary>
+    internal double WanderSpeedPixelsPerSecond { get; }
 
     public int MinimumDistanceTiles => 4;
 
@@ -331,7 +343,8 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
                         CreeperFearDespawnVisualSlotId,
                     },
                     new SanityResourcePoint(32, 48),
-                    expectedDrawScale: 4d
+                    expectedDrawScale: 4d,
+                    wanderSpeedPixelsPerSecond: 75d
                 ),
                 new ShadowCreatureHarmlessProjectionPolicy(
                     TerrorbeakSpeciesId,
@@ -358,7 +371,8 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
                         TerrorbeakTauntVisualSlotId,
                     },
                     new SanityResourcePoint(24, 48),
-                    expectedDrawScale: 4d
+                    expectedDrawScale: 4d,
+                    wanderSpeedPixelsPerSecond: 180d
                 ),
             }
         );
@@ -377,7 +391,6 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
     internal const int HighSanFadeOutMilliseconds = 1000;       // 高理智淡出 1 秒
     internal const int WanderRestMillisecondsMin = 3000;        // 游荡到达目标后的休息下限（与危险版 3-5 秒一致）
     internal const int WanderRestMillisecondsMax = 5000;        // 游荡到达目标后的休息上限
-    internal const double WanderSpeedPixelsPerSecond = 80d;     // 游荡半速（危险版追击一半）
     internal const double FleeSpeedPixelsPerSecond = 160d;      // 驱赶逃离速度（游荡 2 倍）
 
     internal static bool IsPermitConsumer(string? speciesId)
@@ -467,9 +480,9 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
     private HarmlessProjectionWorldPoint fleeTargetPixel;
     private int fadeOutElapsedMilliseconds;
     private int fadeOutDurationMilliseconds;
-    // DIAG-20260810: 绑定投影（危险实体隐藏态外观）标记与保护期。保护期内完全
-    // 静止且豁免近距驱赶（玩家能看到投影稳定出现），保护期后恢复正常行为
-    // （可游荡、可被驱赶）；远离 20 格/高理智清理不受保护期影响。
+    // DIAG-20260810: 绑定投影（危险实体隐藏态外观）标记与保护期。保护期内豁免
+    // 近距淡出但仍继续无害行为（可游荡、被追时可逃离），保护期后恢复正常淡出规则；
+    // 远离 20 格/高理智清理不受保护期影响。
     private bool isBindingProjection;
     private int bindingProtectionRemainingMilliseconds;
     // DIAG-20260810: 淡出原因——驱赶(Flee)/远离(Far)/高理智(HighSan)，用于
@@ -956,7 +969,7 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
         var previousY = worldPixel.Y;
         MoveToward(
             wanderTargetPixel,
-            ShadowCreatureHarmlessProjectionCatalog.WanderSpeedPixelsPerSecond,
+            Policy.WanderSpeedPixelsPerSecond,
             elapsedMilliseconds
         );
         if (
@@ -1264,7 +1277,8 @@ internal sealed class ShadowProjectionConversionIntent
 
     /// <summary>
     /// A future reverse transition must create a new legal local candidate after a fresh budget
-    /// decision. The removed visual instance is evidence only and can never be restored.
+    /// decision; it cannot reuse an instance removed by a confirmed conversion. The coordinator
+    /// may restore an instance after a failed/rejected bridge so the same intent can be retried.
     /// </summary>
     internal bool RequiresFreshBudgetAndLegalSpawn => true;
 

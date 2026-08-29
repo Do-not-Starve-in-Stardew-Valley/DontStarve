@@ -1,4 +1,5 @@
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using Xunit;
 
 namespace DontStarve.Tests.Player.Stats.Sanity.HostileShadows.Combat;
@@ -116,6 +117,70 @@ public sealed class HostileAttackMotionAndStateTests
         Assert.Equal(HostileShadowStateIds.Attack, next.StateId);
         Assert.True(policy.TauntCalls > 0);
         Assert.True(policy.IntervalCalls > 0);
+    }
+
+    [Fact]
+    public void Projection_conversion_starts_with_one_taunt_and_does_not_retaunt_on_first_target()
+    {
+        var definition = HostileAttackTestFactory.Definition(intervalSeconds: 1d);
+        var policy = new TestTransitionPolicy(shouldTaunt: true, delaySeconds: 0d);
+        var machine = new HostileAttackStateMachine(
+            definition,
+            policy,
+            HostileShadowStateIds.Taunt
+        );
+
+        Assert.Equal(HostileShadowStateIds.Taunt, machine.StateId);
+        var stillTaunting = machine.Advance(
+            HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+            definition.TauntDurationMilliseconds - 1d
+        );
+        var idle = machine.Advance(
+            HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+            1d
+        );
+        var chase = machine.Advance(
+            HostileAttackTestFactory.Input(inRange: false),
+            0d
+        );
+
+        Assert.Equal(HostileShadowStateIds.Taunt, stillTaunting.StateId);
+        Assert.Equal(HostileShadowStateIds.Idle, idle.StateId);
+        Assert.Equal(HostileShadowStateIds.Chase, chase.StateId);
+        Assert.Equal(0, policy.TauntCalls);
+    }
+
+    [Theory]
+    [InlineData(ShadowMonsterAssetBindingIds.CreeperFear)]
+    [InlineData(ShadowMonsterAssetBindingIds.Terrorbeak)]
+    public void Hurt_box_center_round_trip_preserves_the_shared_projection_center(
+        string bindingId
+    )
+    {
+        var definition = HostileAttackTestFactory.Definition(bindingId);
+        const double centerX = 1234.5d;
+        const double centerY = 678.25d;
+
+        Assert.True(
+            HostileAttackCollisionResolver.TryResolvePivotForHurtBoxCenter(
+                definition,
+                centerX,
+                centerY,
+                out var pivotX,
+                out var pivotY
+            )
+        );
+        Assert.True(
+            HostileAttackCollisionResolver.TryCreateWorldHurtBox(
+                definition,
+                pivotX,
+                pivotY,
+                out var hurtBox
+            )
+        );
+
+        Assert.Equal(centerX, hurtBox.X + (hurtBox.Width / 2d), precision: 8);
+        Assert.Equal(centerY, hurtBox.Y + (hurtBox.Height / 2d), precision: 8);
     }
 
     [Fact]

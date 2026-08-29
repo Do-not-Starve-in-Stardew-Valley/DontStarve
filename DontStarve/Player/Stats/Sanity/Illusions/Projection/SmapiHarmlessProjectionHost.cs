@@ -61,6 +61,9 @@ internal sealed class SmapiHarmlessProjectionHost
         spawnGatesBySpecies = new(StringComparer.Ordinal);
     private readonly Dictionary<int, HarmlessProjectionOwnerContext> ownerContextByScreen =
         new();
+    private readonly Dictionary<string, string> shadowSfxOwners =
+        new(StringComparer.Ordinal);
+    private readonly HashSet<string> shadowSfxSeen = new(StringComparer.Ordinal);
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private bool disposed;
 
@@ -310,6 +313,7 @@ internal sealed class SmapiHarmlessProjectionHost
         {
             return "spawn.owner-context-invalid";
         }
+        SynchronizeShadowTierFromCurrentTierState(currentContext.PlayerKey);
         return SpawnShadowProjectionCore(
             currentContext,
             speciesId,
@@ -475,6 +479,7 @@ internal sealed class SmapiHarmlessProjectionHost
     {
         if (disposed)
             return 0;
+        ClearShadowCreatureSfxOwners();
         return shadowCoordinator.CleanupAll(
             HarmlessProjectionCleanupReason.OwnerInvalidated,
             clearOwnerPhases: false,
@@ -585,7 +590,7 @@ internal sealed class SmapiHarmlessProjectionHost
         );
         instance.SetFacingId(facingId);
         // DIAG-20260811: 绑定投影 10 秒驱赶保护期（玩家能看到投影稳定出现）；
-        // 保护期内静止且豁免近距驱赶，之后恢复正常行为（可游荡/可驱赶）。
+        // 保护期内豁免近距淡出但仍继续正常行为（可游荡/可逃离），之后恢复普通淡出。
         // SetBindingProjection 同时把动画状态切到静息——绑定投影不播生成动画
         // （危险影怪恐吓→消失→立刻出现非危险形态，无生成过渡）。
         instance.SetBindingProjection(10000);
@@ -614,6 +619,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return false;
         }
         bindingProjections.Remove(correlationId);
+        ForceRemoveShadowCreatureSfxOwner(correlationId);
         if (
             !shadowCoordinator.Index.TryRemove(
                 correlationId,
@@ -711,6 +717,7 @@ internal sealed class SmapiHarmlessProjectionHost
                 )
             )
             {
+                ForceRemoveShadowCreatureSfxOwner(instance.CorrelationId);
                 removed++;
             }
         }
@@ -762,7 +769,10 @@ internal sealed class SmapiHarmlessProjectionHost
         if (removed is null)
             return;
         foreach (var correlationId in removed)
+        {
             bindingProjections.Remove(correlationId);
+            ForceRemoveShadowCreatureSfxOwner(correlationId);
+        }
     }
 
     /// <summary>
@@ -1087,6 +1097,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
 
         disposed = true;
+        ClearShadowCreatureSfxOwners();
         scheduler.CleanupAll(HarmlessProjectionCleanupReason.WorldCleanup);
         shadowCoordinator.CleanupAll(
             HarmlessProjectionCleanupReason.WorldCleanup,
@@ -1135,10 +1146,12 @@ internal sealed class SmapiHarmlessProjectionHost
                 scheduler.SetTierActive(stateEvent.PlayerKey, stateEvent.TierId, false);
                 break;
             case SanityStateEventKind.SystemDisabled:
+                ClearShadowCreatureSfxOwners();
                 scheduler.CleanupAll(HarmlessProjectionCleanupReason.ConfigDisabled);
                 ownerContextByScreen.Clear();
                 break;
             case SanityStateEventKind.OwnerInvalidated:
+                ForceRemoveShadowCreatureSfxOwnersForOwner(stateEvent.PlayerKey);
                 scheduler.CleanupOwner(
                     stateEvent.PlayerKey,
                     HarmlessProjectionCleanupReason.OwnerInvalidated
@@ -1173,6 +1186,7 @@ internal sealed class SmapiHarmlessProjectionHost
             change.Key.PlayerKey,
             HarmlessProjectionCleanupReason.EventOverride
         );
+        ForceRemoveShadowCreatureSfxOwnersForOwner(change.Key.PlayerKey);
         shadowCoordinator.CleanupOwner(
             change.Key.PlayerKey,
             HarmlessProjectionCleanupReason.EventOverride,
@@ -1191,6 +1205,7 @@ internal sealed class SmapiHarmlessProjectionHost
             scheduler.CleanupAll(
                 HarmlessProjectionCleanupReason.DayStartedRecovery
             );
+            ClearShadowCreatureSfxOwners();
             shadowCoordinator.CleanupAll(
                 HarmlessProjectionCleanupReason.DayStartedRecovery,
                 clearOwnerPhases: true,
@@ -1209,6 +1224,7 @@ internal sealed class SmapiHarmlessProjectionHost
                 owner.PlayerKey,
                 HarmlessProjectionCleanupReason.OwnerWarped
             );
+            ForceRemoveShadowCreatureSfxOwnersForOwner(owner.PlayerKey);
             // DIAG-20260811: 切图清影怪无害投影计入驱赶补偿（切图后新地图按同样物种
             // 补刷）；绑定投影除外（连带清除隐藏实体，不补偿）。绑定投影带“已有实体”
             // 标签，切图时实体随投影消失链条连带清除。
@@ -1253,6 +1269,7 @@ internal sealed class SmapiHarmlessProjectionHost
                 ? HarmlessProjectionCleanupReason.ReturnedTitle
                 : HarmlessProjectionCleanupReason.WorldCleanup
         );
+        ClearShadowCreatureSfxOwners();
         shadowCoordinator.CleanupAll(
             boundary == SanitySessionBoundary.ReturnedToTitle
                 ? HarmlessProjectionCleanupReason.ReturnedTitle
@@ -1269,6 +1286,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
 
         scheduler.InvalidateResources();
+        ClearShadowCreatureSfxOwners();
         shadowCoordinator.CleanupAll(
             HarmlessProjectionCleanupReason.ResourceInvalidated,
             clearOwnerPhases: false,
@@ -1293,6 +1311,7 @@ internal sealed class SmapiHarmlessProjectionHost
             _ => HarmlessProjectionCleanupReason.WorldCleanup,
         };
         scheduler.CleanupAll(cleanupReason);
+        ClearShadowCreatureSfxOwners();
         var clearsSession = reason is SanityResourceReleaseReason.ReturnedToTitle
             or SanityResourceReleaseReason.WorldCleanup
             or SanityResourceReleaseReason.Dispose;
@@ -1341,6 +1360,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
         }
 
+        SynchronizeShadowTierFromCurrentTierState(currentOwner.PlayerKey);
         if (
             scheduler.Index.CleanupMismatchedLocation(
                 currentOwner,
@@ -1395,6 +1415,7 @@ internal sealed class SmapiHarmlessProjectionHost
             standingWorldPixel,
             elapsedMilliseconds
         );
+        ObserveShadowCreatureSfx(currentOwner);
         if (
             update.Status == HarmlessProjectionSchedulerStatus.Unavailable
             || update.Reason.StartsWith("spawn.factory-threw-", StringComparison.Ordinal)
@@ -1405,6 +1426,33 @@ internal sealed class SmapiHarmlessProjectionHost
                 $"Harmless projection scheduler failed closed ({update.Reason})."
             );
         }
+    }
+
+    private void SynchronizeShadowTierFromCurrentTierState(string playerKey)
+    {
+        if (
+            !lifecycle.TryGetTierState(playerKey, out var tier)
+            || tier is null
+            || !tier.IsAvailable
+        )
+        {
+            return;
+        }
+
+        var shadowTierActive = false;
+        var dangerTierActive = false;
+        foreach (var tierId in tier.ActiveTierIds)
+        {
+            if (string.Equals(tierId, SanityTierIds.ShadowCreatures, StringComparison.Ordinal))
+                shadowTierActive = true;
+            else if (string.Equals(tierId, SanityTierIds.Danger, StringComparison.Ordinal))
+                dangerTierActive = true;
+        }
+        shadowCoordinator.SynchronizeOwnerTierState(
+            playerKey,
+            shadowTierActive,
+            dangerTierActive
+        );
     }
 
     private void UpdateSpeciesBehaviors(
@@ -1421,7 +1469,11 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
         }
 
-        List<KeyValuePair<string, HarmlessProjectionCleanupReason>>? cleanup = null;
+        List<(
+            string SpeciesId,
+            string CorrelationId,
+            HarmlessProjectionCleanupReason Reason
+        )>? cleanup = null;
         foreach (var instance in instances)
         {
             if (
@@ -1466,10 +1518,15 @@ internal sealed class SmapiHarmlessProjectionHost
                 continue;
 
             cleanup ??=
-                new List<KeyValuePair<string, HarmlessProjectionCleanupReason>>();
+                new List<(
+                    string SpeciesId,
+                    string CorrelationId,
+                    HarmlessProjectionCleanupReason Reason
+                )>();
             cleanup.Add(
-                new KeyValuePair<string, HarmlessProjectionCleanupReason>(
+                (
                     instance.SpeciesId,
+                    string.Empty,
                     result.CleanupReason!.Value
                 )
             );
@@ -1481,12 +1538,140 @@ internal sealed class SmapiHarmlessProjectionHost
         {
             scheduler.RequestSoftExit(
                 owner,
-                pair.Key,
-                pair.Value,
+                pair.SpeciesId,
+                pair.Reason,
                 null,
                 out _
             );
+            if (!string.IsNullOrWhiteSpace(pair.CorrelationId))
+                RemoveShadowCreatureSfxOwner(pair.CorrelationId);
         }
+    }
+
+    private void ObserveShadowCreatureSfx(
+        HarmlessProjectionOwnerContext owner,
+        ShadowCreatureHarmlessProjectionInstance instance
+    )
+    {
+        var service = DontStarve.ModEntry.ActiveShadowCreatureSfx;
+        if (service is null || instance.IsCleanedUp)
+            return;
+        shadowSfxOwners[instance.CorrelationId] = owner.PlayerKey;
+        var stateName = instance.AnimationState
+            == ShadowCreatureHarmlessProjectionInstance
+                .ShadowCreatureProjectionAnimationState.Spawning
+            ? "Spawning"
+            : instance.BehaviorState.ToString();
+        service.ObserveHarmless(
+            instance.CorrelationId,
+            instance.SpeciesId,
+            stateName,
+            instance.WorldPixel.X,
+            instance.WorldPixel.Y,
+            Game1.ticks,
+            owner.LocationNameOrUniqueName
+        );
+    }
+
+    private void ObserveShadowCreatureSfx(HarmlessProjectionOwnerContext owner)
+    {
+        if (
+            !shadowCoordinator.Index.TryGetContextInstances(owner, out var instances)
+            || instances is null
+        )
+        {
+            RemoveShadowCreatureSfxOwnersForOwner(owner.PlayerKey);
+            return;
+        }
+
+        shadowSfxSeen.Clear();
+        foreach (var instance in instances)
+        {
+            if (instance.IsCleanedUp)
+                continue;
+            shadowSfxSeen.Add(instance.CorrelationId);
+            ObserveShadowCreatureSfx(owner, instance);
+        }
+        List<string>? stale = null;
+        foreach (var pair in shadowSfxOwners)
+        {
+            if (
+                string.Equals(pair.Value, owner.PlayerKey, StringComparison.Ordinal)
+                && !shadowSfxSeen.Contains(pair.Key)
+            )
+            {
+                stale ??= new List<string>();
+                stale.Add(pair.Key);
+            }
+        }
+        if (stale is null)
+            return;
+        foreach (var correlationId in stale)
+            RemoveShadowCreatureSfxOwner(correlationId);
+    }
+
+    private void RemoveShadowCreatureSfxOwner(string correlationId)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId))
+            return;
+        shadowSfxOwners.Remove(correlationId);
+        DontStarve.ModEntry.ActiveShadowCreatureSfx?.RemoveProjectionOwner(
+            "projection",
+            correlationId
+        );
+    }
+
+    private void RemoveShadowCreatureSfxOwnersForOwner(string playerKey)
+    {
+        RemoveShadowCreatureSfxOwnersForOwnerCore(playerKey, force: false);
+    }
+
+    private void ForceRemoveShadowCreatureSfxOwnersForOwner(string playerKey)
+    {
+        RemoveShadowCreatureSfxOwnersForOwnerCore(playerKey, force: true);
+    }
+
+    private void RemoveShadowCreatureSfxOwnersForOwnerCore(string playerKey, bool force)
+    {
+        if (string.IsNullOrWhiteSpace(playerKey))
+            return;
+        List<string>? remove = null;
+        foreach (var pair in shadowSfxOwners)
+        {
+            if (!string.Equals(pair.Value, playerKey, StringComparison.Ordinal))
+                continue;
+            remove ??= new List<string>();
+            remove.Add(pair.Key);
+        }
+        if (remove is null)
+            return;
+        foreach (var correlationId in remove)
+        {
+            if (force)
+                ForceRemoveShadowCreatureSfxOwner(correlationId);
+            else
+                RemoveShadowCreatureSfxOwner(correlationId);
+        }
+    }
+
+    private void ForceRemoveShadowCreatureSfxOwner(string correlationId)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId))
+            return;
+        shadowSfxOwners.Remove(correlationId);
+        DontStarve.ModEntry.ActiveShadowCreatureSfx?.ForceRemoveOwner(
+            "projection",
+            correlationId
+        );
+    }
+
+    private void ClearShadowCreatureSfxOwners()
+    {
+        if (shadowSfxOwners.Count == 0)
+            return;
+        var remove = new List<string>(shadowSfxOwners.Keys);
+        foreach (var correlationId in remove)
+            ForceRemoveShadowCreatureSfxOwner(correlationId);
     }
 
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)
@@ -1596,6 +1781,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
         foreach (var correlationId in failedCorrelations)
         {
+            ForceRemoveShadowCreatureSfxOwner(correlationId);
             shadowCoordinator.Index.TryRemove(
                 correlationId,
                 HarmlessProjectionCleanupReason.OwnerInvalidated,
@@ -1609,6 +1795,7 @@ internal sealed class SmapiHarmlessProjectionHost
         if (disposed)
             return;
 
+        ClearShadowCreatureSfxOwners();
         scheduler.CleanupAll(HarmlessProjectionCleanupReason.DayEnding);
         shadowCoordinator.CleanupAll(
             HarmlessProjectionCleanupReason.DayEnding,

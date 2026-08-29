@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Display;
 using DontStarve.Interface;
 using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
@@ -34,6 +35,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
     private readonly DarknessAttackLocationAuthorizationPolicy
         darknessAttackLocationAuthorization;
     private readonly SanitySmapiAudioService audio;
+    private readonly TaggedHudMessageService hudMessages;
     private readonly Func<EnvironmentLightConfigIdentity> configIdentityProvider;
     private readonly Dictionary<DarknessAttackOwnerKey, EnvironmentLightAcceptedRemoteEvidence>
         acceptedByOwner = new();
@@ -61,6 +63,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         EnvironmentLightLocationRuleCatalog locationRules,
         DarknessAttackLocationAuthorizationPolicy darknessAttackLocationAuthorization,
         SanitySmapiAudioService audio,
+        TaggedHudMessageService hudMessages,
         Func<EnvironmentLightConfigIdentity> configIdentityProvider
     )
     {
@@ -81,6 +84,8 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         this.darknessAttackLocationAuthorization = darknessAttackLocationAuthorization
             ?? throw new ArgumentNullException(nameof(darknessAttackLocationAuthorization));
         this.audio = audio ?? throw new ArgumentNullException(nameof(audio));
+        this.hudMessages = hudMessages
+            ?? throw new ArgumentNullException(nameof(hudMessages));
         this.configIdentityProvider = configIdentityProvider
             ?? throw new ArgumentNullException(nameof(configIdentityProvider));
 
@@ -134,7 +139,10 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         DarknessWarningClaimAction warningAction,
         string warningRequestId,
         long observationRevision,
-        string reason
+        string reason,
+        string warningClipId = "",
+        double warningDurationSeconds = 0d,
+        double presentationDurationSeconds = 0d
     )
     {
         if (
@@ -189,6 +197,9 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
                 warningRequestId,
                 DarknessAttackContract.MaximumRequestIdLength
             ),
+            WarningClipId = Bound(warningClipId, 256),
+            WarningDurationSeconds = BoundDurationSeconds(warningDurationSeconds),
+            PresentationDurationSeconds = BoundDurationSeconds(presentationDurationSeconds),
             ObservationRevision = Math.Max(0L, observationRevision),
             Reason = Bound(
                 reason,
@@ -588,6 +599,14 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             || message.ScreenId != Context.ScreenId
             || message.Sequence <= 0
             || message.ObservationRevision < 0
+            || message.WarningClipId is null
+            || message.WarningClipId.Length > 256
+            || !double.IsFinite(message.WarningDurationSeconds)
+            || message.WarningDurationSeconds < 0d
+            || message.WarningDurationSeconds > 60d
+            || !double.IsFinite(message.PresentationDurationSeconds)
+            || message.PresentationDurationSeconds < 0d
+            || message.PresentationDurationSeconds > 60d
             || !Enum.TryParse(
                 message.Kind,
                 ignoreCase: false,
@@ -635,7 +654,9 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
                         key.ScreenId,
                         key.SessionId,
                         message.WarningRequestId,
-                        message.ObservationRevision
+                        message.ObservationRevision,
+                        message.WarningClipId,
+                        message.WarningDurationSeconds
                     )
                 );
                 break;
@@ -661,7 +682,9 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             audio.RemoveDarknessWarningOwner(key.PlayerKey);
             return;
         }
-        ShowPrompt(kind);
+        if (kind == EnvironmentLightPresentationKind.Resolved)
+            audio.TriggerDarknessAttack();
+        ShowPrompt(kind, message.PresentationDurationSeconds);
     }
 
     private string? ValidateLiveEvidence(
@@ -907,7 +930,10 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         }
     }
 
-    private void ShowPrompt(EnvironmentLightPresentationKind kind)
+    private void ShowPrompt(
+        EnvironmentLightPresentationKind kind,
+        double presentationDurationSeconds = 0d
+    )
     {
         var key = kind switch
         {
@@ -923,8 +949,10 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         };
         if (string.IsNullOrEmpty(key))
             return;
-        Game1.addHUDMessage(
-            HUDMessage.ForCornerTextbox(helper.Translation.Get(key).ToString())
+        hudMessages.AddCornerTextbox(
+            helper.Translation.Get(key).ToString(),
+            HudMessageGroupTags.DarknessAttack,
+            presentationDurationSeconds
         );
     }
 
@@ -959,6 +987,11 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         return trimmed.Length <= maximumLength
             ? trimmed
             : trimmed[..maximumLength];
+    }
+
+    private static double BoundDurationSeconds(double value)
+    {
+        return double.IsFinite(value) && value > 0d && value <= 60d ? value : 0d;
     }
 
     private readonly record struct OwnerScreenKey(string PlayerKey, int ScreenId);

@@ -220,6 +220,11 @@ internal sealed class SmapiHostileShadowHost
                 "shadow-conversion.host-disposed"
             );
         }
+        // DIAG-20260828: Sanity's initial tier event may have been published before this host's
+        // SaveLoaded session reset. Reconcile from the current snapshot immediately before
+        // building the conversion envelope so a valid low-Sanity projection is not retried forever
+        // against a missing local Danger revision (including client-local projection requests).
+        SynchronizeDangerEpochFromCurrentTierState(intent.PlayerKey);
         return multiplayer.SubmitConversionIntent(intent);
     }
 
@@ -502,6 +507,7 @@ internal sealed class SmapiHostileShadowHost
                 LogOnce(reason, LogLevel.Error);
                 return;
             }
+            SynchronizeDangerEpochsForOnlinePlayers();
             if (!world.BeginSettlementSession(lifecycle.SessionId, out reason))
             {
                 LogOnce(reason, LogLevel.Error);
@@ -1218,7 +1224,7 @@ internal sealed class SmapiHostileShadowHost
         }
         // DIAG-20260807: 让怪物中心（受击框几何中心）对准鼠标——鼠标点哪，怪物中心就在哪。
         // 怪物 Position 是贴图左上角锚点，直接把鼠标坐标当 Position 会让怪物身体出现在
-        // 鼠标右下方。用 Position=0 时的受击框中心作为偏移量，减去后框中心落在鼠标处。
+        // 鼠标右下方。复用统一中心反算，避免调试生成与投影转换各自维护一套偏移语义。
         if (
             resources.TryGetHostileAttackMetadata(
                 bindingId,
@@ -1231,16 +1237,17 @@ internal sealed class SmapiHostileShadowHost
                 out var debugDefinition,
                 out _
             )
-            && HostileAttackCollisionResolver.TryCreateWorldHurtBox(
+            && HostileAttackCollisionResolver.TryResolvePivotForHurtBoxCenter(
                 debugDefinition,
-                0d,
-                0d,
-                out var debugHurtBox
+                positionX,
+                positionY,
+                out var resolvedPositionX,
+                out var resolvedPositionY
             )
         )
         {
-            positionX -= (float)(debugHurtBox.X + debugHurtBox.Width / 2d);
-            positionY -= (float)(debugHurtBox.Y + debugHurtBox.Height / 2d);
+            positionX = (float)resolvedPositionX;
+            positionY = (float)resolvedPositionY;
         }
         var capability = world.CurrentCapability;
         if (!capability.IsAvailable)
@@ -1316,6 +1323,61 @@ internal sealed class SmapiHostileShadowHost
         return result;
     }
 
+    /// <summary>
+    /// Converts the shared mod centre-point contract into the hostile entity Position anchor.
+    /// Projection conversion requests carry the harmless projection centre; the physical
+    /// Monster.Position field is the pivot used by the hostile hurt-box geometry.
+    /// </summary>
+    private bool TryResolveHostilePositionFromCenter(
+        string bindingId,
+        ShadowMonsterRuntimeProfile profile,
+        double centerWorldX,
+        double centerWorldY,
+        out double positionX,
+        out double positionY,
+        out string reason
+    )
+    {
+        positionX = 0d;
+        positionY = 0d;
+        if (!resources.TryGetHostileAttackMetadata(bindingId, out var metadata, out reason))
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "hostile-shadow.conversion-center-metadata-unavailable";
+            return false;
+        }
+        if (
+            !HostileAttackRuntimeDefinition.TryCreate(
+                metadata,
+                profile,
+                out var definition,
+                out reason
+            )
+            || definition is null
+        )
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "hostile-shadow.conversion-center-definition-invalid";
+            return false;
+        }
+        if (
+            !HostileAttackCollisionResolver.TryResolvePivotForHurtBoxCenter(
+                definition,
+                centerWorldX,
+                centerWorldY,
+                out positionX,
+                out positionY
+            )
+        )
+        {
+            reason = "hostile-shadow.conversion-center-resolution-failed";
+            return false;
+        }
+
+        reason = "hostile-shadow.conversion-center-resolved";
+        return true;
+    }
+
     private HostileShadowSpawnResult TrySpawn(
         string requestId,
         HostileShadowSpawnOrigin origin,
@@ -1362,6 +1424,33 @@ internal sealed class SmapiHostileShadowHost
             );
         }
 
+        double spawnPositionX = positionX ?? player.Position.X;
+        double spawnPositionY = positionY ?? player.Position.Y;
+        if (
+            origin == HostileShadowSpawnOrigin.OwnerProjectionConversion
+            && positionX is { } requestedCenterX
+            && positionY is { } requestedCenterY
+        )
+        {
+            if (
+                !TryResolveHostilePositionFromCenter(
+                    bindingId,
+                    resolved.Profile,
+                    requestedCenterX,
+                    requestedCenterY,
+                    out spawnPositionX,
+                    out spawnPositionY,
+                    out var centerReason
+                )
+            )
+            {
+                return Failure(
+                    HostileShadowSpawnStatus.Unavailable,
+                    centerReason
+                );
+            }
+        }
+
         var result = authority.TrySpawn(
             new HostileShadowSpawnCommand(
                 requestId,
@@ -1371,8 +1460,8 @@ internal sealed class SmapiHostileShadowHost
                 ),
                 location.NameOrUniqueName,
                 // DIAG-20260812: 支持指定生成位置（原地转化用）；未提供回退玩家位置。
-                positionX ?? player.Position.X,
-                positionY ?? player.Position.Y,
+                spawnPositionX,
+                spawnPositionY,
                 timeApi.Time,
                 resolved.Profile,
                 reason
@@ -1437,6 +1526,76 @@ internal sealed class SmapiHostileShadowHost
             }
         }
         return dangerActive;
+    }
+
+    private void SynchronizeDangerEpochsForOnlinePlayers()
+    {
+        foreach (var player in Game1.getOnlineFarmers())
+        {
+            var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+                player.UniqueMultiplayerID
+            );
+            if (SanityPlayerKey.IsCanonical(playerKey))
+                SynchronizeDangerEpochFromCurrentTierState(playerKey);
+        }
+    }
+
+    private void SynchronizeDangerEpochFromCurrentTierState(string playerKey)
+    {
+        if (
+            !TryGetCurrentTierFlags(
+                playerKey,
+                out var tierRevision,
+                out _,
+                out var dangerTierActive
+            )
+        )
+        {
+            return;
+        }
+
+        if (
+            !authority.SynchronizeDangerEpoch(
+                playerKey,
+                dangerTierActive,
+                tierRevision,
+                out var reason
+            )
+        )
+        {
+            LogOnce(reason, LogLevel.Warn);
+        }
+    }
+
+    private bool TryGetCurrentTierFlags(
+        string playerKey,
+        out long tierRevision,
+        out bool shadowTierActive,
+        out bool dangerTierActive
+    )
+    {
+        tierRevision = -1;
+        shadowTierActive = false;
+        dangerTierActive = false;
+        if (
+            !lifecycle.TryGetTierState(playerKey, out var tier)
+            || tier is null
+            || !tier.IsAvailable
+            || tier.Revision < 0
+        )
+        {
+            return false;
+        }
+
+        tierRevision = tier.Revision;
+        foreach (var tierId in tier.ActiveTierIds)
+        {
+            if (string.Equals(tierId, SanityTierIds.ShadowCreatures, StringComparison.Ordinal))
+                shadowTierActive = true;
+            else if (string.Equals(tierId, SanityTierIds.Danger, StringComparison.Ordinal))
+                dangerTierActive = true;
+        }
+        return true;
     }
 
     private void OnStateEventPublished(SanityStateEvent stateEvent)

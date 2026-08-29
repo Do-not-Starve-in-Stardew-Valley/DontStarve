@@ -16,6 +16,8 @@ internal sealed class ShadowCreatureSfxCadence
     private readonly IShadowCreatureSfxRandom random;
     private ShadowCreatureSfxCadenceState? state;
     private long revision;
+    private bool schedulingPaused;
+    private double schedulingPausedAtSeconds;
     internal ShadowCreatureSfxCadence(
         ShadowCreatureSpecies species,
         IShadowCreatureSfxRandom random
@@ -31,6 +33,8 @@ internal sealed class ShadowCreatureSfxCadence
 
     internal double NextDueAtSeconds { get; private set; }
 
+    internal bool IsSchedulingPaused => schedulingPaused;
+
     internal void Enter(
         ShadowCreatureSfxCadenceState nextState,
         double nowSeconds,
@@ -42,6 +46,10 @@ internal sealed class ShadowCreatureSfxCadence
         state = nextState;
         revision = stateRevision;
         NextDueAtSeconds = nowSeconds + Sample(initial: true);
+        // A state transition observed while the window is inactive starts its remaining delay from
+        // that transition, rather than inheriting the old focus-loss timestamp.
+        if (schedulingPaused)
+            schedulingPausedAtSeconds = nowSeconds;
     }
 
     internal void Leave()
@@ -50,8 +58,40 @@ internal sealed class ShadowCreatureSfxCadence
         NextDueAtSeconds = double.PositiveInfinity;
     }
 
+    internal void PauseScheduling(double nowSeconds)
+    {
+        if (schedulingPaused)
+            return;
+
+        schedulingPaused = true;
+        schedulingPausedAtSeconds = double.IsFinite(nowSeconds) ? nowSeconds : 0d;
+    }
+
+    internal void ResumeScheduling(double nowSeconds)
+    {
+        if (!schedulingPaused)
+            return;
+
+        var resumedAtSeconds = double.IsFinite(nowSeconds) ? nowSeconds : schedulingPausedAtSeconds;
+        var elapsed = resumedAtSeconds - schedulingPausedAtSeconds;
+        if (
+            double.IsFinite(elapsed)
+            && elapsed > 0d
+            && double.IsFinite(NextDueAtSeconds)
+        )
+        {
+            var shiftedDue = NextDueAtSeconds + elapsed;
+            NextDueAtSeconds = double.IsFinite(shiftedDue) ? shiftedDue : double.MaxValue;
+        }
+
+        schedulingPaused = false;
+    }
+
     internal bool IsDue(double nowSeconds) =>
-        state.HasValue && double.IsFinite(nowSeconds) && nowSeconds >= NextDueAtSeconds;
+        !schedulingPaused
+        && state.HasValue
+        && double.IsFinite(nowSeconds)
+        && nowSeconds >= NextDueAtSeconds;
 
     internal void DeferBecauseVoiceBusy()
     {
@@ -61,7 +101,7 @@ internal sealed class ShadowCreatureSfxCadence
 
     internal void MarkStarted(double startedAtSeconds)
     {
-        if (!state.HasValue || !double.IsFinite(startedAtSeconds))
+        if (schedulingPaused || !state.HasValue || !double.IsFinite(startedAtSeconds))
             return;
         NextDueAtSeconds = startedAtSeconds + Sample(initial: false);
     }

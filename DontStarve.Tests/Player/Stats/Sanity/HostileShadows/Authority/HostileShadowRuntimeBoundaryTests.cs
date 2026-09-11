@@ -21,6 +21,8 @@ public sealed class HostileShadowRuntimeBoundaryTests
         AssertPair(source, "SessionClearing", "OnSessionClearing");
         Assert.Contains("timeApi.OnUpdate.Add(OnMinuteUpdate)", source, StringComparison.Ordinal);
         Assert.Contains("timeApi.OnUpdate.Remove(OnMinuteUpdate)", source, StringComparison.Ordinal);
+        Assert.Contains("timeApi.OnSync.Add(OnTimeSynchronized)", source, StringComparison.Ordinal);
+        Assert.Contains("timeApi.OnSync.Remove(OnTimeSynchronized)", source, StringComparison.Ordinal);
         Assert.Contains("AppDomain.CurrentDomain.ProcessExit += OnProcessExit", source, StringComparison.Ordinal);
         Assert.Contains("AppDomain.CurrentDomain.ProcessExit -= OnProcessExit", source, StringComparison.Ordinal);
         Assert.Contains("HostileShadowCleanupReasonIds.OwnerDisconnected", multiplayer, StringComparison.Ordinal);
@@ -49,6 +51,71 @@ public sealed class HostileShadowRuntimeBoundaryTests
         );
         Assert.Contains("entries.Remove(entityId", world, StringComparison.Ordinal);
         Assert.DoesNotContain("Player.Warped +=", world, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Shadow_damage_uses_vanilla_timer_seam_without_relaxing_guarded_entities()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var monster = Contract("HostileShadowMonster.cs");
+
+        Assert.DoesNotContain(
+            "monster.invincibleCountdown = 1000",
+            world,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "450 / 2",
+            world,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "HostileShadowMonster.update",
+            world,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "public override bool isInvincible()",
+            monster,
+            StringComparison.Ordinal
+        );
+        var invincibility = Slice(
+            monster,
+            "public override bool isInvincible()",
+            "public override void setTrajectory"
+        );
+        Assert.Contains("BindingHiddenModDataKey", invincibility, StringComparison.Ordinal);
+        Assert.Contains("RetreatingModDataKey", invincibility, StringComparison.Ordinal);
+        Assert.Contains("return base.isInvincible();", invincibility, StringComparison.Ordinal);
+        Assert.Contains("stopGlowing();", monster, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scheduled_shadow_rolls_wait_for_the_final_tick_and_rebase_after_non_unit_sync()
+    {
+        var host = Contract("SmapiHostileShadowHost.cs");
+        var minute = Slice(
+            host,
+            "private void OnMinuteUpdate(long gameMinute)",
+            "private void OnTimeSynchronized(long gameMinute, long delta)"
+        );
+        var sync = Slice(
+            host,
+            "private void OnTimeSynchronized(long gameMinute, long delta)",
+            "private void AdvanceNaturalIntervalSpawns(int elapsedMilliseconds)"
+        );
+        var tick = Slice(
+            host,
+            "private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)",
+            "private bool CanRetreatForCurrentTarget"
+        );
+
+        Assert.Contains("pendingScheduledShadowCheckMinute = gameMinute", minute, StringComparison.Ordinal);
+        Assert.DoesNotContain("TrimOverCap(gameMinute)", minute, StringComparison.Ordinal);
+        Assert.Contains("pendingScheduledShadowCheckMinute = -1", sync, StringComparison.Ordinal);
+        Assert.Contains("RebaseShadowCheckSchedules(gameMinute)", sync, StringComparison.Ordinal);
+        Assert.Contains("var scheduledCheckMinute = pendingScheduledShadowCheckMinute", tick, StringComparison.Ordinal);
+        Assert.Contains("TrimOverCap(scheduledCheckMinute)", tick, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -261,6 +328,7 @@ public sealed class HostileShadowRuntimeBoundaryTests
     public void Collision_preflight_defers_geometry_and_protocol_work_until_the_target_is_eligible()
     {
         var combat = Contract("SmapiHostileAttackCombatService.cs");
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
         var geometry = Contract("HostileAttackGeometry.cs");
         var instance = Contract("HostileAttackInstance.cs");
         var damage = Contract("HostileAttackDamage.cs");
@@ -335,6 +403,18 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.Contains(
             "TargetPlayerId = farmer.UniqueMultiplayerID",
             combat,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("if (playerId == 0)", combat, StringComparison.Ordinal);
+        Assert.DoesNotContain("playerId < 0", combat, StringComparison.Ordinal);
+        Assert.Contains(
+            "return playerId != 0 && hitPlayerIds.Contains(playerId);",
+            instance,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "SanityPlayerKey.TryParseCanonicalPlayerId",
+            world,
             StringComparison.Ordinal
         );
         Assert.Contains(
@@ -530,6 +610,57 @@ public sealed class HostileShadowRuntimeBoundaryTests
     }
 
     [Fact]
+    public void Aggro_propagation_reuses_the_target_reacquisition_taunt_flow()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var aggro = Slice(
+            world,
+            "private void PropagateAggroToNearby(",
+            "    private bool TryAdvanceWander("
+        );
+
+        Assert.Contains("BeginTargetReacquisition", aggro, StringComparison.Ordinal);
+        Assert.Contains("ApplyMonsterState(other)", aggro, StringComparison.Ordinal);
+        Assert.Contains(
+            "other.AttackState.StateId",
+            aggro,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "替换 TargetPlayerKey 后继续沿用旧 Chase 状态",
+            aggro,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Hit_entity_uses_direct_handoff_for_a_new_attacker()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var hitPath = Slice(
+            world,
+            "var damageDecision = HostileShadowIncomingDamagePolicy.Evaluate(",
+            "        // DIAG-20260809: 受击拉仇恨传播"
+        );
+
+        Assert.Contains(
+            "RequestTargetHandoffAfterHit",
+            hitPath,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "entry.TargetPlayerKey = attackerPlayerKey",
+            hitPath,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "!damageDecision.PendingDying",
+            hitPath,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
     public void Debug_and_interval_spawn_commands_share_the_same_physical_materialization_path()
     {
         var source = Contract("SmapiHostileShadowHost.cs");
@@ -537,6 +668,18 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.Contains("HostileShadowSpawnOrigin.Interval", source, StringComparison.Ordinal);
         Assert.Contains("HostileShadowSpawnOrigin origin", source, StringComparison.Ordinal);
         Assert.True(Count(source, "world.TryMaterialize(") >= 2);
+    }
+
+    [Fact]
+    public void Materialized_shadow_names_use_profile_i18n_keys_for_lookup()
+    {
+        var source = Contract("SmapiHostileShadowWorldRuntime.cs");
+
+        Assert.Contains(
+            "monster.Name = helper.Translation.Get(profile.DisplayNameKey).ToString();",
+            source,
+            StringComparison.Ordinal
+        );
     }
 
     private static void AssertPair(string source, string eventName, string handler)
@@ -578,6 +721,79 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.DoesNotContain(" as object", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Over_cap_cleanup_reuses_retreat_and_fade_instead_of_hard_removal()
+    {
+        var host = Contract("SmapiHostileShadowHost.cs");
+        var trim = Slice(
+            host,
+            "private void TrimOverCap(long gameMinute)",
+            "private void QueueFastSpawnsForLocation("
+        );
+
+        Assert.Contains("BeginRetreat(entityId, state)", trim, StringComparison.Ordinal);
+        Assert.Contains("BeginBindingFadeOut(", trim, StringComparison.Ordinal);
+        Assert.Contains(
+            "BeginOverCapShadowProjectionFade",
+            trim,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("pendingOverCapRetreats", trim, StringComparison.Ordinal);
+        Assert.Contains("pendingOverCapBindingFades", trim, StringComparison.Ordinal);
+        Assert.Contains("overCapCheckSchedule.TryConsumeIfDue", trim, StringComparison.Ordinal);
+        Assert.DoesNotContain("lastOverCapTrimMinute", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("lastBindingRollMinuteByEntity", host, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "authority.CleanupEntity(\n                    entityId,\n                    \"hostile-shadow.cleanup.over-cap\"",
+            trim,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "OverCapFadeOutMilliseconds = 1000",
+            host,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Over_cap_cleanup_is_limited_to_the_two_shadow_species_and_keeps_binding_as_one()
+    {
+        var host = Contract("SmapiHostileShadowHost.cs");
+        var projection = ProjectionContract("SmapiHarmlessProjectionHost.cs");
+        var trim = Slice(
+            host,
+            "private void TrimOverCap(long gameMinute)",
+            "private void QueueFastSpawnsForLocation("
+        );
+
+        Assert.Contains("IsOverCapAssetBinding", trim, StringComparison.Ordinal);
+        Assert.Contains("boundPairs++", trim, StringComparison.Ordinal);
+        Assert.Contains(
+            "CountOverCapShadowProjectionsForOwnerAtLocation",
+            trim,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("instance.IsBindingProjection", projection, StringComparison.Ordinal);
+        Assert.Contains("IsOverCapShadowSpecies(instance.SpeciesId)", projection, StringComparison.Ordinal);
+        Assert.DoesNotContain("DarkHand", trim, StringComparison.Ordinal);
+        Assert.DoesNotContain("MrSkitts", trim, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Danger_projection_update_advances_only_explicit_binding_fades()
+    {
+        var coordinator = ProjectionContract("ShadowCreatureHarmlessProjectionCoordinator.cs");
+        var danger = Slice(
+            coordinator,
+            "if (phase.DangerTierActive)",
+            "RecordDangerEntry(owner.PlayerKey, gameMinute);"
+        );
+
+        Assert.Contains("advanceMovement: false", danger, StringComparison.Ordinal);
+        Assert.Contains("bindingOnly: true", danger, StringComparison.Ordinal);
+        Assert.Contains("UpdateLocalInstances(", danger, StringComparison.Ordinal);
+    }
+
     private static void AssertNoManagedCollisionConstruction(string source)
     {
         Assert.DoesNotContain("new ShadowAttackHitRequest", source, StringComparison.Ordinal);
@@ -615,6 +831,18 @@ public sealed class HostileShadowRuntimeBoundaryTests
                 AppContext.BaseDirectory,
                 "Contracts",
                 "HostileShadowAuthority",
+                fileName
+            )
+        );
+    }
+
+    private static string ProjectionContract(string fileName)
+    {
+        return File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Contracts",
+                "ShadowProjection",
                 fileName
             )
         );

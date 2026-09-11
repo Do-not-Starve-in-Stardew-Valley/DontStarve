@@ -18,6 +18,8 @@ internal sealed class HostileShadowSettlementService
     private readonly IHostileShadowDropSpawnAuthority dropAuthority;
     private readonly IHostileShadowLastHitterAuthority lastHitterAuthority;
     private readonly IHostileShadowSanityRewardAuthority sanityAuthority;
+    private readonly IHostileShadowRingSnapshotAuthority? ringSnapshotAuthority;
+    private readonly IHostileShadowKillEffectAuthority? killEffectAuthority;
     private readonly Dictionary<HostileShadowSettlementKey, HostileShadowSettlementRequest>
         intents = new();
     private readonly Dictionary<HostileShadowSettlementKey, HostileShadowSettlementReceipt>
@@ -29,7 +31,9 @@ internal sealed class HostileShadowSettlementService
         IHostileShadowSettlementRandom random,
         IHostileShadowDropSpawnAuthority dropAuthority,
         IHostileShadowLastHitterAuthority lastHitterAuthority,
-        IHostileShadowSanityRewardAuthority sanityAuthority
+        IHostileShadowSanityRewardAuthority sanityAuthority,
+        IHostileShadowRingSnapshotAuthority? ringSnapshotAuthority = null,
+        IHostileShadowKillEffectAuthority? killEffectAuthority = null
     )
     {
         this.random = random ?? throw new ArgumentNullException(nameof(random));
@@ -39,6 +43,8 @@ internal sealed class HostileShadowSettlementService
             ?? throw new ArgumentNullException(nameof(lastHitterAuthority));
         this.sanityAuthority = sanityAuthority
             ?? throw new ArgumentNullException(nameof(sanityAuthority));
+        this.ringSnapshotAuthority = ringSnapshotAuthority;
+        this.killEffectAuthority = killEffectAuthority;
     }
 
     internal int ReceiptCount => receipts.Count;
@@ -137,7 +143,9 @@ internal sealed class HostileShadowSettlementService
         inFlight.Add(key);
         try
         {
-            return SettleReserved(request);
+            return ringSnapshotAuthority is not null && killEffectAuthority is not null
+                ? SettleReservedWithRingEffects(request)
+                : SettleReservedLegacy(request);
         }
         finally
         {
@@ -167,7 +175,696 @@ internal sealed class HostileShadowSettlementService
         receipts.Clear();
     }
 
-    private HostileShadowSettlementResult SettleReserved(
+    private HostileShadowSettlementResult SettleReservedWithRingEffects(
+        HostileShadowSettlementRequest request
+    )
+    {
+        var key = request.Key;
+        var seed = HostileShadowSettlementSeed.Create(key);
+        if (!TryNextRoll(seed, out var roll, out var rollReason))
+        {
+            return RecordFailure(
+                request,
+                seed,
+                roll,
+                0,
+                HostileShadowDropSpawnReceipt.Rejected(rollReason),
+                HostileShadowLastHitterReceipt.NotEvaluated(
+                    "hostile-shadow.settlement-last-hitter-not-evaluated"
+                ),
+                HostileShadowSanityRewardReceipt.NotAttempted(
+                    "hostile-shadow.settlement-sanity-not-attempted"
+                ),
+                HostileShadowSettlementReceiptStatus.Rejected,
+                "hostile-shadow.settlement-rng-failed"
+            );
+        }
+
+        var baseQuantity = CalculateDropQuantity(request, roll);
+        var stacks = new List<HostileShadowDropStack>
+        {
+            new(request.ItemSemanticId, baseQuantity),
+        };
+        var hitter = HostileShadowLastHitterReceipt.NotEvaluated(
+            "hostile-shadow.settlement-last-hitter-not-evaluated"
+        );
+        var ringSnapshot = HostileShadowRingSnapshotReceipt.NotEvaluated(
+            "hostile-shadow.settlement-rings-not-evaluated"
+        );
+
+        if (request.LifecycleReceipt.RewardEligible)
+        {
+            hitter = ResolveLastHitter(request);
+            if (hitter.IsValid)
+            {
+                ringSnapshot = ResolveRingSnapshot(request, hitter.PlayerKey);
+            }
+        }
+
+        if (
+            !request.LifecycleReceipt.RewardEligible
+            || !hitter.IsValid
+            || !ringSnapshot.IsValid
+        )
+        {
+            var earlyDrop = SpawnDrop(
+                request,
+                seed,
+                roll,
+                stacks,
+                out var spawnReason
+            );
+            if (!earlyDrop.Spawned)
+            {
+                return RecordFailure(
+                    request,
+                    seed,
+                    roll,
+                    baseQuantity,
+                    earlyDrop,
+                    hitter,
+                    HostileShadowSanityRewardReceipt.NotAttempted(
+                        "hostile-shadow.settlement-sanity-not-attempted-after-drop-failure"
+                    ),
+                    HostileShadowSettlementReceiptStatus.Rejected,
+                    spawnReason,
+                    stacks,
+                    ringSnapshot
+                );
+            }
+
+            return RecordSuccess(
+                request,
+                seed,
+                roll,
+                baseQuantity,
+                earlyDrop,
+                hitter,
+                HostileShadowSanityRewardReceipt.NotAttempted(
+                    hitter.IsValid
+                        ? "hostile-shadow.settlement-sanity-skipped-rings-unavailable"
+                        : "hostile-shadow.settlement-sanity-skipped-invalid-last-hitter"
+                ),
+                hitter.IsValid
+                    ? "hostile-shadow.settlement-drop-only-rings-unavailable"
+                    : "hostile-shadow.settlement-drop-only-last-hitter-invalid",
+                stacks,
+                ringSnapshot
+            );
+        }
+
+        var snapshot = ringSnapshot.Snapshot;
+        var warriorTriggers = 0;
+        var vampireRings = 0;
+        var savageRings = 0;
+        var soulSapperRings = 0;
+        var napalmRings = 0;
+        var ringIndex = 0;
+        foreach (var ringId in snapshot.EnumerateRingIds())
+        {
+            switch (ringId)
+            {
+                case HostileShadowVanillaRingIds.HotJava:
+                    if (
+                        !TryNextRoll(
+                            HostileShadowSettlementSeed.CreateDerived(
+                                key,
+                                string.Concat("hot-java:", ringIndex, ":coffee")
+                            ),
+                            out var coffeeRoll,
+                            out rollReason
+                        )
+                    )
+                    {
+                        return RingRollFailure(
+                            request,
+                            seed,
+                            roll,
+                            baseQuantity,
+                            stacks,
+                            hitter,
+                            ringSnapshot,
+                            rollReason
+                        );
+                    }
+                    if (coffeeRoll < 2500)
+                    {
+                        stacks.Add(
+                            new HostileShadowDropStack(
+                                HostileShadowSettlementItemSemanticIds.Coffee,
+                                1
+                            )
+                        );
+                    }
+                    else if (
+                        !TryNextRoll(
+                            HostileShadowSettlementSeed.CreateDerived(
+                                key,
+                                string.Concat("hot-java:", ringIndex, ":espresso")
+                            ),
+                            out var espressoRoll,
+                            out rollReason
+                        )
+                    )
+                    {
+                        return RingRollFailure(
+                            request,
+                            seed,
+                            roll,
+                            baseQuantity,
+                            stacks,
+                            hitter,
+                            ringSnapshot,
+                            rollReason
+                        );
+                    }
+                    else if (espressoRoll < 1000)
+                    {
+                        stacks.Add(
+                            new HostileShadowDropStack(
+                                HostileShadowSettlementItemSemanticIds.TripleShotEspresso,
+                                1
+                            )
+                        );
+                    }
+                    break;
+
+                case HostileShadowVanillaRingIds.Warrior:
+                    if (
+                        !TryNextRoll(
+                            HostileShadowSettlementSeed.CreateDerived(
+                                key,
+                                string.Concat("warrior:", ringIndex)
+                            ),
+                            out var warriorRoll,
+                            out rollReason
+                        )
+                    )
+                    {
+                        return RingRollFailure(
+                            request,
+                            seed,
+                            roll,
+                            baseQuantity,
+                            stacks,
+                            hitter,
+                            ringSnapshot,
+                            rollReason
+                        );
+                    }
+                    if (
+                        warriorRoll / (double)BonusRollScale
+                        < 0.1d + snapshot.LuckLevel / 100d
+                    )
+                    {
+                        warriorTriggers++;
+                    }
+                    break;
+
+                case HostileShadowVanillaRingIds.Vampire:
+                    vampireRings++;
+                    break;
+                case HostileShadowVanillaRingIds.Savage:
+                    savageRings++;
+                    break;
+                case HostileShadowVanillaRingIds.SoulSapper:
+                    soulSapperRings++;
+                    break;
+                case HostileShadowVanillaRingIds.Napalm:
+                    napalmRings++;
+                    break;
+            }
+            ringIndex++;
+        }
+
+        if (snapshot.HasBurglarRing)
+        {
+            if (
+                !TryNextRoll(
+                    HostileShadowSettlementSeed.CreateDerived(key, "burglar"),
+                    out var burglarRoll,
+                    out rollReason
+                )
+            )
+            {
+                return RingRollFailure(
+                    request,
+                    seed,
+                    roll,
+                    baseQuantity,
+                    stacks,
+                    hitter,
+                    ringSnapshot,
+                    rollReason
+                );
+            }
+            if ((burglarRoll / (double)BonusRollScale) < request.BonusChance)
+            {
+                stacks.Add(new HostileShadowDropStack(
+                    request.ItemSemanticId,
+                    request.GuaranteedQuantity + request.BonusQuantity
+                ));
+            }
+            else
+            {
+                // Burglar's Ring reruns the complete base table. A failed optional roll does not
+                // suppress the table's guaranteed part.
+                stacks.Add(new HostileShadowDropStack(
+                    request.ItemSemanticId,
+                    request.GuaranteedQuantity
+                ));
+            }
+        }
+
+        if (snapshot.HasMonsterBook)
+        {
+            if (
+                !TryNextRoll(
+                    HostileShadowSettlementSeed.CreateDerived(key, "monster-book"),
+                    out var bookRoll,
+                    out rollReason
+                )
+            )
+            {
+                return RingRollFailure(
+                    request,
+                    seed,
+                    roll,
+                    baseQuantity,
+                    stacks,
+                    hitter,
+                    ringSnapshot,
+                    rollReason
+                );
+            }
+            if (bookRoll < 300)
+            {
+                var copy = stacks.ToArray();
+                stacks.AddRange(copy);
+            }
+        }
+
+        var drop = SpawnDrop(request, seed, roll, stacks, out var dropReason);
+        if (!drop.Spawned)
+        {
+            return RecordFailure(
+                request,
+                seed,
+                roll,
+                SumQuantities(stacks),
+                drop,
+                hitter,
+                HostileShadowSanityRewardReceipt.NotAttempted(
+                    "hostile-shadow.settlement-sanity-not-attempted-after-drop-failure"
+                ),
+                HostileShadowSettlementReceiptStatus.Rejected,
+                dropReason,
+                stacks,
+                ringSnapshot
+            );
+        }
+
+        var killEffects = ApplyKillEffects(
+            request,
+            hitter.PlayerKey,
+            vampireRings * 2,
+            soulSapperRings * 4,
+            warriorTriggers,
+            savageRings,
+            napalmRings
+        );
+        if (!IsValidKillEffectReceipt(killEffects, request, hitter.PlayerKey))
+        {
+            return RecordFailure(
+                request,
+                seed,
+                roll,
+                SumQuantities(stacks),
+                drop,
+                hitter,
+                HostileShadowSanityRewardReceipt.NotAttempted(
+                    "hostile-shadow.settlement-sanity-not-attempted-after-kill-effects-failure"
+                ),
+                HostileShadowSettlementReceiptStatus.PartialFailure,
+                "hostile-shadow.settlement-kill-effects-failed-after-drop",
+                stacks,
+                ringSnapshot,
+                killEffects
+            );
+        }
+
+        var sanity = ApplySanityReward(request, hitter);
+        if (
+            !sanity.IsAccepted
+            || !string.Equals(sanity.PlayerKey, hitter.PlayerKey, StringComparison.Ordinal)
+            || sanity.Source != SanityChangeSource.HostileShadowKill
+            || Math.Abs(sanity.Delta - request.SanityReward) > 0.0000001d
+        )
+        {
+            return RecordFailure(
+                request,
+                seed,
+                roll,
+                SumQuantities(stacks),
+                drop,
+                hitter,
+                sanity,
+                HostileShadowSettlementReceiptStatus.PartialFailure,
+                "hostile-shadow.settlement-sanity-failed-after-drop",
+                stacks,
+                ringSnapshot,
+                killEffects
+            );
+        }
+
+        return RecordSuccess(
+            request,
+            seed,
+            roll,
+            SumQuantities(stacks),
+            drop,
+            hitter,
+            sanity,
+            "hostile-shadow.settlement-completed-with-ring-effects",
+            stacks,
+            ringSnapshot,
+            killEffects
+        );
+    }
+
+    private HostileShadowLastHitterReceipt ResolveLastHitter(
+        HostileShadowSettlementRequest request
+    )
+    {
+        HostileShadowLastHitterReceipt hitter;
+        try
+        {
+            hitter = lastHitterAuthority.Resolve(
+                new HostileShadowLastHitterRequest(
+                    request.Key,
+                    request.LifecycleReceipt.AttributedPlayerKey,
+                    request.LocationId
+                )
+            );
+        }
+        catch (Exception exception)
+        {
+            hitter = HostileShadowLastHitterReceipt.Invalid(
+                string.Concat(
+                    "hostile-shadow.settlement-last-hitter-authority-threw-",
+                    exception.GetType().Name
+                )
+            );
+        }
+        if (!hitter.IsValid)
+        {
+            return HostileShadowLastHitterReceipt.Invalid(
+                string.IsNullOrWhiteSpace(hitter.Reason)
+                    ? "hostile-shadow.settlement-last-hitter-receipt-invalid"
+                    : hitter.Reason
+            );
+        }
+        if (
+            !string.Equals(
+                hitter.PlayerKey,
+                request.LifecycleReceipt.AttributedPlayerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return HostileShadowLastHitterReceipt.Invalid(
+                "hostile-shadow.settlement-last-hitter-player-mismatch"
+            );
+        }
+        return hitter;
+    }
+
+    private HostileShadowRingSnapshotReceipt ResolveRingSnapshot(
+        HostileShadowSettlementRequest request,
+        string playerKey
+    )
+    {
+        try
+        {
+            var receipt = ringSnapshotAuthority!.Resolve(
+                new HostileShadowRingSnapshotRequest(
+                    request.Key,
+                    playerKey,
+                    request.LocationId
+                )
+            );
+            return receipt.IsValid
+                ? receipt
+                : HostileShadowRingSnapshotReceipt.Invalid(
+                    string.IsNullOrWhiteSpace(receipt.Reason)
+                        ? "hostile-shadow.settlement-rings-receipt-invalid"
+                        : receipt.Reason
+                );
+        }
+        catch (Exception exception)
+        {
+            return HostileShadowRingSnapshotReceipt.Invalid(
+                string.Concat(
+                    "hostile-shadow.settlement-ring-authority-threw-",
+                    exception.GetType().Name
+                )
+            );
+        }
+    }
+
+    private HostileShadowDropSpawnReceipt SpawnDrop(
+        HostileShadowSettlementRequest request,
+        int seed,
+        int roll,
+        IReadOnlyList<HostileShadowDropStack> stacks,
+        out string reason
+    )
+    {
+        var dropRequest = new HostileShadowDropSpawnRequest(
+            request.Key,
+            request.Key.SettlementId,
+            request.DropTableId,
+            request.ItemSemanticId,
+            CalculateDropQuantity(request, roll),
+            seed,
+            roll,
+            request.LocationId,
+            request.PositionX,
+            request.PositionY
+        )
+        {
+            DropStacks = stacks,
+        };
+        HostileShadowDropSpawnReceipt drop;
+        try
+        {
+            drop = dropAuthority.Spawn(dropRequest);
+        }
+        catch (Exception exception)
+        {
+            drop = HostileShadowDropSpawnReceipt.Rejected(
+                string.Concat(
+                    "hostile-shadow.settlement-drop-authority-threw-",
+                    exception.GetType().Name
+                )
+            );
+        }
+        if (!drop.Spawned)
+        {
+            reason = string.IsNullOrWhiteSpace(drop.Reason)
+                ? "hostile-shadow.settlement-drop-receipt-invalid"
+                : drop.Reason;
+            return HostileShadowDropSpawnReceipt.Rejected(reason);
+        }
+        reason = "hostile-shadow.settlement-drop-spawned";
+        return drop;
+    }
+
+    private HostileShadowKillEffectReceipt ApplyKillEffects(
+        HostileShadowSettlementRequest request,
+        string playerKey,
+        int vampireHealth,
+        int soulSapperEnergy,
+        int warriorTriggerCount,
+        int savageTriggerCount,
+        int napalmExplosionCount
+    )
+    {
+        try
+        {
+            return killEffectAuthority!.Apply(
+                new HostileShadowKillEffectRequest(
+                    request.Key,
+                    request.Key.SettlementId,
+                    playerKey,
+                    request.LocationId,
+                    request.PositionX,
+                    request.PositionY,
+                    request.ExplosionTileX,
+                    request.ExplosionTileY,
+                    vampireHealth,
+                    soulSapperEnergy,
+                    warriorTriggerCount,
+                    savageTriggerCount,
+                    napalmExplosionCount
+                )
+            );
+        }
+        catch (Exception exception)
+        {
+            return new HostileShadowKillEffectReceipt(
+                HostileShadowKillEffectStatus.Rejected,
+                playerKey,
+                0,
+                0,
+                0,
+                0,
+                0,
+                string.Concat(
+                    "hostile-shadow.settlement-kill-effect-authority-threw-",
+                    exception.GetType().Name
+                )
+            );
+        }
+    }
+
+    private HostileShadowSanityRewardReceipt ApplySanityReward(
+        HostileShadowSettlementRequest request,
+        HostileShadowLastHitterReceipt hitter
+    )
+    {
+        try
+        {
+            var sanity = sanityAuthority.Apply(
+                new HostileShadowSanityRewardRequest(
+                    request.Key,
+                    request.Key.SettlementId,
+                    hitter.PlayerKey,
+                    request.LocationId,
+                    request.SanityReward,
+                    SanityChangeSource.HostileShadowKill
+                )
+            );
+            if (!sanity.IsAccepted && string.IsNullOrWhiteSpace(sanity.Reason))
+            {
+                return new HostileShadowSanityRewardReceipt(
+                    HostileShadowSanityRewardStatus.Rejected,
+                    hitter.PlayerKey,
+                    request.SanityReward,
+                    SanityChangeSource.HostileShadowKill,
+                    sanity.BeforeRevision,
+                    sanity.AfterRevision,
+                    sanity.BeforeSanity,
+                    sanity.AfterSanity,
+                    "hostile-shadow.settlement-sanity-receipt-invalid"
+                );
+            }
+            return sanity;
+        }
+        catch (Exception exception)
+        {
+            return new HostileShadowSanityRewardReceipt(
+                HostileShadowSanityRewardStatus.Rejected,
+                hitter.PlayerKey,
+                request.SanityReward,
+                SanityChangeSource.HostileShadowKill,
+                0,
+                0,
+                0d,
+                0d,
+                string.Concat(
+                    "hostile-shadow.settlement-sanity-authority-threw-",
+                    exception.GetType().Name
+                )
+            );
+        }
+    }
+
+    private HostileShadowSettlementResult RingRollFailure(
+        HostileShadowSettlementRequest request,
+        int seed,
+        int roll,
+        int baseQuantity,
+        IReadOnlyList<HostileShadowDropStack> stacks,
+        HostileShadowLastHitterReceipt hitter,
+        HostileShadowRingSnapshotReceipt ringSnapshot,
+        string reason
+    )
+    {
+        return RecordFailure(
+            request,
+            seed,
+            roll,
+            SumQuantities(stacks),
+            HostileShadowDropSpawnReceipt.Rejected(reason),
+            hitter,
+            HostileShadowSanityRewardReceipt.NotAttempted(
+                "hostile-shadow.settlement-sanity-not-attempted-after-rng-failure"
+            ),
+            HostileShadowSettlementReceiptStatus.Rejected,
+            "hostile-shadow.settlement-rng-failed",
+            stacks,
+            ringSnapshot
+        );
+    }
+
+    private bool TryNextRoll(int seed, out int roll, out string reason)
+    {
+        try
+        {
+            roll = random.NextBonusRoll10000(seed);
+        }
+        catch (Exception exception)
+        {
+            roll = -1;
+            reason = string.Concat(
+                "hostile-shadow.settlement-rng-threw-",
+                exception.GetType().Name
+            );
+            return false;
+        }
+        if (roll < 0 || roll >= BonusRollScale)
+        {
+            reason = "hostile-shadow.settlement-rng-roll-invalid";
+            return false;
+        }
+        reason = "hostile-shadow.settlement-rng-roll-valid";
+        return true;
+    }
+
+    private static int CalculateDropQuantity(
+        HostileShadowSettlementRequest request,
+        int roll
+    )
+    {
+        return request.GuaranteedQuantity
+            + (
+                roll / (double)BonusRollScale < request.BonusChance
+                    ? request.BonusQuantity
+                    : 0
+            );
+    }
+
+    private static int SumQuantities(IReadOnlyList<HostileShadowDropStack> stacks)
+    {
+        var total = 0;
+        foreach (var stack in stacks)
+            total += stack.Quantity;
+        return total;
+    }
+
+    private static bool IsValidKillEffectReceipt(
+        HostileShadowKillEffectReceipt receipt,
+        HostileShadowSettlementRequest request,
+        string playerKey
+    )
+    {
+        return receipt.IsAccepted
+            && string.Equals(receipt.PlayerKey, playerKey, StringComparison.Ordinal)
+        ;
+    }
+
+    private HostileShadowSettlementResult SettleReservedLegacy(
         HostileShadowSettlementRequest request
     )
     {
@@ -434,7 +1131,10 @@ internal sealed class HostileShadowSettlementService
         HostileShadowDropSpawnReceipt drop,
         HostileShadowLastHitterReceipt hitter,
         HostileShadowSanityRewardReceipt sanity,
-        string reason
+        string reason,
+        IReadOnlyList<HostileShadowDropStack>? stacks = null,
+        HostileShadowRingSnapshotReceipt? ringSnapshot = null,
+        HostileShadowKillEffectReceipt? killEffects = null
     )
     {
         var receipt = CreateReceipt(
@@ -446,7 +1146,10 @@ internal sealed class HostileShadowSettlementService
             drop,
             hitter,
             sanity,
-            reason
+            reason,
+            stacks,
+            ringSnapshot,
+            killEffects
         );
         receipts.Add(request.Key, receipt);
         return new HostileShadowSettlementResult(
@@ -466,7 +1169,10 @@ internal sealed class HostileShadowSettlementService
         HostileShadowLastHitterReceipt hitter,
         HostileShadowSanityRewardReceipt sanity,
         HostileShadowSettlementReceiptStatus status,
-        string reason
+        string reason,
+        IReadOnlyList<HostileShadowDropStack>? stacks = null,
+        HostileShadowRingSnapshotReceipt? ringSnapshot = null,
+        HostileShadowKillEffectReceipt? killEffects = null
     )
     {
         var receipt = CreateReceipt(
@@ -478,7 +1184,10 @@ internal sealed class HostileShadowSettlementService
             drop,
             hitter,
             sanity,
-            reason
+            reason,
+            stacks,
+            ringSnapshot,
+            killEffects
         );
         receipts.Add(request.Key, receipt);
         return new HostileShadowSettlementResult(
@@ -498,7 +1207,10 @@ internal sealed class HostileShadowSettlementService
         HostileShadowDropSpawnReceipt drop,
         HostileShadowLastHitterReceipt hitter,
         HostileShadowSanityRewardReceipt sanity,
-        string reason
+        string reason,
+        IReadOnlyList<HostileShadowDropStack>? stacks,
+        HostileShadowRingSnapshotReceipt? ringSnapshot,
+        HostileShadowKillEffectReceipt? killEffects
     )
     {
         return new HostileShadowSettlementReceipt(
@@ -514,7 +1226,20 @@ internal sealed class HostileShadowSettlementService
             sanity,
             HostileShadowSettlementRetryDisposition.TerminalDoNotRetrySameDeath,
             reason
-        );
+        )
+        {
+            PlannedDropStacks = stacks is null
+                ? Array.Empty<HostileShadowDropStack>()
+                : new List<HostileShadowDropStack>(stacks),
+            RingSnapshot = ringSnapshot
+                ?? HostileShadowRingSnapshotReceipt.NotEvaluated(
+                    "hostile-shadow.settlement-rings-not-evaluated"
+                ),
+            KillEffects = killEffects
+                ?? HostileShadowKillEffectReceipt.NotAttempted(
+                    "hostile-shadow.settlement-kill-effects-not-attempted"
+                ),
+        };
     }
 
     private static bool TryValidate(

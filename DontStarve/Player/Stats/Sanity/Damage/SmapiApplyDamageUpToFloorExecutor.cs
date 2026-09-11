@@ -124,6 +124,10 @@ internal sealed class SmapiApplyDamageUpToFloorExecutor : IApplyDamageUpToFloorE
             );
         }
 
+        // This adapter intentionally bypasses Farmer.takeDamage to enforce the health floor, so
+        // preserve the vanilla hurt feedback explicitly after the authoritative write succeeds.
+        player.playNearbySoundAll("ow");
+
         return ApplyDamageUpToFloorExecutionResult.AppliedResult(
             appliedDamage,
             afterHealth

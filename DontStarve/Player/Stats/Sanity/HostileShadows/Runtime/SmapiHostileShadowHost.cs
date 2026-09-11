@@ -24,10 +24,15 @@ namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 /// </summary>
 internal sealed class SmapiHostileShadowHost
     : IShadowProjectionConversionIntentSink,
+        IHostileShadowLocationOccupancyProvider,
+        IShadowCreaturePushBoxIntentSink,
         IHostileShadowConversionRequestHandler,
         IHostileShadowAggroHintHandler,
         IHostileShadowAttackHitHandler,
         IHostileShadowPhysicalCapabilityHandler,
+        IHostileShadowPushBoxIntentHandler,
+        IHostileShadowPushBoxResultHandler,
+        IHostileShadowProjectionPushBoxBridge,
         IDisposable
 {
     private const int MaximumLoggedReasons = 64;
@@ -53,10 +58,14 @@ internal sealed class SmapiHostileShadowHost
     private readonly Dictionary<string, long> bindingEntityByCorrelation =
         new(StringComparer.Ordinal);
     private readonly Random bindingRandom = new();
-    private readonly Dictionary<long, long> lastBindingRollMinuteByEntity = new();
+    private readonly HostileShadowCheckSchedule<long> bindingRollSchedule =
+        new(BindingRollIntervalMinutes);
+    private readonly HostileShadowCheckSchedule<long> overCapCheckSchedule =
+        new(OverCapTrimIntervalMinutes);
+    private readonly HostileShadowCheckSchedule<string> overCapProjectionCheckSchedule =
+        new(OverCapTrimIntervalMinutes, StringComparer.Ordinal);
+    private readonly HostileShadowNaturalSpawnRequestIds naturalSpawnRequestIds = new();
     private int bindingAlignTickCounter;
-    // DIAG-20260810: 统一上限池超限清理节奏（每游戏内 10 分钟 50% 消失）。
-    private long lastOverCapTrimMinute = -1;
     private const long OverCapTrimIntervalMinutes = 10;
     // DIAG-20260809: 脱战参数（主策划 17:03 设计稿）：san 回升 >17.5%（Danger 退出）后，
     // 每 10 游戏分钟对每只影怪 roll 25% 脱战；绑定投影位置对齐低频 10 tick。
@@ -68,6 +77,18 @@ internal sealed class SmapiHostileShadowHost
     private const double RetreatTauntMilliseconds = 1200d;
     // DIAG-20260810: 恐吓中的实体（entityId → 恐吓开始真实毫秒）。
     private readonly Dictionary<long, double> pendingRetreats = new();
+    // 超限清理只登记危险影怪的延迟生命周期：先完成恐吓，再由绑定投影完成约 1 秒淡出。
+    private readonly HashSet<long> pendingOverCapRetreats = new();
+    // entityId -> true means the entity was already in its own Taunt action, so over-cap cleanup
+    // must wait for that action to finish without starting a second Taunt.
+    private readonly Dictionary<long, bool> pendingOverCapActions = new();
+    private readonly HashSet<long> pendingOverCapBindingFades = new();
+    private readonly HashSet<string> pendingOverCapProjectionFades =
+        new(StringComparer.Ordinal);
+    private const int OverCapFadeOutMilliseconds = 1000;
+    // TimeApi may publish a forward catch-up sequence one minute at a time. Keep only the last
+    // minute until the normal UpdateTicked phase; a non-unit OnSync clears it and rebases once.
+    private long pendingScheduledShadowCheckMinute = -1;
     // DIAG-20260811: 切图快速刷新——切图时记录旧地图危险影怪物种分布，
     // 新地图内每 2 秒刷 1 只（数量 = min(旧地图数量, 当前密度档上限)）；
     // 旧地图影怪留原地冻结、不计入新地图上限（上限按所在地图计算）。
@@ -79,6 +100,70 @@ internal sealed class SmapiHostileShadowHost
     // currentLocation 可能已切到新地图，需用旧位置统计切图前影怪分布。
     private readonly Dictionary<string, string> lastLocationByPlayer =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> naturalRefreshDiagnosticStates =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> fastRefreshDiagnosticStates =
+        new(StringComparer.Ordinal);
+
+    private const long PushBoxIntentFreshnessTicks = 30;
+    private const int MaximumRemotePushBoxParticipants =
+        HostileShadowProtocol.MaximumPushBoxEntriesPerBatch;
+    private readonly Dictionary<string, RemotePushBoxState> remotePushBoxStates =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> lastRemotePushBoxBatchByOwner =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> lastRemotePushBoxLocationByOwner =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HostileShadowCrowdParticipant>
+        localPushBoxParticipants = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ShadowCreaturePushBoxIntent>
+        localPushBoxIntents = new(StringComparer.Ordinal);
+    private readonly List<ShadowCreaturePushBoxIntent> localPushBoxIntentBuffer =
+        new(HostileShadowProtocol.MaximumPushBoxEntriesPerBatch);
+    private readonly HashSet<string> activeLocalPushBoxKeys =
+        new(StringComparer.Ordinal);
+    private readonly List<string> staleLocalPushBoxKeys = new();
+    private readonly List<string> staleRemotePushBoxKeys = new();
+    private readonly Dictionary<string, HostileAttackRuntimeDefinition>
+        projectionPushBoxDefinitions = new(StringComparer.Ordinal);
+    private readonly Dictionary<long, List<ShadowProjectionPushBoxResultEntry>>
+        pushBoxResultEntriesByPlayer = new();
+    private long lastAppliedPushBoxResultBatchNonce;
+
+    private sealed class RemotePushBoxState
+    {
+        internal RemotePushBoxState(
+            long senderPlayerId,
+            string ownerPlayerKey,
+            string locationId,
+            string speciesId,
+            string correlationId,
+            HostileShadowCrowdParticipant participant
+        )
+        {
+            SenderPlayerId = senderPlayerId;
+            OwnerPlayerKey = ownerPlayerKey;
+            LocationId = locationId;
+            SpeciesId = speciesId;
+            CorrelationId = correlationId;
+            Participant = participant;
+        }
+
+        internal long SenderPlayerId { get; }
+        internal string OwnerPlayerKey { get; }
+        internal string LocationId { get; set; }
+        internal string SpeciesId { get; }
+        internal string CorrelationId { get; }
+        internal HostileShadowCrowdParticipant Participant { get; }
+        internal long Revision { get; set; }
+        internal long BatchNonce { get; set; }
+        internal long LastReceivedTick { get; set; }
+        internal double AuthoritativePositionX { get; set; }
+        internal double AuthoritativePositionY { get; set; }
+        internal bool HasAuthoritativePosition { get; set; }
+        internal double NormalTargetPositionX { get; set; }
+        internal double NormalTargetPositionY { get; set; }
+    }
 
     internal SmapiHostileShadowHost(
         IModHelper helper,
@@ -134,6 +219,13 @@ internal sealed class SmapiHostileShadowHost
             this,
             this
         );
+        if (!multiplayer.BindPushBoxHandlers(this, this, out var pushBoxTransportReason))
+        {
+            monitor.Log(
+                $"Hostile shadow PushBox transport binding failed ({pushBoxTransportReason}).",
+                LogLevel.Error
+            );
+        }
 
         lifecycle.StateEventPublished += OnStateEventPublished;
         lifecycle.EventOwnerCoverageChanged += OnEventOwnerCoverageChanged;
@@ -142,6 +234,7 @@ internal sealed class SmapiHostileShadowHost
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
         timeApi.OnUpdate.Add(OnMinuteUpdate);
+        timeApi.OnSync.Add(OnTimeSynchronized);
         // DIAG-20260809: 绑定投影对齐/连带清除的 tick 挂点。
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
@@ -159,6 +252,21 @@ internal sealed class SmapiHostileShadowHost
     }
 
     internal HostileShadowAuthority Authority => authority;
+
+    internal bool IsPlayerTargeted(Farmer player)
+    {
+        if (
+            disposed
+            || player is null
+            || player.currentLocation is null
+        )
+        {
+            return false;
+        }
+
+        var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(player.UniqueMultiplayerID);
+        return world.IsPlayerTargeted(playerKey, player.currentLocation);
+    }
 
     // Task 11 must consume task 07's one session/nonce/lease authority. Exposing this exact
     // instance prevents the world-interaction coordinator from silently creating a second lane.
@@ -379,12 +487,19 @@ internal sealed class SmapiHostileShadowHost
         helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
         helper.Events.GameLoop.DayEnding -= OnDayEnding;
         timeApi.OnUpdate.Remove(OnMinuteUpdate);
+        timeApi.OnSync.Remove(OnTimeSynchronized);
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         multiplayer.Dispose();
         sessionLifecycleCoordinator.Dispose();
         authority.EndSession(HostileShadowCleanupReasonIds.Disposed);
+        ClearPushBoxState();
         world.Dispose();
         loggedReasons.Clear();
+        pendingOverCapRetreats.Clear();
+        pendingOverCapActions.Clear();
+        pendingOverCapBindingFades.Clear();
+        pendingOverCapProjectionFades.Clear();
+        ClearShadowCheckSchedules();
         worldMutationSuspended = true;
     }
 
@@ -481,6 +596,10 @@ internal sealed class SmapiHostileShadowHost
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         loggedReasons.Clear();
+        naturalRefreshDiagnosticStates.Clear();
+        fastRefreshDiagnosticStates.Clear();
+        ClearShadowCheckSchedules();
+        pendingOverCapProjectionFades.Clear();
         world.OnSessionStarted();
         var reason = string.Empty;
         if (
@@ -548,20 +667,33 @@ internal sealed class SmapiHostileShadowHost
             return;
         }
 
-        // DIAG-20260810: 统一上限池超限清理（每游戏内 10 分钟对超限部分逐只 50% 消失）。
-        if (gameMinute - lastOverCapTrimMinute >= OverCapTrimIntervalMinutes)
-        {
-            lastOverCapTrimMinute = gameMinute;
-            TrimOverCap(gameMinute);
-        }
+        // Do not perform the roll inside this callback: TimeApi can call it repeatedly while
+        // synchronizing a large forward time jump. The normal tick consumes only the final
+        // minute published for that frame.
+        pendingScheduledShadowCheckMinute = gameMinute;
+    }
 
-        // DIAG-20260809: 每 10 游戏分钟检查一次；每只影怪是否可脱战由它当前锁定的
-        // 玩家单独决定，不能用某个玩家或全局 Danger 状态替代。
-        if (projectionHost is not null)
-        {
-            RollBindings(gameMinute);
-        }
+    private void OnTimeSynchronized(long gameMinute, long delta)
+    {
+        if (disposed)
+            return;
 
+        if (delta is 0 or 1)
+            return;
+
+        // TimeApi owns the clock and may have already published a forward catch-up sequence.
+        // Rebase once at the final time instead of replaying every skipped 10-minute window.
+        pendingScheduledShadowCheckMinute = -1;
+        RebaseShadowCheckSchedules(gameMinute);
+        monitor.Log(
+            string.Concat(
+                "Hostile shadow scheduled checks rebased after time sync: minute=",
+                gameMinute.ToString(CultureInfo.InvariantCulture),
+                ", delta=",
+                delta.ToString(CultureInfo.InvariantCulture)
+            ),
+            LogLevel.Debug
+        );
     }
 
     private void AdvanceNaturalIntervalSpawns(int elapsedMilliseconds)
@@ -583,8 +715,33 @@ internal sealed class SmapiHostileShadowHost
             var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
                 player.UniqueMultiplayerID
             );
-            if (!TryGetDangerTier(playerKey, out var terrorbeakActive))
+            var locationId = player.currentLocation?.NameOrUniqueName ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(locationId))
+            {
+                LogNaturalRefreshState(
+                    playerKey,
+                    locationId,
+                    "location-unavailable",
+                    "current location unavailable"
+                );
                 continue;
+            }
+            if (
+                !TryGetDangerTier(
+                    playerKey,
+                    out var terrorbeakActive,
+                    out var dangerReason
+                )
+            )
+            {
+                LogNaturalRefreshState(
+                    playerKey,
+                    locationId,
+                    dangerReason,
+                    "danger tier is inactive or unavailable"
+                );
+                continue;
+            }
 
             var poolTier = terrorbeakActive
                 ? SanityShadowPoolTier.Hostile10
@@ -609,7 +766,7 @@ internal sealed class SmapiHostileShadowHost
             var evaluation = lifecycle.EvaluateHostileShadowBudgetRealTime(
                 playerKey,
                 timeApi.Time,
-                authority.GetOwnerOccupancy(playerKey),
+                CountCurrentMapLockedShadowOccupancy(playerKey, locationId),
                 elapsedMilliseconds,
                 requestedSpecies
             );
@@ -618,19 +775,53 @@ internal sealed class SmapiHostileShadowHost
                 != SanityShadowBudgetEvaluationStatus.PermitGranted
             )
             {
+                LogNaturalRefreshState(
+                    playerKey,
+                    locationId,
+                    string.Concat(
+                        "budget-",
+                        evaluation.Status.ToString(),
+                        ":",
+                        evaluation.Reason
+                    ),
+                    string.Concat(
+                        "occupancy=",
+                        evaluation.Occupancy.ToString(CultureInfo.InvariantCulture),
+                        ", cap=",
+                        evaluation.Cap.ToString(CultureInfo.InvariantCulture),
+                        ", reason=",
+                        evaluation.Reason
+                    )
+                );
                 continue;
             }
 
-            var requestId = string.Concat(
-                "hostile-shadow.interval.",
-                authority.SessionId,
-                ".",
+            LogNaturalRefreshState(
                 playerKey,
-                ".",
-                timeApi.Time.ToString(
-                    System.Globalization.CultureInfo.InvariantCulture
+                locationId,
+                "permit-granted",
+                string.Concat(
+                    "occupancy=",
+                    evaluation.Occupancy.ToString(CultureInfo.InvariantCulture),
+                    ", cap=",
+                    evaluation.Cap.ToString(CultureInfo.InvariantCulture)
                 )
             );
+
+            if (
+                !naturalSpawnRequestIds.TryNext(
+                    authority.SessionId,
+                    playerKey,
+                    out var requestId
+                )
+            )
+            {
+                LogOnce(
+                    "hostile-shadow.interval-request-id-unavailable",
+                    LogLevel.Error
+                );
+                continue;
+            }
             var result = TrySpawn(
                 requestId,
                 HostileShadowSpawnOrigin.Interval,
@@ -646,29 +837,45 @@ internal sealed class SmapiHostileShadowHost
             {
                 LogOnce(result.Reason, LogLevel.Warn);
             }
+            LogNaturalSpawnResult(playerKey, locationId, result);
         }
     }
 
     /// <summary>
-    /// DIAG-20260809: 脱战 roll——Danger 档全退出（san>17.5%）且距上次 ≥10 游戏分钟时，
-    /// 对每只在册危险影怪 roll 25% 脱战（隐藏+绑定投影）。
+    /// DIAG-20260809: 脱战 roll——Danger 档全退出（san>17.5%）且每只影怪自己的
+    /// 10 游戏分钟检查时间已到时，roll 25% 脱战（隐藏+绑定投影）。
     /// </summary>
     private void RollBindings(long gameMinute)
     {
         foreach (var entityId in world.GetOrderedEntityIds())
         {
+            if (!authority.TryGetEntity(entityId, out var state) || state is null)
+            {
+                bindingRollSchedule.Remove(entityId);
+                overCapCheckSchedule.Remove(entityId);
+                continue;
+            }
+            if (state.Health <= 0)
+            {
+                bindingRollSchedule.Remove(entityId);
+                overCapCheckSchedule.Remove(entityId);
+                continue;
+            }
+            if (!world.TryGetEntitySpawnGameMinute(entityId, out var spawnGameMinute))
+                continue;
+
+            bindingRollSchedule.Register(entityId, spawnGameMinute);
+            overCapCheckSchedule.Register(entityId, spawnGameMinute);
             if (bindingCorrelationByEntity.ContainsKey(entityId))
                 continue;
-            if (!authority.TryGetEntity(entityId, out var state) || state is null)
-                continue;
-            if (state.Health <= 0)
-                continue;
             if (
-                lastBindingRollMinuteByEntity.TryGetValue(entityId, out var lastRoll)
-                && gameMinute - lastRoll < BindingRollIntervalMinutes
+                !bindingRollSchedule.TryConsumeIfDue(
+                    entityId,
+                    gameMinute,
+                    spawnGameMinute
+                )
             )
                 continue;
-            lastBindingRollMinuteByEntity[entityId] = gameMinute;
             if (!CanRetreatForCurrentTarget(entityId, state))
                 continue;
             if (bindingRandom.NextDouble() >= BindingRollChance)
@@ -681,10 +888,10 @@ internal sealed class SmapiHostileShadowHost
     /// DIAG-20260810: 单只影怪脱战编排：恐吓（无敌+播恐吓动画，留有余地）→
     /// 恐吓结束（RetreatTauntMilliseconds）→ BindNow 隐藏+绑定投影。
     /// </summary>
-    private void BeginRetreat(long entityId, ShadowStateSnapshot state)
+    private bool BeginRetreat(long entityId, ShadowStateSnapshot state)
     {
         if (projectionHost is null)
-            return;
+            return false;
         if (
             !world.TryBeginRetreat(
                 entityId,
@@ -695,17 +902,19 @@ internal sealed class SmapiHostileShadowHost
         )
         {
             LogOnce(retreatReason, LogLevel.Warn);
-            return;
+            return false;
         }
         pendingRetreats[entityId] =
             Game1.currentGameTime.TotalGameTime.TotalMilliseconds;
         LogOnce("hostile-shadow.retreat-started", LogLevel.Debug);
+        return true;
     }
 
     /// <summary>DIAG-20260810: 恐吓结束——进入绑定隐藏态并生成绑定投影。</summary>
     private void CompleteRetreat(long entityId)
     {
         pendingRetreats.Remove(entityId);
+        var overCapCleanup = pendingOverCapRetreats.Remove(entityId);
         if (projectionHost is null)
             return;
         if (!authority.TryGetEntity(entityId, out var state) || state is null)
@@ -713,7 +922,9 @@ internal sealed class SmapiHostileShadowHost
             world.TryExitRetreat(entityId, out _);
             return;
         }
-        BindNow(entityId, state);
+        if (!BindNow(entityId, state) || !overCapCleanup)
+            return;
+        BeginOverCapBindingFade(entityId);
     }
 
     /// <summary>
@@ -721,15 +932,15 @@ internal sealed class SmapiHostileShadowHost
     /// 生成同朝向绑定投影；投影生成失败则回滚隐藏。调试命令（ds_spawn bind）
     /// 直接调用本方法；自然脱战经恐吓流程（BeginRetreat→CompleteRetreat）后调用。
     /// </summary>
-    private void BindNow(long entityId, ShadowStateSnapshot state)
+    private bool BindNow(long entityId, ShadowStateSnapshot state)
     {
         if (projectionHost is null)
-            return;
+            return false;
         if (!projectionHost.TryGetBindingOwner(out var owner))
         {
             LogOnce("hostile-shadow.binding-owner-unavailable", LogLevel.Warn);
             world.TryExitRetreat(entityId, out _);
-            return;
+            return false;
         }
         if (
             !world.TryBeginBinding(
@@ -743,13 +954,13 @@ internal sealed class SmapiHostileShadowHost
         {
             LogOnce(bindReason, LogLevel.Warn);
             world.TryExitRetreat(entityId, out _);
-            return;
+            return false;
         }
         var speciesId = ResolveProjectionSpeciesId(state.AssetBindingId);
         if (speciesId is null)
         {
             world.TryExitBinding(entityId, out _);
-            return;
+            return false;
         }
         var facingId = monster.modData.TryGetValue(
             HostileShadowMonster.MovementFacingModDataKey,
@@ -774,7 +985,7 @@ internal sealed class SmapiHostileShadowHost
         {
             world.TryExitBinding(entityId, out _);
             LogOnce(spawnReason, LogLevel.Warn);
-            return;
+            return false;
         }
         bindingCorrelationByEntity[entityId] = correlationId;
         bindingEntityByCorrelation[correlationId] = entityId;
@@ -794,6 +1005,7 @@ internal sealed class SmapiHostileShadowHost
             projectionHost.BeginBindingFadeOut(correlationId);
         }
         LogOnce("hostile-shadow.binding-started", LogLevel.Debug);
+        return true;
     }
 
     /// <summary>
@@ -841,6 +1053,7 @@ internal sealed class SmapiHostileShadowHost
             }
             bindingEntityByCorrelation.Remove(correlationId);
             bindingCorrelationByEntity.Remove(entityId);
+            bindingRollSchedule.RebaseKey(entityId, timeApi.Time);
         }
         LogOnce("hostile-shadow.bindings-restored", LogLevel.Debug);
     }
@@ -881,6 +1094,7 @@ internal sealed class SmapiHostileShadowHost
             }
             bindingEntityByCorrelation.Remove(correlationId);
             bindingCorrelationByEntity.Remove(entityId);
+            bindingRollSchedule.RebaseKey(entityId, timeApi.Time);
         }
     }
 
@@ -919,11 +1133,24 @@ internal sealed class SmapiHostileShadowHost
         );
         AdvanceNaturalIntervalSpawns(elapsedMilliseconds);
 
+        var scheduledCheckMinute = pendingScheduledShadowCheckMinute;
+        pendingScheduledShadowCheckMinute = -1;
+        if (scheduledCheckMinute >= 0)
+        {
+            // These are two independent clocks. Each shadow consumes its own due check, so one
+            // shadow's retreat roll cannot advance or suppress another shadow's over-cap roll.
+            TrimOverCap(scheduledCheckMinute);
+            if (projectionHost is not null)
+                RollBindings(scheduledCheckMinute);
+        }
+
         if (
             projectionHost is null
             || (
                 bindingCorrelationByEntity.Count == 0
                 && pendingRetreats.Count == 0
+                && pendingOverCapActions.Count == 0
+                && pendingOverCapBindingFades.Count == 0
                 && pendingFastSpawnsByPlayer.Count == 0
             )
         )
@@ -952,8 +1179,11 @@ internal sealed class SmapiHostileShadowHost
             }
         }
 
+        AdvancePendingOverCapActions();
+
         // DIAG-20260811: 切图快速刷新推进（每 2 秒刷 1 只，陆续出现）。
         AdvanceFastSpawns();
+        AdvanceOverCapBindingFades();
 
         bindingAlignTickCounter++;
         if (bindingAlignTickCounter < BindingAlignCadenceTicks)
@@ -1006,6 +1236,8 @@ internal sealed class SmapiHostileShadowHost
                 entityId,
                 "hostile-shadow.cleanup.binding-projection-lost"
             );
+            bindingRollSchedule.Remove(entityId);
+            overCapCheckSchedule.Remove(entityId);
         }
         LogOnce(
             "hostile-shadow.binding-projection-lost-cleanup",
@@ -1138,8 +1370,533 @@ internal sealed class SmapiHostileShadowHost
             return false;
         }
         projectionHost = host;
+        if (!world.BindProjectionPushBoxBridge(this, out reason))
+        {
+            projectionHost = null;
+            return false;
+        }
         reason = "hostile-shadow.binding-host-bound";
         return true;
+    }
+
+    public bool SubmitShadowCreaturePushBoxIntent(
+        string ownerPlayerKey,
+        string locationId,
+        long batchNonce,
+        IReadOnlyList<ShadowCreaturePushBoxIntent> intents,
+        out string reason
+    )
+    {
+        return multiplayer.SubmitPushBoxIntent(
+            ownerPlayerKey,
+            locationId,
+            batchNonce,
+            intents,
+            out reason
+        );
+    }
+
+    public bool HandlePushBoxIntent(
+        ShadowProjectionPushBoxIntentMessage message,
+        long senderPlayerId,
+        out string reason
+    )
+    {
+        reason = string.Empty;
+        if (disposed || !Game1.IsMasterGame)
+        {
+            reason = "hostile-shadow.push-box-intent-host-unavailable";
+            return false;
+        }
+
+        var expectedPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(senderPlayerId);
+        var sender = Game1.GetPlayer(senderPlayerId, onlyOnline: true);
+        var expectedLocationId = sender?.currentLocation?.NameOrUniqueName ?? string.Empty;
+        if (
+            !HostileShadowProtocol.IsValidPushBoxIntentMessage(
+                message,
+                expectedPlayerKey,
+                expectedLocationId,
+                authority.SessionId,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+        PruneRemotePushBoxStates();
+        var ownerLocationChanged =
+            lastRemotePushBoxLocationByOwner.TryGetValue(
+                message!.OwnerPlayerKey,
+                out var lastLocationId
+            )
+            && !string.Equals(lastLocationId, message.LocationId, StringComparison.Ordinal);
+        if (!ownerLocationChanged)
+        {
+            foreach (var state in remotePushBoxStates.Values)
+            {
+                if (
+                    string.Equals(
+                        state.OwnerPlayerKey,
+                        message.OwnerPlayerKey,
+                        StringComparison.Ordinal
+                    )
+                    && !string.Equals(
+                        state.LocationId,
+                        message.LocationId,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    ownerLocationChanged = true;
+                    break;
+                }
+            }
+        }
+        if (
+            lastRemotePushBoxBatchByOwner.TryGetValue(
+                message!.OwnerPlayerKey,
+                out var lastBatchNonce
+            )
+            && !ownerLocationChanged
+            && message.BatchNonce <= lastBatchNonce
+        )
+        {
+            reason = "hostile-shadow.push-box-intent-batch-stale";
+            return false;
+        }
+
+        var pending = new List<(
+            ShadowProjectionPushBoxIntentEntry Entry,
+            string StableId,
+            RemotePushBoxState? Existing,
+            double CurrentX,
+            double CurrentY,
+            HostileShadowPushBoxWorldRectangle WorldBox,
+            HostileAttackRuntimeDefinition Definition
+        )>(message.Entries.Count);
+        var activeRemoteStableIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in message.Entries)
+        {
+            var stableId = CreateProjectionStableId(
+                message.OwnerPlayerKey,
+                entry.CorrelationId
+            );
+            activeRemoteStableIds.Add(stableId);
+            RemotePushBoxState? existing = null;
+            if (
+                remotePushBoxStates.TryGetValue(stableId, out var candidate)
+                && string.Equals(
+                    candidate.LocationId,
+                    message.LocationId,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                existing = candidate;
+            }
+            if (existing is not null)
+            {
+                if (
+                    existing.SenderPlayerId != senderPlayerId
+                    || !string.Equals(
+                        existing.SpeciesId,
+                        entry.SpeciesId,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    reason = "hostile-shadow.push-box-intent-owner-or-location-conflict";
+                    return false;
+                }
+                if (entry.Revision <= existing.Revision)
+                {
+                    reason = "hostile-shadow.push-box-intent-revision-stale";
+                    return false;
+                }
+            }
+
+            if (!TryGetProjectionPushBoxDefinition(entry.SpeciesId, out var definition, out reason))
+                return false;
+
+            var currentX = existing?.HasAuthoritativePosition == true
+                ? existing.AuthoritativePositionX
+                : entry.CurrentPositionX;
+            var currentY = existing?.HasAuthoritativePosition == true
+                ? existing.AuthoritativePositionY
+                : entry.CurrentPositionY;
+            if (
+                !HostileShadowPushBoxGeometry.TryCreateWorldBox(
+                    definition,
+                    currentX,
+                    currentY,
+                    out var worldBox
+                )
+            )
+            {
+                reason = "hostile-shadow.push-box-intent-authoritative-geometry-invalid";
+                return false;
+            }
+
+            pending.Add(
+                (
+                    entry,
+                    stableId,
+                    existing,
+                    currentX,
+                    currentY,
+                    worldBox,
+                    definition
+                )
+            );
+        }
+
+        var retainedCount = 0;
+        var newCount = 0;
+        foreach (var pair in remotePushBoxStates)
+        {
+            var state = pair.Value;
+            if (
+                string.Equals(
+                    state.OwnerPlayerKey,
+                    message.OwnerPlayerKey,
+                    StringComparison.Ordinal
+                )
+                && (
+                    ownerLocationChanged
+                    || !string.Equals(
+                        state.LocationId,
+                        message.LocationId,
+                        StringComparison.Ordinal
+                    )
+                    || !activeRemoteStableIds.Contains(pair.Key)
+                )
+            )
+            {
+                continue;
+            }
+            retainedCount++;
+        }
+        foreach (var item in pending)
+        {
+            if (item.Existing is null)
+                newCount++;
+        }
+        if (retainedCount + newCount > MaximumRemotePushBoxParticipants)
+        {
+            reason = "hostile-shadow.push-box-intent-cache-cap-reached";
+            return false;
+        }
+        RemoveRemotePushBoxStatesForOwner(
+            message.OwnerPlayerKey,
+            message.LocationId,
+            activeRemoteStableIds
+        );
+
+        foreach (var item in pending)
+        {
+            var target = new HostileShadowPushBoxPoint(
+                item.Entry.NormalTargetPositionX,
+                item.Entry.NormalTargetPositionY
+            );
+            var current = new HostileShadowPushBoxPoint(item.CurrentX, item.CurrentY);
+            var movement = new HostileShadowPushBoxPoint(
+                target.X - current.X,
+                target.Y - current.Y
+            );
+            if (item.Existing is { } existing)
+            {
+                existing.Participant.Update(
+                    current,
+                    target,
+                    movement,
+                    item.WorldBox,
+                    isActive: true,
+                    isBinding: false,
+                    isBindingRepresentative: false
+                );
+                existing.Revision = item.Entry.Revision;
+                existing.BatchNonce = message.BatchNonce;
+                existing.LastReceivedTick = (long)Game1.ticks;
+                existing.NormalTargetPositionX = target.X;
+                existing.NormalTargetPositionY = target.Y;
+                continue;
+            }
+
+            var participant = new HostileShadowCrowdParticipant(
+                item.StableId,
+                message.LocationId,
+                item.Definition.PushBoxGroupId,
+                current,
+                target,
+                movement,
+                item.WorldBox,
+                item.Definition.PushForce
+            );
+            var state = new RemotePushBoxState(
+                senderPlayerId,
+                message.OwnerPlayerKey,
+                message.LocationId,
+                item.Entry.SpeciesId,
+                item.Entry.CorrelationId,
+                participant
+            )
+            {
+                Revision = item.Entry.Revision,
+                BatchNonce = message.BatchNonce,
+                LastReceivedTick = (long)Game1.ticks,
+                AuthoritativePositionX = current.X,
+                AuthoritativePositionY = current.Y,
+                HasAuthoritativePosition = true,
+                NormalTargetPositionX = target.X,
+                NormalTargetPositionY = target.Y,
+            };
+            remotePushBoxStates.Add(item.StableId, state);
+        }
+
+        lastRemotePushBoxBatchByOwner[message.OwnerPlayerKey] = message.BatchNonce;
+        lastRemotePushBoxLocationByOwner[message.OwnerPlayerKey] = message.LocationId;
+        reason = "hostile-shadow.push-box-intent-accepted";
+        return true;
+    }
+
+    public bool HandlePushBoxResult(
+        ShadowProjectionPushBoxResultMessage message,
+        out string reason
+    )
+    {
+        reason = string.Empty;
+        if (disposed || Game1.IsMasterGame || projectionHost is null)
+        {
+            reason = "hostile-shadow.push-box-result-client-unavailable";
+            return false;
+        }
+        if (
+            message is null
+            || !HostileShadowProtocol.IsFreshPushBoxHostTick(
+                message.HostTick,
+                (long)Game1.ticks
+            )
+        )
+        {
+            reason = "hostile-shadow.push-box-result-host-tick-stale-or-future";
+            return false;
+        }
+        if (message.BatchNonce <= lastAppliedPushBoxResultBatchNonce)
+        {
+            reason = "hostile-shadow.push-box-result-batch-stale";
+            return false;
+        }
+
+        foreach (var entry in message.Entries)
+        {
+            if (
+                !projectionHost.TryApplyShadowPushBoxResult(
+                    message.OwnerPlayerKey,
+                    message.LocationId,
+                    entry.CorrelationId,
+                    entry.SpeciesId,
+                    entry.Revision,
+                    entry.FinalPositionX,
+                    entry.FinalPositionY,
+                    out reason
+                )
+            )
+            {
+                return false;
+            }
+        }
+
+        lastAppliedPushBoxResultBatchNonce = message.BatchNonce;
+        reason = "hostile-shadow.push-box-result-applied";
+        return true;
+    }
+
+    bool IHostileShadowProjectionPushBoxBridge.HasActivePushBoxParticipants =>
+        projectionHost?.HasActiveShadowPushBoxParticipants == true
+        || remotePushBoxStates.Count > 0;
+
+    void IHostileShadowProjectionPushBoxBridge.AppendPushBoxParticipants(
+        List<HostileShadowCrowdParticipant> participants
+    )
+    {
+        if (disposed || !Game1.IsMasterGame || projectionHost is null)
+            return;
+
+        PruneRemotePushBoxStates();
+        activeLocalPushBoxKeys.Clear();
+        localPushBoxIntentBuffer.Clear();
+        projectionHost.CopyShadowPushBoxIntents(localPushBoxIntentBuffer);
+        foreach (var intent in localPushBoxIntentBuffer)
+        {
+            var stableId = CreateProjectionStableId(
+                intent.OwnerPlayerKey,
+                intent.CorrelationId
+            );
+            activeLocalPushBoxKeys.Add(stableId);
+            localPushBoxIntents[stableId] = intent;
+            if (!TryGetProjectionPushBoxDefinition(intent.SpeciesId, out var definition, out var reason))
+            {
+                LogOnce(reason, LogLevel.Warn);
+                continue;
+            }
+            if (
+                !HostileShadowPushBoxGeometry.TryCreateWorldBox(
+                    definition,
+                    intent.CurrentPositionX,
+                    intent.CurrentPositionY,
+                    out var worldBox
+                )
+            )
+            {
+                LogOnce(
+                    "hostile-shadow.push-box-local-geometry-invalid",
+                    LogLevel.Warn
+                );
+                continue;
+            }
+
+            if (!localPushBoxParticipants.TryGetValue(stableId, out var participant))
+            {
+                participant = new HostileShadowCrowdParticipant(
+                    stableId,
+                    intent.LocationId,
+                    definition.PushBoxGroupId,
+                    default,
+                    default,
+                    default,
+                    default,
+                    definition.PushForce
+                );
+                localPushBoxParticipants.Add(stableId, participant);
+            }
+            var current = new HostileShadowPushBoxPoint(
+                intent.CurrentPositionX,
+                intent.CurrentPositionY
+            );
+            var target = new HostileShadowPushBoxPoint(
+                intent.NormalTargetPositionX,
+                intent.NormalTargetPositionY
+            );
+            participant.Update(
+                current,
+                target,
+                new HostileShadowPushBoxPoint(target.X - current.X, target.Y - current.Y),
+                worldBox,
+                isActive: true,
+                isBinding: false,
+                isBindingRepresentative: false
+            );
+            participants.Add(participant);
+        }
+
+        staleLocalPushBoxKeys.Clear();
+        foreach (var key in localPushBoxParticipants.Keys)
+        {
+            if (!activeLocalPushBoxKeys.Contains(key))
+                staleLocalPushBoxKeys.Add(key);
+        }
+        foreach (var key in staleLocalPushBoxKeys)
+        {
+            localPushBoxParticipants.Remove(key);
+            localPushBoxIntents.Remove(key);
+        }
+
+        foreach (var state in remotePushBoxStates.Values)
+            participants.Add(state.Participant);
+    }
+
+    void IHostileShadowProjectionPushBoxBridge.ApplyPushBoxResolution(
+        HostileShadowCrowdCollisionResolution resolution
+    )
+    {
+        if (disposed || !Game1.IsMasterGame || projectionHost is null)
+            return;
+
+        foreach (var resolved in resolution.Entries)
+        {
+            if (localPushBoxIntents.TryGetValue(resolved.StableId, out var localIntent))
+            {
+                if (
+                    !projectionHost.TryApplyShadowPushBoxResult(
+                        localIntent.OwnerPlayerKey,
+                        localIntent.LocationId,
+                        localIntent.CorrelationId,
+                        localIntent.SpeciesId,
+                        localIntent.Revision,
+                        resolved.FinalPosition.X,
+                        resolved.FinalPosition.Y,
+                        out var localReason
+                    )
+                    && !localReason.EndsWith("not-applicable", StringComparison.Ordinal)
+                )
+                {
+                    LogOnce(localReason, LogLevel.Warn);
+                }
+                continue;
+            }
+
+            if (!remotePushBoxStates.TryGetValue(resolved.StableId, out var remote))
+                continue;
+            remote.AuthoritativePositionX = resolved.FinalPosition.X;
+            remote.AuthoritativePositionY = resolved.FinalPosition.Y;
+            remote.HasAuthoritativePosition = true;
+            if (!pushBoxResultEntriesByPlayer.TryGetValue(remote.SenderPlayerId, out var resultEntries))
+            {
+                resultEntries = new List<ShadowProjectionPushBoxResultEntry>();
+                pushBoxResultEntriesByPlayer.Add(remote.SenderPlayerId, resultEntries);
+            }
+            resultEntries.Add(
+                new ShadowProjectionPushBoxResultEntry
+                {
+                    CorrelationId = remote.CorrelationId,
+                    SpeciesId = remote.SpeciesId,
+                    Revision = remote.Revision,
+                    FinalPositionX = resolved.FinalPosition.X,
+                    FinalPositionY = resolved.FinalPosition.Y,
+                }
+            );
+        }
+
+        foreach (var pair in pushBoxResultEntriesByPlayer)
+        {
+            if (pair.Value.Count == 0)
+                continue;
+            var ownerPlayerKey = string.Empty;
+            var locationId = string.Empty;
+            var batchNonce = 0L;
+            foreach (var state in remotePushBoxStates.Values)
+            {
+                if (state.SenderPlayerId != pair.Key)
+                    continue;
+                ownerPlayerKey = state.OwnerPlayerKey;
+                locationId = state.LocationId;
+                batchNonce = Math.Max(batchNonce, state.BatchNonce);
+            }
+            if (
+                string.IsNullOrWhiteSpace(ownerPlayerKey)
+                || !HostileShadowProtocol.IsValidLocationId(locationId)
+                || batchNonce <= 0
+            )
+            {
+                pair.Value.Clear();
+                continue;
+            }
+            multiplayer.SendPushBoxResult(
+                new ShadowProjectionPushBoxResultMessage
+                {
+                    SessionId = authority.SessionId,
+                    OwnerPlayerKey = ownerPlayerKey,
+                    LocationId = locationId,
+                    CapabilityId = HostileShadowProtocol.ShadowPushBoxCapabilityId,
+                    BatchNonce = batchNonce,
+                    HostTick = Game1.ticks,
+                    Entries = new List<ShadowProjectionPushBoxResultEntry>(pair.Value),
+                },
+                pair.Key
+            );
+            pair.Value.Clear();
+        }
     }
 
     /// <summary>
@@ -1319,6 +2076,7 @@ internal sealed class SmapiHostileShadowHost
                 reason
             );
         }
+        RegisterHostileShadowSchedules(result.EntityId.Value);
         reason = "hostile-shadow.debug-spawned";
         return result;
     }
@@ -1386,7 +2144,8 @@ internal sealed class SmapiHostileShadowHost
         string reason,
         float? positionX = null,
         float? positionY = null,
-        SanityShadowBudgetEvaluationResult? preEvaluatedBudget = null
+        SanityShadowBudgetEvaluationResult? preEvaluatedBudget = null,
+        int? currentLocationCap = null
     )
     {
         var location = player.currentLocation;
@@ -1464,7 +2223,8 @@ internal sealed class SmapiHostileShadowHost
                 spawnPositionY,
                 timeApi.Time,
                 resolved.Profile,
-                reason
+                reason,
+                currentLocationCap
             ),
             preEvaluatedBudget: preEvaluatedBudget
         );
@@ -1492,6 +2252,7 @@ internal sealed class SmapiHostileShadowHost
                     : materializationReason
             );
         }
+        RegisterHostileShadowSchedules(result.EntityId.Value);
         return result;
     }
 
@@ -1500,7 +2261,17 @@ internal sealed class SmapiHostileShadowHost
         out bool terrorbeakActive
     )
     {
+        return TryGetDangerTier(playerKey, out terrorbeakActive, out _);
+    }
+
+    private bool TryGetDangerTier(
+        string playerKey,
+        out bool terrorbeakActive,
+        out string reason
+    )
+    {
         terrorbeakActive = false;
+        reason = "hostile-shadow.natural.danger-tier-unavailable";
         if (
             !lifecycle.TryGetTierState(playerKey, out var tier)
             || tier is null
@@ -1525,7 +2296,13 @@ internal sealed class SmapiHostileShadowHost
                 terrorbeakActive = true;
             }
         }
-        return dangerActive;
+        if (!dangerActive)
+        {
+            reason = "hostile-shadow.natural.danger-inactive";
+            return false;
+        }
+        reason = "hostile-shadow.natural.danger-active";
+        return true;
     }
 
     private void SynchronizeDangerEpochsForOnlinePlayers()
@@ -1631,17 +2408,355 @@ internal sealed class SmapiHostileShadowHost
         if (stateEvent.Kind == SanityStateEventKind.TierEntered)
         {
             RestoreBindingsForPlayer(stateEvent.PlayerKey);
+            return;
+        }
+
+        if (stateEvent.Kind == SanityStateEventKind.TierExited)
+        {
+            // A cut-map queue is a compensation for the danger state that created it. If the
+            // player leaves Danger before the queue is consumed, discard the remaining entries;
+            // re-entering Danger must not resurrect an old transition's spawns.
+            if (pendingFastSpawnsByPlayer.Remove(stateEvent.PlayerKey))
+            {
+                LogFastRefreshState(
+                    stateEvent.PlayerKey,
+                    "discarded-danger-exited",
+                    "pending cut-map compensation abandoned after Danger exit"
+                );
+            }
         }
     }
 
     /// <summary>
-    /// DIAG-20260810: 统一上限池超限清理（7 号需求）。补偿+已刷（含指令生成、
-    /// 绑定对算 1 只）超过当前密度档上限（BaseCap+TerrorbeakCap）时，每游戏内
-    /// 10 分钟对超限部分逐只 50% 概率消失（无害投影移除/危险实体连带清理）；
-    /// 每玩家单独计算。
+    /// DIAG-20260810: 超过当前地图、当前玩家的共享上限时，每只 Creeper/Terrorbeak
+    /// 从自己的生成时间起每 10 游戏分钟独立 roll 50%。绑定实体和绑定投影只作为一个
+    /// 候选；选中后仍走“完成当前动作→一次恐吓→约 1 秒淡出”的延迟生命周期。
     /// </summary>
     private void TrimOverCap(long gameMinute)
     {
+        if (projectionHost is null)
+            return;
+
+        PrunePendingOverCapProjectionFades();
+
+        foreach (var player in Game1.getOnlineFarmers())
+        {
+            var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+                player.UniqueMultiplayerID
+            );
+            if (
+                !lifecycle.TryGetShadowBudgetTotalCap(playerKey, out var cap)
+                || cap <= 0
+            )
+            {
+                continue;
+            }
+
+            // 上限永远只看玩家当前所在地图；影怪本体仍留在原地图，不会因切图被删。
+            var locationId = player.currentLocation?.NameOrUniqueName ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(locationId))
+                continue;
+
+            var total = CountOverCapShadowsForPlayerAtLocation(playerKey, locationId);
+            var availableOverCap = Math.Max(
+                0,
+                total
+                    - cap
+                    - CountPendingOverCapSelectionsForPlayerAtLocation(
+                        playerKey,
+                        locationId
+                    )
+            );
+
+            // 先处理危险实体。每只实体到自己的时间才会消耗一次独立判断；没有空余
+            // 超限名额时仍消费时间点，但不再掷概率，避免一次回收过量。
+            foreach (var entityId in world.GetOrderedEntityIds())
+            {
+                if (
+                    !world.TryGetEntityLocationId(entityId, out var entityLocationId)
+                    || !string.Equals(
+                        entityLocationId,
+                        locationId,
+                        StringComparison.Ordinal
+                    )
+                    || !authority.TryGetEntity(entityId, out var state)
+                    || state is null
+                    || !string.Equals(
+                        state.OwnerPlayerKey,
+                        playerKey,
+                        StringComparison.Ordinal
+                    )
+                    || state.Health <= 0
+                    || string.Equals(
+                        state.StateId,
+                        HostileShadowStateIds.Dying,
+                        StringComparison.Ordinal
+                    )
+                    || string.Equals(
+                        state.StateId,
+                        HostileShadowStateIds.Despawn,
+                        StringComparison.Ordinal
+                    )
+                    || !IsOverCapAssetBinding(state.AssetBindingId)
+                    || !world.TryGetEntitySpawnGameMinute(
+                        entityId,
+                        out var spawnGameMinute
+                    )
+                )
+                {
+                    continue;
+                }
+
+                overCapCheckSchedule.Register(entityId, spawnGameMinute);
+                if (
+                    !overCapCheckSchedule.TryConsumeIfDue(
+                        entityId,
+                        gameMinute,
+                        spawnGameMinute
+                    )
+                    || availableOverCap <= 0
+                    || bindingRandom.NextDouble() >= 0.5d
+                )
+                {
+                    continue;
+                }
+
+                if (TryBeginOverCapCleanup(entityId, state))
+                    availableOverCap--;
+            }
+
+            // 独立无害投影同样从自己的 SpawnedAtMinute 起算；绑定投影跳过，因为它由
+            // 上面的绑定实体候选代表，不能因为一组绑定再次独立 roll。
+            foreach (var instance in projectionHost.SnapshotShadowInstancesForOwner(playerKey))
+            {
+                if (
+                    instance.IsCleanedUp
+                    || instance.IsBindingProjection
+                    || instance.BehaviorState
+                        == ShadowCreatureHarmlessProjectionInstance
+                            .ShadowCreatureProjectionBehaviorState.FadingOut
+                    || !string.Equals(
+                        instance.Owner.LocationNameOrUniqueName,
+                        locationId,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+
+                overCapProjectionCheckSchedule.Register(
+                    instance.CorrelationId,
+                    instance.SpawnedAtMinute
+                );
+                if (
+                    !overCapProjectionCheckSchedule.TryConsumeIfDue(
+                        instance.CorrelationId,
+                        gameMinute,
+                        instance.SpawnedAtMinute
+                    )
+                    || availableOverCap <= 0
+                    || bindingRandom.NextDouble() >= 0.5d
+                    || !projectionHost.BeginOverCapShadowProjectionFade(
+                        playerKey,
+                        locationId,
+                        instance.CorrelationId,
+                        OverCapFadeOutMilliseconds
+                    )
+                )
+                {
+                    continue;
+                }
+
+                pendingOverCapProjectionFades.Add(instance.CorrelationId);
+                availableOverCap--;
+            }
+        }
+    }
+
+    private void PrunePendingOverCapProjectionFades()
+    {
+        if (projectionHost is null || pendingOverCapProjectionFades.Count == 0)
+            return;
+
+        List<string>? stale = null;
+        foreach (var correlationId in pendingOverCapProjectionFades)
+        {
+            if (projectionHost.IsShadowProjectionActive(correlationId))
+                continue;
+            stale ??= new List<string>();
+            stale.Add(correlationId);
+        }
+        if (stale is null)
+            return;
+        foreach (var correlationId in stale)
+            pendingOverCapProjectionFades.Remove(correlationId);
+    }
+
+    private int CountOverCapShadowsForPlayerAtLocation(
+        string playerKey,
+        string locationId
+    )
+    {
+        if (projectionHost is null)
+            return 0;
+
+        var harmless = projectionHost.CountOverCapShadowProjectionsForOwnerAtLocation(
+            playerKey,
+            locationId
+        );
+        var hostile = 0;
+        foreach (var pair in world.CountEntitiesBySpeciesAtLocation(playerKey, locationId))
+        {
+            if (IsOverCapAssetBinding(pair.Key))
+                hostile += pair.Value;
+        }
+
+        // The hidden entity and its binding projection are one shadow in the shared pool.
+        var boundPairs = 0;
+        foreach (var entityId in bindingCorrelationByEntity.Keys)
+        {
+            if (
+                world.TryGetEntityLocationId(entityId, out var entityLocationId)
+                && string.Equals(
+                    entityLocationId,
+                    locationId,
+                    StringComparison.Ordinal
+                )
+                && authority.TryGetEntity(entityId, out var boundState)
+                && boundState is not null
+                && string.Equals(
+                    boundState.OwnerPlayerKey,
+                    playerKey,
+                    StringComparison.Ordinal
+                )
+                && IsOverCapAssetBinding(boundState.AssetBindingId)
+            )
+            {
+                boundPairs++;
+            }
+        }
+
+        return Math.Max(0, harmless + hostile - boundPairs);
+    }
+
+    private int CountPendingOverCapSelectionsForPlayerAtLocation(
+        string playerKey,
+        string locationId
+    )
+    {
+        var count = 0;
+        foreach (var entityId in world.GetOrderedEntityIds())
+        {
+            if (
+                !world.TryGetEntityLocationId(entityId, out var entityLocationId)
+                || !string.Equals(
+                    entityLocationId,
+                    locationId,
+                    StringComparison.Ordinal
+                )
+                || !authority.TryGetEntity(entityId, out var state)
+                || state is null
+                || !string.Equals(
+                    state.OwnerPlayerKey,
+                    playerKey,
+                    StringComparison.Ordinal
+                )
+                || !IsOverCapAssetBinding(state.AssetBindingId)
+                || (
+                    !pendingOverCapRetreats.Contains(entityId)
+                    && !pendingOverCapActions.ContainsKey(entityId)
+                    && !pendingOverCapBindingFades.Contains(entityId)
+                )
+            )
+            {
+                continue;
+            }
+            count++;
+        }
+
+        if (projectionHost is null)
+            return count;
+        foreach (var instance in projectionHost.SnapshotShadowInstancesForOwner(playerKey))
+        {
+            if (
+                pendingOverCapProjectionFades.Contains(instance.CorrelationId)
+                && !instance.IsCleanedUp
+                && string.Equals(
+                    instance.Owner.LocationNameOrUniqueName,
+                    locationId,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private bool TryBeginOverCapCleanup(
+        long entityId,
+        ShadowStateSnapshot state
+    )
+    {
+        if (bindingCorrelationByEntity.TryGetValue(entityId, out var correlationId))
+        {
+            if (pendingOverCapBindingFades.Contains(entityId))
+                return false;
+            if (!projectionHost!.BeginBindingFadeOut(correlationId, OverCapFadeOutMilliseconds))
+                return false;
+
+            pendingOverCapBindingFades.Add(entityId);
+            return true;
+        }
+
+        if (
+            pendingOverCapRetreats.Contains(entityId)
+            || pendingOverCapActions.ContainsKey(entityId)
+            || pendingOverCapBindingFades.Contains(entityId)
+        )
+        {
+            return false;
+        }
+
+        if (pendingRetreats.ContainsKey(entityId))
+        {
+            pendingOverCapRetreats.Add(entityId);
+            return true;
+        }
+        if (string.Equals(state.StateId, HostileShadowStateIds.Taunt, StringComparison.Ordinal))
+        {
+            // The current Taunt is already the requested warning; do not play it twice.
+            pendingOverCapActions[entityId] = true;
+            return true;
+        }
+        if (IsOverCapActionInProgress(state.StateId))
+        {
+            // Finish the current action first, then begin the one requested over-cap Taunt.
+            pendingOverCapActions[entityId] = false;
+            return true;
+        }
+        if (BeginRetreat(entityId, state))
+        {
+            pendingOverCapRetreats.Add(entityId);
+            return true;
+        }
+        return false;
+    }
+
+    private void RebaseShadowCheckSchedules(long gameMinute)
+    {
+        var entityIds = world.GetOrderedEntityIds();
+        overCapCheckSchedule.Clear();
+        bindingRollSchedule.Clear();
+        foreach (var entityId in entityIds)
+        {
+            overCapCheckSchedule.RebaseKey(entityId, gameMinute);
+            bindingRollSchedule.RebaseKey(entityId, gameMinute);
+        }
+
+        overCapProjectionCheckSchedule.Clear();
         if (projectionHost is null)
             return;
         foreach (var player in Game1.getOnlineFarmers())
@@ -1649,136 +2764,102 @@ internal sealed class SmapiHostileShadowHost
             var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
                 player.UniqueMultiplayerID
             );
-            if (
-                !lifecycle.TryGetShadowBudgetTotalCap(
-                    playerKey,
-                    out var cap
+            foreach (var instance in projectionHost.SnapshotShadowInstancesForOwner(playerKey))
+            {
+                if (
+                    instance.IsCleanedUp
+                    || instance.IsBindingProjection
+                    || !IsOverCapProjectionSpecies(instance.SpeciesId)
                 )
-                || cap <= 0
+                {
+                    continue;
+                }
+                overCapProjectionCheckSchedule.RebaseKey(
+                    instance.CorrelationId,
+                    gameMinute
+                );
+            }
+        }
+    }
+
+    private void ClearShadowCheckSchedules()
+    {
+        bindingRollSchedule.Clear();
+        overCapCheckSchedule.Clear();
+        overCapProjectionCheckSchedule.Clear();
+        pendingScheduledShadowCheckMinute = -1;
+    }
+
+    private void RegisterHostileShadowSchedules(long entityId)
+    {
+        if (!world.TryGetEntitySpawnGameMinute(entityId, out var spawnGameMinute))
+            return;
+
+        bindingRollSchedule.Register(entityId, spawnGameMinute);
+        overCapCheckSchedule.Register(entityId, spawnGameMinute);
+    }
+
+    private void AdvancePendingOverCapActions()
+    {
+        if (pendingOverCapActions.Count == 0)
+            return;
+
+        var pending = new List<KeyValuePair<long, bool>>(pendingOverCapActions);
+        foreach (var pair in pending)
+        {
+            var entityId = pair.Key;
+            if (!authority.TryGetEntity(entityId, out var state) || state is null)
+            {
+                pendingOverCapActions.Remove(entityId);
+                continue;
+            }
+            if (
+                state.Health <= 0
+                || string.Equals(state.StateId, HostileShadowStateIds.Dying, StringComparison.Ordinal)
+                || string.Equals(state.StateId, HostileShadowStateIds.Despawn, StringComparison.Ordinal)
             )
             {
+                pendingOverCapActions.Remove(entityId);
                 continue;
             }
-            // DIAG-20260811: 上限按所在地图计算（切图后旧地图影怪不计入新地图上限）。
-            var locationId = player.currentLocation is null
-                ? string.Empty
-                : player.currentLocation.NameOrUniqueName;
-            var harmless = projectionHost.CountShadowProjectionsForOwner(playerKey);
-            var hostile = world.CountEntitiesForOwnerAtLocation(
-                playerKey,
-                locationId
-            );
-            // 绑定对算 1 只：只统计所在地图的绑定实体（绑定投影在册即绑定实体不另计）。
-            var boundPairs = 0;
-            foreach (var entityId in bindingCorrelationByEntity.Keys)
+            if (string.Equals(state.StateId, HostileShadowStateIds.Taunt, StringComparison.Ordinal))
             {
-                if (
-                    world.TryGetEntityLocationId(
-                        entityId,
-                        out var entityLocationId
-                    )
-                    && string.Equals(
-                        entityLocationId,
-                        locationId,
-                        StringComparison.Ordinal
-                    )
-                )
-                {
-                    boundPairs++;
-                }
-            }
-            var total = harmless + hostile - boundPairs;
-            if (total <= cap)
+                // A finite action can naturally transition into Taunt before this deferred
+                // cleanup is resumed. That Taunt is already the warning we need; remember to
+                // skip starting another one when it completes.
+                pendingOverCapActions[entityId] = true;
                 continue;
-            var over = total - cap;
-            var removed = 0;
-
-            // 1) 绑定实体：连带绑定投影一起清（50% 概率，仅所在地图）。
-            var boundEntityIds = new List<long>(bindingCorrelationByEntity.Keys);
-            foreach (var entityId in boundEntityIds)
+            }
+            if (IsOverCapActionInProgress(state.StateId))
             {
-                if (removed >= over)
-                    break;
-                if (
-                    !world.TryGetEntityLocationId(
-                        entityId,
-                        out var boundLocationId
-                    )
-                    || !string.Equals(
-                        boundLocationId,
-                        locationId,
-                        StringComparison.Ordinal
-                    )
-                )
-                {
-                    continue;
-                }
-                if (bindingRandom.NextDouble() >= 0.5d)
-                    continue;
-                if (!bindingCorrelationByEntity.TryGetValue(entityId, out var correlationId))
-                    continue;
-                bindingEntityByCorrelation.Remove(correlationId);
-                bindingCorrelationByEntity.Remove(entityId);
-                if (projectionHost.TryRemoveBindingProjection(correlationId, out _))
-                {
-                    // 投影已移除（连带隐藏实体解除隐藏）。
-                }
-                if (world.TryExitBinding(entityId, out _))
-                {
-                    authority.SetBindingState(
-                        entityId,
-                        false,
-                        string.Empty,
-                        string.Empty,
-                        out _
-                    );
-                }
-                authority.CleanupEntity(
-                    entityId,
-                    "hostile-shadow.cleanup.over-cap-bound"
-                );
-                removed++;
+                continue;
             }
 
-            // 2) 未绑定危险实体（50% 概率，仅所在地图）。
-            foreach (var entityId in world.GetOrderedEntityIds())
+            pendingOverCapActions.Remove(entityId);
+            if (pair.Value)
             {
-                if (removed >= over)
-                    break;
-                if (bindingCorrelationByEntity.ContainsKey(entityId))
-                    continue;
-                if (
-                    !world.TryGetEntityLocationId(
-                        entityId,
-                        out var entityLocationId
-                    )
-                    || !string.Equals(
-                        entityLocationId,
-                        locationId,
-                        StringComparison.Ordinal
-                    )
-                )
-                {
-                    continue;
-                }
-                if (bindingRandom.NextDouble() >= 0.5d)
-                    continue;
-                authority.CleanupEntity(
-                    entityId,
-                    "hostile-shadow.cleanup.over-cap"
-                );
-                removed++;
+                if (BindNow(entityId, state))
+                    BeginOverCapBindingFade(entityId);
+                continue;
             }
 
-            // 3) 无害投影（含指令生成，50% 概率）。
-            if (removed < over)
-            {
-                projectionHost.TrimShadowProjectionsForOwner(
-                    playerKey,
-                    over - removed,
-                    bindingRandom
-                );
-            }
+            if (BeginRetreat(entityId, state))
+                pendingOverCapRetreats.Add(entityId);
+        }
+    }
+
+    private void BeginOverCapBindingFade(long entityId)
+    {
+        if (
+            projectionHost is not null
+            && bindingCorrelationByEntity.TryGetValue(entityId, out var correlationId)
+            && projectionHost.BeginBindingFadeOut(
+                correlationId,
+                OverCapFadeOutMilliseconds
+            )
+        )
+        {
+            pendingOverCapBindingFades.Add(entityId);
         }
     }
 
@@ -1799,14 +2880,39 @@ internal sealed class SmapiHostileShadowHost
         {
             return;
         }
-        var bySpecies = world.CountEntitiesBySpeciesAtLocation(locationId);
-        if (bySpecies.Count == 0)
+        var bySpecies = world.CountEntitiesBySpeciesAtLocation(playerKey, locationId);
+        var sourceCount = 0;
+        foreach (var count in bySpecies.Values)
+            sourceCount += count;
+        if (sourceCount == 0)
+        {
+            LogFastRefreshState(
+                playerKey,
+                string.Concat("source-empty:", locationId),
+                string.Concat(
+                    "source-location=",
+                    locationId,
+                    ", source-count=0, reason=no-eligible-owner-entities"
+                )
+            );
             return;
+        }
         if (
             !lifecycle.TryGetShadowBudgetTotalCap(playerKey, out var cap)
             || cap <= 0
         )
         {
+            LogFastRefreshState(
+                playerKey,
+                string.Concat("source-cap-unavailable:", locationId),
+                string.Concat(
+                    "source-location=",
+                    locationId,
+                    ", source-count=",
+                    sourceCount.ToString(CultureInfo.InvariantCulture),
+                    ", reason=budget-cap-unavailable"
+                )
+            );
             return;
         }
 
@@ -1827,7 +2933,20 @@ internal sealed class SmapiHostileShadowHost
         fastSpawnNextDueMilliseconds =
             Game1.currentGameTime.TotalGameTime.TotalMilliseconds
             + FastSpawnIntervalMilliseconds;
-        LogOnce("hostile-shadow.fast-spawn-queued", LogLevel.Debug);
+        LogFastRefreshState(
+            playerKey,
+            string.Concat("queued:", locationId, ":", queue.Count),
+            string.Concat(
+                "source-location=",
+                locationId,
+                ", source-count=",
+                sourceCount.ToString(CultureInfo.InvariantCulture),
+                ", queue-count=",
+                queue.Count.ToString(CultureInfo.InvariantCulture),
+                ", cap=",
+                cap.ToString(CultureInfo.InvariantCulture)
+            )
+        );
     }
 
     /// <summary>
@@ -1870,8 +2989,8 @@ internal sealed class SmapiHostileShadowHost
     }
 
     /// <summary>
-    /// DIAG-20260811: 快速刷新推进——每 2 秒从队列取一只在玩家附近生成（走常规
-    /// TrySpawn 链路，不占密度预算；数量已按上限截断）。
+    /// DIAG-20260811: 快速刷新推进——每 2 秒从队列取一只在玩家附近生成；它使用独立
+    /// 的快速补足授权，不推进自然刷新计时，也不因物种不是当前自然刷物种而被拒绝。
     /// </summary>
     private void AdvanceFastSpawns()
     {
@@ -1920,10 +3039,76 @@ internal sealed class SmapiHostileShadowHost
                 || string.IsNullOrWhiteSpace(target.currentLocation.NameOrUniqueName)
             )
             {
+                LogFastRefreshState(
+                    playerKey,
+                    "destination-unavailable",
+                    "destination player or location unavailable; queue discarded"
+                );
                 pendingFastSpawnsByPlayer.Remove(playerKey);
                 break;
             }
-            var bindingId = queue.Dequeue();
+            var targetLocationId = target.currentLocation.NameOrUniqueName;
+            if (!TryGetDangerTier(playerKey, out _, out var dangerReason))
+            {
+                LogFastRefreshState(
+                    playerKey,
+                    string.Concat("discarded-danger-inactive:", targetLocationId),
+                    string.Concat(
+                        "destination-location=",
+                        targetLocationId,
+                        ", reason=",
+                        dangerReason,
+                        ", queue-count=",
+                        queue.Count.ToString(CultureInfo.InvariantCulture)
+                    )
+                );
+                pendingFastSpawnsByPlayer.Remove(playerKey);
+                continue;
+            }
+            var currentMapLockedOccupancy =
+                CountCurrentMapLockedShadowOccupancy(playerKey, targetLocationId);
+            if (
+                !lifecycle.TryGetShadowBudgetTotalCap(playerKey, out var totalCap)
+                || totalCap <= 0
+            )
+            {
+                LogFastRefreshState(
+                    playerKey,
+                    string.Concat("destination-cap-unavailable:", targetLocationId),
+                    string.Concat(
+                        "destination-location=",
+                        targetLocationId,
+                        ", occupancy=",
+                        currentMapLockedOccupancy.ToString(CultureInfo.InvariantCulture),
+                        ", reason=budget-cap-unavailable, queue-count=",
+                        queue.Count.ToString(CultureInfo.InvariantCulture)
+                    )
+                );
+                break;
+            }
+            if (currentMapLockedOccupancy >= totalCap)
+            {
+                // The destination map is full for this player's locked hostile shadows. Keep
+                // the source entry so a later vacancy can still receive the command-created
+                // shadow; this does not touch off-map entity lifetime or its despawn timer.
+                LogFastRefreshState(
+                    playerKey,
+                    string.Concat("destination-at-cap:", targetLocationId),
+                    string.Concat(
+                        "destination-location=",
+                        targetLocationId,
+                        ", occupancy=",
+                        currentMapLockedOccupancy.ToString(CultureInfo.InvariantCulture),
+                        ", cap=",
+                        totalCap.ToString(CultureInfo.InvariantCulture),
+                        ", queue-count=",
+                        queue.Count.ToString(CultureInfo.InvariantCulture)
+                    )
+                );
+                break;
+            }
+
+            var bindingId = queue.Peek();
             var requestId = string.Concat(
                 "hostile-shadow.fast-spawn.",
                 authority.SessionId,
@@ -1936,10 +3121,11 @@ internal sealed class SmapiHostileShadowHost
             );
             var result = TrySpawn(
                 requestId,
-                HostileShadowSpawnOrigin.Interval,
+                HostileShadowSpawnOrigin.WarpFastCompensation,
                 target,
                 bindingId,
-                "hostile-shadow.spawn.fast-spawn"
+                "hostile-shadow.spawn.fast-spawn",
+                currentLocationCap: totalCap
             );
             if (
                 result.Status is HostileShadowSpawnStatus.Unavailable
@@ -1948,12 +3134,150 @@ internal sealed class SmapiHostileShadowHost
             {
                 LogOnce(result.Reason, LogLevel.Warn);
             }
+            LogFastRefreshState(
+                playerKey,
+                string.Concat(
+                    "attempt:",
+                    result.Status.ToString(),
+                    ":queue-before=",
+                    queue.Count.ToString(CultureInfo.InvariantCulture)
+                ),
+                string.Concat(
+                    "destination-location=",
+                    targetLocationId,
+                    ", occupancy=",
+                    currentMapLockedOccupancy.ToString(CultureInfo.InvariantCulture),
+                    ", cap=",
+                    totalCap.ToString(CultureInfo.InvariantCulture),
+                    ", status=",
+                    result.Status.ToString(),
+                    ", spawned=",
+                    result.Spawned.ToString(),
+                    ", reason=",
+                    result.Reason,
+                    ", queue-count-before=",
+                    queue.Count.ToString(CultureInfo.InvariantCulture)
+                )
+            );
+            if (result.Spawned)
+                queue.Dequeue();
+            else if (
+                result.Status is not HostileShadowSpawnStatus.Waiting
+                    and not HostileShadowSpawnStatus.AtCap
+            )
+            {
+                // Invalid command/resource/session failures are terminal for this transition
+                // entry. Waiting/AtCap remain retryable and are intentionally not dequeued.
+                queue.Dequeue();
+            }
             if (queue.Count == 0)
                 pendingFastSpawnsByPlayer.Remove(playerKey);
             break; // 每 tick 只刷一只（陆续出现）
         }
         fastSpawnNextDueMilliseconds =
             nowMilliseconds + FastSpawnIntervalMilliseconds;
+    }
+
+    /// <summary>
+    /// 绑定组合的超限淡出由投影协调器完成；投影从索引消失后才解除隐藏并清理危险实体。
+    /// 这样不会把绑定组合拆成“先删实体/再删投影”的瞬时硬删除。
+    /// </summary>
+    private void AdvanceOverCapBindingFades()
+    {
+        if (projectionHost is null || pendingOverCapBindingFades.Count == 0)
+            return;
+
+        var pending = new List<long>(pendingOverCapBindingFades);
+        foreach (var entityId in pending)
+        {
+            if (
+                !bindingCorrelationByEntity.TryGetValue(
+                    entityId,
+                    out var correlationId
+                )
+            )
+            {
+                pendingOverCapBindingFades.Remove(entityId);
+                continue;
+            }
+            if (
+                projectionHost.TryGetBindingProjectionPosition(
+                    correlationId,
+                    out _,
+                    out _
+                )
+            )
+            {
+                continue;
+            }
+
+            bindingEntityByCorrelation.Remove(correlationId);
+            bindingCorrelationByEntity.Remove(entityId);
+            if (world.TryExitBinding(entityId, out _))
+            {
+                authority.SetBindingState(
+                    entityId,
+                    false,
+                    string.Empty,
+                    string.Empty,
+                    out _
+                );
+            }
+            authority.CleanupEntity(
+                entityId,
+                "hostile-shadow.cleanup.over-cap-fade-completed"
+            );
+            bindingRollSchedule.Remove(entityId);
+            overCapCheckSchedule.Remove(entityId);
+            pendingOverCapBindingFades.Remove(entityId);
+        }
+    }
+
+    /// <summary>
+    /// Refresh capacity is deliberately local to the current map and target lock. Off-map
+    /// entities remain alive and keep their own despawn lifecycle, but cannot block this map's
+    /// natural or cut-map refresh permit.
+    /// </summary>
+    private int CountCurrentMapLockedShadowOccupancy(
+        string playerKey,
+        string locationId
+    )
+    {
+        return world.CountLockedEntitiesForOwnerAtLocation(playerKey, locationId);
+    }
+
+    int IHostileShadowLocationOccupancyProvider.CountHostileShadowsForOwnerAtLocation(
+        string playerKey,
+        string locationId
+    )
+    {
+        return CountHostileShadowsForOwnerAtLocation(playerKey, locationId);
+    }
+
+    private int CountHostileShadowsForOwnerAtLocation(
+        string playerKey,
+        string locationId
+    )
+    {
+        var hostile = world.CountEntitiesForOwnerAtLocation(playerKey, locationId);
+        if (hostile == 0)
+            return 0;
+
+        var boundPairs = 0;
+        foreach (var entityId in bindingCorrelationByEntity.Keys)
+        {
+            if (
+                world.TryGetEntityLocationId(entityId, out var entityLocationId)
+                && string.Equals(entityLocationId, locationId, StringComparison.Ordinal)
+                && authority.TryGetEntity(entityId, out var state)
+                && state is not null
+                && string.Equals(state.OwnerPlayerKey, playerKey, StringComparison.Ordinal)
+            )
+            {
+                boundPairs++;
+            }
+        }
+        return Math.Max(0, hostile - boundPairs);
     }
 
     /// <summary>
@@ -2014,6 +3338,129 @@ internal sealed class SmapiHostileShadowHost
             playerKey,
             StringComparison.Ordinal
         );
+    }
+
+    private bool TryGetProjectionPushBoxDefinition(
+        string speciesId,
+        out HostileAttackRuntimeDefinition definition,
+        out string reason
+    )
+    {
+        definition = null!;
+        if (!ShadowCreatureHarmlessProjectionCatalog.IsPermitConsumer(speciesId))
+        {
+            reason = "hostile-shadow.push-box-species-not-authorized";
+            return false;
+        }
+        if (projectionPushBoxDefinitions.TryGetValue(speciesId, out definition!))
+        {
+            reason = "hostile-shadow.push-box-definition-cached";
+            return true;
+        }
+        if (!TryResolveBindingForSpecies(speciesId, out var bindingId))
+        {
+            reason = "hostile-shadow.push-box-species-binding-invalid";
+            return false;
+        }
+        var resolvedProfile = profiles.Resolve(bindingId);
+        if (!resolvedProfile.Success || resolvedProfile.Profile is null)
+        {
+            reason = resolvedProfile.Reason;
+            return false;
+        }
+        if (!resources.TryGetHostileAttackMetadata(bindingId, out var metadata, out reason))
+            return false;
+        if (
+            !HostileAttackRuntimeDefinition.TryCreate(
+                metadata,
+                resolvedProfile.Profile,
+                out var created,
+                out reason
+            )
+            || created is null
+        )
+        {
+            return false;
+        }
+
+        definition = created;
+        projectionPushBoxDefinitions.Add(speciesId, definition);
+        reason = "hostile-shadow.push-box-definition-ready";
+        return true;
+    }
+
+    private void RemoveRemotePushBoxStatesForOwner(
+        string ownerPlayerKey,
+        string locationId,
+        HashSet<string> activeStableIds
+    )
+    {
+        staleRemotePushBoxKeys.Clear();
+        foreach (var pair in remotePushBoxStates)
+        {
+            var state = pair.Value;
+            if (
+                !string.Equals(
+                    state.OwnerPlayerKey,
+                    ownerPlayerKey,
+                    StringComparison.Ordinal
+                )
+                || (
+                    string.Equals(state.LocationId, locationId, StringComparison.Ordinal)
+                    && activeStableIds.Contains(pair.Key)
+                )
+            )
+            {
+                continue;
+            }
+            staleRemotePushBoxKeys.Add(pair.Key);
+        }
+        foreach (var key in staleRemotePushBoxKeys)
+            remotePushBoxStates.Remove(key);
+    }
+
+    private void PruneRemotePushBoxStates()
+    {
+        if (remotePushBoxStates.Count == 0)
+            return;
+        var now = (long)Game1.ticks;
+        staleRemotePushBoxKeys.Clear();
+        foreach (var pair in remotePushBoxStates)
+        {
+            if (now >= pair.Value.LastReceivedTick
+                && now - pair.Value.LastReceivedTick > PushBoxIntentFreshnessTicks)
+            {
+                staleRemotePushBoxKeys.Add(pair.Key);
+            }
+        }
+        foreach (var key in staleRemotePushBoxKeys)
+            remotePushBoxStates.Remove(key);
+    }
+
+    private static string CreateProjectionStableId(
+        string ownerPlayerKey,
+        string correlationId
+    )
+    {
+        return string.Concat("projection:", ownerPlayerKey, ":", correlationId);
+    }
+
+    private void ClearPushBoxState()
+    {
+        remotePushBoxStates.Clear();
+        lastRemotePushBoxBatchByOwner.Clear();
+        lastRemotePushBoxLocationByOwner.Clear();
+        localPushBoxParticipants.Clear();
+        localPushBoxIntents.Clear();
+        activeLocalPushBoxKeys.Clear();
+        localPushBoxIntentBuffer.Clear();
+        staleLocalPushBoxKeys.Clear();
+        staleRemotePushBoxKeys.Clear();
+        foreach (var entries in pushBoxResultEntriesByPlayer.Values)
+            entries.Clear();
+        pushBoxResultEntriesByPlayer.Clear();
+        projectionPushBoxDefinitions.Clear();
+        lastAppliedPushBoxResultBatchNonce = 0;
     }
 
     private void OnEventOwnerCoverageChanged(
@@ -2081,20 +3528,33 @@ internal sealed class SmapiHostileShadowHost
                 ? HostileShadowCleanupReasonIds.ReturnedToTitle
                 : HostileShadowCleanupReasonIds.WorldCleanup
         );
+        naturalSpawnRequestIds.Reset();
         multiplayer.ClearSession();
         sessionLifecycleCoordinator.ClearSession();
+        ClearPushBoxState();
         world.ClearSession();
+        pendingOverCapRetreats.Clear();
+        pendingOverCapActions.Clear();
+        pendingOverCapBindingFades.Clear();
+        pendingOverCapProjectionFades.Clear();
+        ClearShadowCheckSchedules();
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
     {
         worldMutationSuspended = true;
+        pendingOverCapRetreats.Clear();
+        pendingOverCapActions.Clear();
+        pendingOverCapBindingFades.Clear();
+        pendingOverCapProjectionFades.Clear();
+        ClearShadowCheckSchedules();
         if (lifecycle.AuthorityRole == SanityAuthorityRole.Host)
         {
             authority.CleanupAll(HostileShadowCleanupReasonIds.DayEnding);
         }
         multiplayer.OnDayEnding();
         sessionLifecycleCoordinator.DayEnding();
+        ClearPushBoxState();
     }
 
     private void OnProcessExit(object? sender, EventArgs e)
@@ -2133,6 +3593,53 @@ internal sealed class SmapiHostileShadowHost
         return false;
     }
 
+    private static bool IsOverCapAssetBinding(string assetBindingId)
+    {
+        return string.Equals(
+                assetBindingId,
+                ShadowMonsterAssetBindingIds.CreeperFear,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                assetBindingId,
+                ShadowMonsterAssetBindingIds.Terrorbeak,
+                StringComparison.Ordinal
+            );
+    }
+
+    private static bool IsOverCapProjectionSpecies(string speciesId)
+    {
+        return string.Equals(
+                speciesId,
+                ShadowCreatureHarmlessProjectionCatalog.CreeperFearSpeciesId,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                speciesId,
+                ShadowCreatureHarmlessProjectionCatalog.TerrorbeakSpeciesId,
+                StringComparison.Ordinal
+            );
+    }
+
+    private static bool IsOverCapActionInProgress(string stateId)
+    {
+        return string.Equals(
+                stateId,
+                HostileShadowStateIds.Spawn,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                stateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                stateId,
+                HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            );
+    }
+
     private static HostileShadowSpawnResult Failure(
         HostileShadowSpawnStatus status,
         string reason
@@ -2145,6 +3652,96 @@ internal sealed class SmapiHostileShadowHost
             null,
             0,
             0
+        );
+    }
+
+    private void LogNaturalRefreshState(
+        string playerKey,
+        string locationId,
+        string state,
+        string detail
+    )
+    {
+        var key = string.Concat(playerKey, "|", locationId);
+        if (
+            naturalRefreshDiagnosticStates.TryGetValue(key, out var previous)
+            && string.Equals(previous, state, StringComparison.Ordinal)
+        )
+        {
+            return;
+        }
+        if (
+            !naturalRefreshDiagnosticStates.ContainsKey(key)
+            && naturalRefreshDiagnosticStates.Count >= MaximumLoggedReasons
+        )
+        {
+            return;
+        }
+        naturalRefreshDiagnosticStates[key] = state;
+        monitor.Log(
+            string.Concat(
+                "Hostile shadow natural refresh: player=",
+                playerKey,
+                ", location=",
+                locationId,
+                ", state=",
+                state,
+                ", ",
+                detail
+            ),
+            LogLevel.Debug
+        );
+    }
+
+    private void LogNaturalSpawnResult(
+        string playerKey,
+        string locationId,
+        HostileShadowSpawnResult result
+    )
+    {
+        monitor.Log(
+            string.Concat(
+                "Hostile shadow natural spawn result: player=",
+                playerKey,
+                ", location=",
+                locationId,
+                ", status=",
+                result.Status.ToString(),
+                ", spawned=",
+                result.Spawned.ToString(),
+                ", occupancy=",
+                result.Occupancy.ToString(CultureInfo.InvariantCulture),
+                ", cap=",
+                result.Cap.ToString(CultureInfo.InvariantCulture),
+                ", reason=",
+                result.Reason
+            ),
+            result.Spawned ? LogLevel.Debug : LogLevel.Warn
+        );
+    }
+
+    private void LogFastRefreshState(
+        string playerKey,
+        string state,
+        string detail
+    )
+    {
+        var key = string.Concat(playerKey, "|", state);
+        if (fastRefreshDiagnosticStates.ContainsKey(key))
+            return;
+        if (fastRefreshDiagnosticStates.Count >= MaximumLoggedReasons)
+            return;
+        fastRefreshDiagnosticStates[key] = detail;
+        monitor.Log(
+            string.Concat(
+                "Hostile shadow fast refresh: player=",
+                playerKey,
+                ", state=",
+                state,
+                ", ",
+                detail
+            ),
+            LogLevel.Debug
         );
     }
 
@@ -2161,7 +3758,9 @@ internal sealed class SmapiHostileShadowHost
         monitor.Log($"Hostile shadow host: {reason}", level);
     }
 
-    private sealed class LifecycleBudgetAuthority : IHostileShadowBudgetAuthority
+    private sealed class LifecycleBudgetAuthority
+        : IHostileShadowBudgetAuthority,
+            IHostileShadowFastSpawnBudgetAuthority
     {
         private readonly SanitySystemLifecycleCoordinator lifecycle;
 
@@ -2185,6 +3784,31 @@ internal sealed class SmapiHostileShadowHost
                 occupancy,
                 requestedSpecies
             );
+        }
+
+        public bool TryGetCurrentPoolAndTotalCap(
+            string playerKey,
+            out SanityShadowPoolTier poolTier,
+            out int totalCap
+        )
+        {
+            poolTier = SanityShadowPoolTier.Inactive;
+            totalCap = 0;
+            if (
+                !lifecycle.TryGetShadowBudgetState(playerKey, out var snapshot)
+                || snapshot is null
+                || snapshot.PoolTier is not SanityShadowPoolTier.Hostile15
+                    and not SanityShadowPoolTier.Hostile10
+                || !lifecycle.TryGetShadowBudgetTotalCap(playerKey, out totalCap)
+                || totalCap <= 0
+            )
+            {
+                totalCap = 0;
+                return false;
+            }
+
+            poolTier = snapshot.PoolTier;
+            return true;
         }
     }
 

@@ -576,7 +576,7 @@ internal sealed class SmapiDarkHandWorldTransactionAdapters
             };
             entries.Add(targetId, entry);
         }
-        else if (ownerPlayerId > 0)
+        else if (ownerPlayerId != 0)
         {
             entry.OwnerPlayerId = ownerPlayerId;
         }

@@ -11,15 +11,15 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     private const string OwnerA = "101";
     private const string OwnerB = "202";
 
-    public static TheoryData<string, long, int, int> DensityCases =>
+    public static TheoryData<string, long, int> DensityCases =>
         new()
         {
-            { SanityMonsterIntensityIds.None, 60, 0, 0 },
-            { SanityMonsterIntensityIds.Less, 120, 1, 1 },
-            { SanityMonsterIntensityIds.Default, 60, 1, 2 },
-            { SanityMonsterIntensityIds.More, 60, 2, 3 },
-            { SanityMonsterIntensityIds.Many, 30, 3, 4 },
-            { SanityMonsterIntensityIds.Insane, 30, 4, 5 },
+            { SanityMonsterIntensityIds.None, 60, 0 },
+            { SanityMonsterIntensityIds.Less, 120, 2 },
+            { SanityMonsterIntensityIds.Default, 60, 3 },
+            { SanityMonsterIntensityIds.More, 60, 5 },
+            { SanityMonsterIntensityIds.Many, 30, 7 },
+            { SanityMonsterIntensityIds.Insane, 30, 9 },
         };
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             SanityShadowSpecies.CreeperFear
         );
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, creeper.Status);
-        Assert.Equal(1, creeper.Cap);
+        Assert.Equal(3, creeper.Cap);
         Assert.Equal(60, creeper.NextDueMinute);
 
         var ten = harness.Observe(OwnerA, current: 10d, revision: 2);
@@ -71,7 +71,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
         );
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, terrorbeak.Status);
         Assert.Equal(SanityShadowPoolTier.Hostile10, terrorbeak.PoolTier);
-        Assert.Equal(2, terrorbeak.Cap);
+        Assert.Equal(3, terrorbeak.Cap);
         Assert.Equal(
             SanityShadowEligibleSpecies.CreeperFear
                 | SanityShadowEligibleSpecies.Terrorbeak,
@@ -110,8 +110,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Six_densities_keep_base_and_ten_percent_caps_intervals_and_refresh_binding(
         string intensityId,
         long intervalMinutes,
-        int baseCap,
-        int terrorbeakCap
+        int totalCap
     )
     {
         var hostile15 = new Harness(intensityId);
@@ -134,8 +133,8 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
 
         Assert.Equal(intervalMinutes, creeper.IntervalMinutes);
         Assert.Equal(intervalMinutes, terrorbeak.IntervalMinutes);
-        Assert.Equal(baseCap, creeper.Cap);
-        Assert.Equal(terrorbeakCap, terrorbeak.Cap);
+        Assert.Equal(totalCap, creeper.Cap);
+        Assert.Equal(totalCap, terrorbeak.Cap);
         Assert.Equal(SanityShadowEligibleSpecies.CreeperFear, creeper.EligibleSpecies);
         Assert.Equal(
             SanityShadowEligibleSpecies.CreeperFear
@@ -194,7 +193,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             ShadowMonsterAssetBindingIds.CreeperFear
         );
         Assert.True(creeper.Spawned);
-        Assert.Equal(1, creeper.Cap);
+        Assert.Equal(3, creeper.Cap);
         Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerA));
     }
 
@@ -203,37 +202,48 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     {
         var harness = new Harness();
         harness.Observe(OwnerA, current: 15d, revision: 1);
-        Assert.True(
-            harness.Spawn(
-                "creeper-conversion",
-                HostileShadowSpawnOrigin.OwnerProjectionConversion,
-                OwnerA,
-                gameMinute: 0,
-                ShadowMonsterAssetBindingIds.CreeperFear
-            ).Spawned
+        var creeper = harness.Spawn(
+            "creeper-conversion",
+            HostileShadowSpawnOrigin.OwnerProjectionConversion,
+            OwnerA,
+            gameMinute: 0,
+            ShadowMonsterAssetBindingIds.CreeperFear
         );
+        Assert.True(creeper.Spawned);
+        harness.LockToPlayer(creeper, OwnerA);
 
         harness.Observe(OwnerA, current: 10d, revision: 2);
         var terrorbeak = harness.Spawn(
             "terrorbeak-cap-expansion",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 1,
+            gameMinute: 181,
             ShadowMonsterAssetBindingIds.Terrorbeak
         );
         Assert.True(terrorbeak.Spawned);
-        Assert.Equal(2, terrorbeak.Cap);
+        harness.LockToPlayer(terrorbeak, OwnerA);
+        Assert.Equal(3, terrorbeak.Cap);
+
+        var sameSpeciesBeforeCap = harness.Spawn(
+            "same-species-before-cap",
+            HostileShadowSpawnOrigin.Interval,
+            OwnerA,
+            gameMinute: 241,
+            ShadowMonsterAssetBindingIds.CreeperFear
+        );
+        Assert.True(sameSpeciesBeforeCap.Spawned);
+        harness.LockToPlayer(sameSpeciesBeforeCap, OwnerA);
 
         var atCap = harness.Spawn(
             "same-owner-at-cap",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 2,
+            gameMinute: 242,
             ShadowMonsterAssetBindingIds.CreeperFear
         );
         Assert.Equal(HostileShadowSpawnStatus.AtCap, atCap.Status);
         var original = harness.Authority.CreateFullSnapshot().Entities.ToArray();
-        Assert.Equal(2, original.Length);
+        Assert.Equal(3, original.Length);
         Assert.Equal(
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -243,7 +253,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             original.Select(state => state.AssetBindingId).ToHashSet(StringComparer.Ordinal)
         );
 
-        var creeperId = original.Single(
+        var creeperId = original.First(
             state => state.AssetBindingId == ShadowMonsterAssetBindingIds.CreeperFear
         ).EntityId;
         var terrorbeakId = original.Single(
@@ -259,11 +269,11 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             "single-vacancy-replacement",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 3,
+            gameMinute: 182,
             ShadowMonsterAssetBindingIds.CreeperFear
         );
         Assert.True(replacement.Spawned);
-        Assert.Equal(2, harness.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(3, harness.Authority.GetOwnerOccupancy(OwnerA));
 
         Assert.True(
             harness.Authority.CleanupEntity(
@@ -275,17 +285,17 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             "same-minute-second-vacancy",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 3,
+            gameMinute: 182,
             ShadowMonsterAssetBindingIds.Terrorbeak
         );
         Assert.Equal(HostileShadowSpawnStatus.Waiting, noSecondFill.Status);
-        Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(2, harness.Authority.GetOwnerOccupancy(OwnerA));
         Assert.True(harness.Governor.TryGetOwnerState(OwnerA, out var restarted));
-        Assert.Equal(63, restarted!.NextDueMinute);
+        Assert.Equal(242, restarted!.NextDueMinute);
     }
 
     [Fact]
-    public void Leaving_ten_percent_keeps_existing_terrorbeak_but_rejects_new_refreshes()
+    public void Leaving_ten_percent_keeps_existing_terrorbeak_but_rejects_new_terrorbeak_refreshes()
     {
         var harness = new Harness();
         harness.Observe(OwnerA, current: 10d, revision: 1);
@@ -297,6 +307,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             ShadowMonsterAssetBindingIds.Terrorbeak
         );
         Assert.True(existing.Spawned);
+        harness.LockToPlayer(existing, OwnerA);
 
         var aboveTen = harness.Observe(OwnerA, current: 10.0001d, revision: 2);
         Assert.Contains(
@@ -325,16 +336,16 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             "creeper-at-reduced-cap",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 60,
+            gameMinute: 181,
             ShadowMonsterAssetBindingIds.CreeperFear
         );
-        Assert.Equal(HostileShadowSpawnStatus.AtCap, creeperAtReducedCap.Status);
-        Assert.Equal(1, creeperAtReducedCap.Cap);
-        Assert.Equal(1, harness.Authority.Count);
+        Assert.True(creeperAtReducedCap.Spawned);
+        Assert.Equal(3, creeperAtReducedCap.Cap);
+        Assert.Equal(2, harness.Authority.Count);
     }
 
     [Fact]
-    public void Two_owners_have_independent_two_slot_pools_and_target_changes_never_move_owner()
+    public void Two_owners_have_independent_shared_pools_and_target_changes_never_move_owner()
     {
         var harness = new Harness();
         harness.Observe(OwnerA, current: 10d, revision: 1);
@@ -411,66 +422,85 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     }
 
     [Fact]
-    public void Dynamic_density_changes_fill_only_one_new_slot_and_preserve_overcap_entities()
+    public void Dynamic_density_changes_wait_for_natural_clock_and_preserve_overcap_entities()
     {
         var provider = new MutableIntensityProvider();
         var harness = new Harness(provider: provider);
         harness.Observe(OwnerA, current: 10d, revision: 1);
-        Assert.True(
-            harness.Spawn(
-                "default-first",
-                HostileShadowSpawnOrigin.OwnerProjectionConversion,
-                OwnerA,
-                gameMinute: 0,
-                ShadowMonsterAssetBindingIds.Terrorbeak
-            ).Spawned
+        var first = harness.Spawn(
+            "default-first",
+            HostileShadowSpawnOrigin.OwnerProjectionConversion,
+            OwnerA,
+            gameMinute: 0,
+            ShadowMonsterAssetBindingIds.Terrorbeak
         );
-        Assert.True(
-            harness.Spawn(
-                "default-second",
-                HostileShadowSpawnOrigin.Interval,
-                OwnerA,
-                gameMinute: 60,
-                ShadowMonsterAssetBindingIds.CreeperFear
-            ).Spawned
+        Assert.True(first.Spawned);
+        harness.LockToPlayer(first, OwnerA);
+        var second = harness.Spawn(
+            "default-second",
+            HostileShadowSpawnOrigin.Interval,
+            OwnerA,
+            gameMinute: 60,
+            ShadowMonsterAssetBindingIds.CreeperFear
         );
+        Assert.True(second.Spawned);
+        harness.LockToPlayer(second, OwnerA);
+        var third = harness.Spawn(
+            "default-third",
+            HostileShadowSpawnOrigin.Interval,
+            OwnerA,
+            gameMinute: 120,
+            ShadowMonsterAssetBindingIds.CreeperFear
+        );
+        Assert.True(third.Spawned);
+        harness.LockToPlayer(third, OwnerA);
 
         provider.Value = SanityMonsterIntensityIds.Many;
         var expanded = harness.Spawn(
             "many-single-expansion",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 61,
+            gameMinute: 181,
             ShadowMonsterAssetBindingIds.Terrorbeak
         );
-        Assert.True(expanded.Spawned);
-        Assert.Equal(4, expanded.Cap);
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, expanded.Status);
+        Assert.Equal(7, expanded.Cap);
         var noFillAll = harness.Spawn(
             "many-no-fill-all",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 61,
+            gameMinute: 181,
             ShadowMonsterAssetBindingIds.CreeperFear
         );
         Assert.Equal(HostileShadowSpawnStatus.Waiting, noFillAll.Status);
         Assert.Equal(3, harness.Authority.Count);
         Assert.True(harness.Governor.TryGetOwnerState(OwnerA, out var many));
         Assert.Equal(30, many!.IntervalMinutes);
-        Assert.Equal(91, many.NextDueMinute);
+        Assert.Equal(211, many.NextDueMinute);
+
+        var dueExpansion = harness.Spawn(
+            "many-due-expansion",
+            HostileShadowSpawnOrigin.Interval,
+            OwnerA,
+            gameMinute: 211,
+            ShadowMonsterAssetBindingIds.Terrorbeak
+        );
+        Assert.True(dueExpansion.Spawned, dueExpansion.Reason);
+        Assert.Equal(4, harness.Authority.Count);
 
         provider.Value = SanityMonsterIntensityIds.Less;
         var reduced = harness.Spawn(
             "less-overcap",
             HostileShadowSpawnOrigin.Interval,
             OwnerA,
-            gameMinute: 62,
+            gameMinute: 212,
             ShadowMonsterAssetBindingIds.Terrorbeak
         );
         Assert.Equal(HostileShadowSpawnStatus.AtCap, reduced.Status);
-        Assert.Equal(1, reduced.Cap);
-        Assert.Equal(3, harness.Authority.Count);
+        Assert.Equal(2, reduced.Cap);
+        Assert.Equal(4, harness.Authority.Count);
         Assert.True(harness.Governor.TryGetOwnerState(OwnerA, out var less));
-        Assert.Equal(1, less!.Cap);
+        Assert.Equal(2, less!.Cap);
         Assert.Equal(120, less.IntervalMinutes);
         Assert.True(less.IsPausedAtCap);
     }
@@ -668,6 +698,31 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
                         ? "hostile-shadow.spawn.owner-projection-conversion"
                         : "hostile-shadow.spawn.interval"
                 )
+            );
+        }
+
+        internal void LockToPlayer(
+            HostileShadowSpawnResult result,
+            string targetPlayerKey
+        )
+        {
+            Assert.True(result.Spawned, result.Reason);
+            Assert.True(Authority.TryGetEntity(result.EntityId!.Value, out var state));
+            Assert.True(
+                Authority.TryUpdate(
+                    new HostileShadowStateUpdate(
+                        state!.EntityId,
+                        state.LocationId,
+                        state.StateId,
+                        targetPlayerKey,
+                        state.PositionX,
+                        state.PositionY,
+                        state.Health,
+                        "hostile-shadow.test-target-locked"
+                    ),
+                    out var reason
+                ),
+                reason
             );
         }
     }

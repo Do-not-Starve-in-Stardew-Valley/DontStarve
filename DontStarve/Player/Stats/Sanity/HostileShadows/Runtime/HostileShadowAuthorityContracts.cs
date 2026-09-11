@@ -42,6 +42,17 @@ internal static class HostileShadowStateIds
     }
 }
 
+/// <summary>
+/// Visual-only phases inside the shared HitTeleport business state. The empty value is kept as
+/// the backward-compatible default for snapshots produced before arrival-spawn was synchronized.
+/// </summary>
+internal static class HostileShadowHitTeleportVisualPhaseIds
+{
+    internal const string None = "";
+    internal const string Hit = "hit";
+    internal const string Spawn = "spawn";
+}
+
 internal static class HostileShadowCleanupReasonIds
 {
     internal const string DangerExited = "hostile-shadow.cleanup.danger-exited";
@@ -97,6 +108,7 @@ internal enum HostileShadowSpawnOrigin
     Interval,
     OwnerProjectionConversion,
     DebugCommand,
+    WarpFastCompensation,
 }
 
 internal enum HostileShadowSpawnStatus
@@ -188,7 +200,8 @@ internal sealed class HostileShadowSpawnCommand
         double positionY,
         long gameMinute,
         ShadowMonsterRuntimeProfile profile,
-        string reason
+        string reason,
+        int? currentLocationCap = null
     )
     {
         RequestId = requestId;
@@ -200,6 +213,7 @@ internal sealed class HostileShadowSpawnCommand
         GameMinute = gameMinute;
         Profile = profile;
         Reason = reason;
+        CurrentLocationCap = currentLocationCap;
     }
 
     internal string RequestId { get; }
@@ -211,6 +225,11 @@ internal sealed class HostileShadowSpawnCommand
     internal long GameMinute { get; }
     internal ShadowMonsterRuntimeProfile Profile { get; }
     internal string Reason { get; }
+    /// <summary>
+    /// The normal shared cap for the destination map, used only by cut-map fast compensation.
+    /// Ordinary, conversion, and debug commands leave this unset.
+    /// </summary>
+    internal int? CurrentLocationCap { get; }
 }
 
 internal readonly record struct HostileShadowSpawnResult(
@@ -238,7 +257,8 @@ internal sealed class HostileShadowStateUpdate
         string reason,
         string attackInstanceId = "",
         long attackInstanceRevision = 0,
-        int attackFrameNumber = 0
+        int attackFrameNumber = 0,
+        string hitTeleportVisualPhase = ""
     )
     {
         EntityId = entityId;
@@ -252,6 +272,7 @@ internal sealed class HostileShadowStateUpdate
         AttackInstanceId = attackInstanceId;
         AttackInstanceRevision = attackInstanceRevision;
         AttackFrameNumber = attackFrameNumber;
+        HitTeleportVisualPhase = hitTeleportVisualPhase;
     }
 
     internal long EntityId { get; }
@@ -265,6 +286,7 @@ internal sealed class HostileShadowStateUpdate
     internal string AttackInstanceId { get; }
     internal long AttackInstanceRevision { get; }
     internal int AttackFrameNumber { get; }
+    internal string HitTeleportVisualPhase { get; }
 }
 
 internal interface IHostileShadowBudgetAuthority
@@ -274,6 +296,27 @@ internal interface IHostileShadowBudgetAuthority
         long gameMinute,
         int occupancy,
         SanityShadowSpecies requestedSpecies
+    );
+}
+
+/// <summary>
+/// Read-only state needed by the cut-map refill path. Keeping this separate from Evaluate prevents
+/// the refill from advancing or resetting the ordinary natural-refresh timer.
+/// </summary>
+internal interface IHostileShadowFastSpawnBudgetAuthority
+{
+    bool TryGetCurrentPoolAndTotalCap(
+        string playerKey,
+        out SanityShadowPoolTier poolTier,
+        out int totalCap
+    );
+}
+
+internal interface IHostileShadowLocationOccupancyProvider
+{
+    int CountHostileShadowsForOwnerAtLocation(
+        string playerKey,
+        string locationId
     );
 }
 

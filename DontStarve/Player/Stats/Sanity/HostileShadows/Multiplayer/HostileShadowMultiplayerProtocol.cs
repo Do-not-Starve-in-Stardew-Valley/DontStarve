@@ -37,6 +37,12 @@ internal sealed class ShadowStateSnapshot
 
     public string StateId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Visual phase within HitTeleport: hit animation before arrival, then Spawn animation after
+    /// teleport. Empty remains valid for older snapshots and means the pre-arrival phase.
+    /// </summary>
+    public string HitTeleportVisualPhase { get; set; } = string.Empty;
+
     public string TargetPlayerKey { get; set; } = string.Empty;
 
     public double PositionX { get; set; }
@@ -78,6 +84,7 @@ internal sealed class ShadowStateSnapshot
             DifficultyProfileId = DifficultyProfileId,
             AssetBindingId = AssetBindingId,
             StateId = StateId,
+            HitTeleportVisualPhase = HitTeleportVisualPhase,
             TargetPlayerKey = TargetPlayerKey,
             PositionX = PositionX,
             PositionY = PositionY,
@@ -283,6 +290,82 @@ internal sealed class ShadowPhysicalCapabilityReport
     public string Reason { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// A farmhand sends only normal movement intent for its unbound shadow projections. Geometry is
+/// deliberately absent: the host resolves it from its own validated hostile metadata.
+/// </summary>
+internal sealed class ShadowProjectionPushBoxIntentMessage
+{
+    public int ProtocolVersion { get; set; } = HostileShadowProtocol.CurrentProtocolVersion;
+
+    public int SchemaVersion { get; set; } = HostileShadowProtocol.CurrentSchemaVersion;
+
+    public string SessionId { get; set; } = string.Empty;
+
+    public string OwnerPlayerKey { get; set; } = string.Empty;
+
+    public string LocationId { get; set; } = string.Empty;
+
+    public string CapabilityId { get; set; } = string.Empty;
+
+    /// <summary>Monotonic owner-local batch nonce; it rejects duplicate/replayed batches.</summary>
+    public long BatchNonce { get; set; }
+
+    public List<ShadowProjectionPushBoxIntentEntry> Entries { get; set; } = new();
+}
+
+internal sealed class ShadowProjectionPushBoxIntentEntry
+{
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public string SpeciesId { get; set; } = string.Empty;
+
+    public long Revision { get; set; }
+
+    public double CurrentPositionX { get; set; }
+
+    public double CurrentPositionY { get; set; }
+
+    public double NormalTargetPositionX { get; set; }
+
+    public double NormalTargetPositionY { get; set; }
+}
+
+/// <summary>Host-authored final positions for one farmhand's intent batch.</summary>
+internal sealed class ShadowProjectionPushBoxResultMessage
+{
+    public int ProtocolVersion { get; set; } = HostileShadowProtocol.CurrentProtocolVersion;
+
+    public int SchemaVersion { get; set; } = HostileShadowProtocol.CurrentSchemaVersion;
+
+    public string SessionId { get; set; } = string.Empty;
+
+    public string OwnerPlayerKey { get; set; } = string.Empty;
+
+    public string LocationId { get; set; } = string.Empty;
+
+    public string CapabilityId { get; set; } = string.Empty;
+
+    public long BatchNonce { get; set; }
+
+    public long HostTick { get; set; }
+
+    public List<ShadowProjectionPushBoxResultEntry> Entries { get; set; } = new();
+}
+
+internal sealed class ShadowProjectionPushBoxResultEntry
+{
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public string SpeciesId { get; set; } = string.Empty;
+
+    public long Revision { get; set; }
+
+    public double FinalPositionX { get; set; }
+
+    public double FinalPositionY { get; set; }
+}
+
 internal static class HostileShadowProtocol
 {
     internal const int CurrentProtocolVersion = 1;
@@ -293,6 +376,9 @@ internal static class HostileShadowProtocol
     internal const int MaximumIdentifierLength = 256;
     internal const int MaximumStateIdLength = 128;
     internal const int MaximumAttackFrameNumber = 64;
+    internal const string ShadowPushBoxCapabilityId = "shadow-creature.push-box.v1";
+    internal const int MaximumPushBoxEntriesPerBatch = MaximumEntitiesPerSnapshot;
+    internal const long MaximumPushBoxResultAgeTicks = 30;
 
     internal static bool IsValidEnvelope(
         int protocolVersion,
@@ -715,6 +801,132 @@ internal static class HostileShadowProtocol
         return true;
     }
 
+    internal static bool IsValidPushBoxIntentMessage(
+        ShadowProjectionPushBoxIntentMessage? message,
+        string expectedPlayerKey,
+        string expectedLocationId,
+        string hostSessionId,
+        out string reason
+    )
+    {
+        if (
+            message is null
+            || !IsValidEnvelope(
+                message.ProtocolVersion,
+                message.SchemaVersion,
+                message.SessionId
+            )
+            || !SanityProtocol.IsValidSessionId(hostSessionId)
+            || !string.Equals(message.SessionId, hostSessionId, StringComparison.Ordinal)
+            || !SanityPlayerKey.IsCanonical(expectedPlayerKey)
+            || !string.Equals(message.OwnerPlayerKey, expectedPlayerKey, StringComparison.Ordinal)
+            || !IsValidLocationId(expectedLocationId)
+            || !string.Equals(message.LocationId, expectedLocationId, StringComparison.Ordinal)
+            || !string.Equals(message.CapabilityId, ShadowPushBoxCapabilityId, StringComparison.Ordinal)
+            || message.BatchNonce <= 0
+            || message.Entries is null
+            || message.Entries.Count > MaximumPushBoxEntriesPerBatch
+        )
+        {
+            reason = "hostile-shadow.push-box-intent-envelope-invalid";
+            return false;
+        }
+
+        var correlations = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in message.Entries)
+        {
+            if (
+                entry is null
+                || !IsBoundedIdentifier(entry.CorrelationId, MaximumIdentifierLength)
+                || !IsSupportedPushBoxSpecies(entry.SpeciesId)
+                || entry.Revision <= 0
+                || !double.IsFinite(entry.CurrentPositionX)
+                || !double.IsFinite(entry.CurrentPositionY)
+                || !double.IsFinite(entry.NormalTargetPositionX)
+                || !double.IsFinite(entry.NormalTargetPositionY)
+                || !correlations.Add(entry.CorrelationId)
+            )
+            {
+                reason = "hostile-shadow.push-box-intent-entry-invalid";
+                return false;
+            }
+        }
+
+        reason = "hostile-shadow.push-box-intent-valid";
+        return true;
+    }
+
+    internal static bool IsValidPushBoxResultMessage(
+        ShadowProjectionPushBoxResultMessage? message,
+        string expectedPlayerKey,
+        string expectedLocationId,
+        string hostSessionId,
+        long currentHostTick,
+        out string reason
+    )
+    {
+        if (
+            message is null
+            || !IsValidEnvelope(
+                message.ProtocolVersion,
+                message.SchemaVersion,
+                message.SessionId
+            )
+            || !SanityProtocol.IsValidSessionId(hostSessionId)
+            || !string.Equals(message.SessionId, hostSessionId, StringComparison.Ordinal)
+            || !SanityPlayerKey.IsCanonical(expectedPlayerKey)
+            || !string.Equals(message.OwnerPlayerKey, expectedPlayerKey, StringComparison.Ordinal)
+            || !IsValidLocationId(expectedLocationId)
+            || !string.Equals(message.LocationId, expectedLocationId, StringComparison.Ordinal)
+            || !string.Equals(message.CapabilityId, ShadowPushBoxCapabilityId, StringComparison.Ordinal)
+            || message.BatchNonce <= 0
+            || message.HostTick < 0
+            || message.Entries is null
+            || message.Entries.Count > MaximumPushBoxEntriesPerBatch
+        )
+        {
+            reason = "hostile-shadow.push-box-result-envelope-invalid";
+            return false;
+        }
+        if (!IsFreshPushBoxHostTick(message.HostTick, currentHostTick))
+        {
+            reason = "hostile-shadow.push-box-result-host-tick-stale-or-future";
+            return false;
+        }
+
+        var correlations = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in message.Entries)
+        {
+            if (
+                entry is null
+                || !IsBoundedIdentifier(entry.CorrelationId, MaximumIdentifierLength)
+                || !IsSupportedPushBoxSpecies(entry.SpeciesId)
+                || entry.Revision <= 0
+                || !double.IsFinite(entry.FinalPositionX)
+                || !double.IsFinite(entry.FinalPositionY)
+                || !correlations.Add(entry.CorrelationId)
+            )
+            {
+                reason = "hostile-shadow.push-box-result-entry-invalid";
+                return false;
+            }
+        }
+
+        reason = "hostile-shadow.push-box-result-valid";
+        return true;
+    }
+
+    internal static bool IsFreshPushBoxHostTick(
+        long hostTick,
+        long currentHostTick
+    )
+    {
+        return hostTick >= 0
+            && currentHostTick >= 0
+            && hostTick <= currentHostTick
+            && currentHostTick - hostTick <= MaximumPushBoxResultAgeTicks;
+    }
+
     internal static bool StateSetsEqual(
         IReadOnlyDictionary<long, ShadowStateSnapshot> current,
         IReadOnlyCollection<ShadowStateSnapshot> incoming
@@ -759,6 +971,11 @@ internal static class HostileShadowProtocol
             )
             && string.Equals(left.StateId, right.StateId, StringComparison.Ordinal)
             && string.Equals(
+                left.HitTeleportVisualPhase,
+                right.HitTeleportVisualPhase,
+                StringComparison.Ordinal
+            )
+            && string.Equals(
                 left.TargetPlayerKey,
                 right.TargetPlayerKey,
                 StringComparison.Ordinal
@@ -795,6 +1012,10 @@ internal static class HostileShadowProtocol
             || !IsBoundedIdentifier(state.AssetBindingId, MaximumIdentifierLength)
             || !IsBoundedIdentifier(state.StateId, MaximumStateIdLength)
             || !Runtime.HostileShadowStateIds.IsKnown(state.StateId)
+            || !IsValidHitTeleportVisualPhase(
+                state.StateId,
+                state.HitTeleportVisualPhase
+            )
             || state.TargetPlayerKey is null
             || state.AttackInstanceId is null
             || (
@@ -821,6 +1042,38 @@ internal static class HostileShadowProtocol
 
         reason = "hostile-shadow.state-valid";
         return true;
+    }
+
+    internal static bool IsValidHitTeleportVisualPhase(
+        string stateId,
+        string? phase
+    )
+    {
+        if (phase is null)
+            return false;
+        if (
+            !string.Equals(
+                stateId,
+                Runtime.HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return phase.Length == 0;
+        }
+
+        // Empty is the compatibility representation of the old HitTeleport-only snapshot.
+        return phase.Length == 0
+            || string.Equals(
+                phase,
+                Runtime.HostileShadowHitTeleportVisualPhaseIds.Hit,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                phase,
+                Runtime.HostileShadowHitTeleportVisualPhaseIds.Spawn,
+                StringComparison.Ordinal
+            );
     }
 
     private static bool IsValidAttackState(ShadowStateSnapshot state)
@@ -863,6 +1116,20 @@ internal static class HostileShadowProtocol
                 return false;
         }
         return true;
+    }
+
+    private static bool IsSupportedPushBoxSpecies(string? speciesId)
+    {
+        return string.Equals(
+                speciesId,
+                "sanity.projection.creeper-fear",
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                speciesId,
+                "sanity.projection.terrorbeak",
+                StringComparison.Ordinal
+            );
     }
 
     private static bool SameDouble(double left, double right)

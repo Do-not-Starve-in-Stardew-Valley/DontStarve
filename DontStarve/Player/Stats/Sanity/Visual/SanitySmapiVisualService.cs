@@ -19,8 +19,10 @@ namespace DontStarve.Player.Stats.Sanity.Visual;
 /// </summary>
 internal sealed class SanitySmapiVisualService : IDisposable
 {
-    private const string DangerBorderProfileId =
-        "sanity.overlay.danger-border.profile";
+    // animations.json keeps the profile ID as metadata, but the shared loader seam accepts the
+    // manifest SlotId. Keep this value aligned with the overlay profile's TextureSlotId.
+    private const string DangerBorderSlotId =
+        "sanity.asset.danger-border.overlay";
     private const int MaximumLoggedDiagnostics = 32;
 
     private readonly IModHelper helper;
@@ -172,6 +174,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
         if (disposed || !enabled)
             return;
 
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
         foreach (var pair in ownersByScreen)
         {
             if (
@@ -185,7 +188,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
                 )
             )
             {
-                SubmitSnapshot(pair.Key, snapshot);
+                SubmitSnapshot(pair.Key, snapshot, minigameContext);
             }
         }
     }
@@ -269,6 +272,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
             screenId,
             binding.SessionId
         );
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
         if (
             !lifecycle.TryGetTierState(binding.PlayerKey, out var tierSnapshot)
             || tierSnapshot is null
@@ -285,9 +289,10 @@ internal sealed class SanitySmapiVisualService : IDisposable
             || !snapshot.Ratio.Equals(
                 tierSnapshot.Current / tierSnapshot.Maximum
             )
+            || snapshot.MinigameContext != minigameContext
         )
         {
-            SubmitSnapshot(screenId, tierSnapshot);
+            SubmitSnapshot(screenId, tierSnapshot, minigameContext);
         }
 
         if (!controller.TryGetSnapshot(key, out snapshot))
@@ -377,10 +382,21 @@ internal sealed class SanitySmapiVisualService : IDisposable
             || !enabled
             || !lifecycle.IsEnabled
             || !Context.IsWorldReady
-            || Game1.activeClickableMenu is not null
-            || Game1.eventUp
             || dangerBorderTexture is null
             || dangerBorderPreview is null
+        )
+        {
+            return;
+        }
+
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
+        if (
+            minigameContext == SanityMinigameVisualContext.Other
+            || (Game1.eventUp && minigameContext != SanityMinigameVisualContext.Fishing)
+            || (
+                Game1.activeClickableMenu is not null
+                && minigameContext != SanityMinigameVisualContext.Fishing
+            )
         )
         {
             return;
@@ -397,6 +413,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
         if (
             !controller.TryGetSnapshot(key, out var snapshot)
             || (snapshot.RenderableLayers & SanityVisualLayerMask.DangerBorder) == 0
+            || snapshot.MinigameContext != minigameContext
             || snapshot.ViewportWidth != Game1.uiViewport.Width
             || snapshot.ViewportHeight != Game1.uiViewport.Height
         )
@@ -472,7 +489,8 @@ internal sealed class SanitySmapiVisualService : IDisposable
 
     private void SubmitSnapshot(
         int screenId,
-        SanityTierOwnerStateSnapshot snapshot
+        SanityTierOwnerStateSnapshot snapshot,
+        SanityMinigameVisualContext minigameContext
     )
     {
         if (
@@ -514,7 +532,8 @@ internal sealed class SanitySmapiVisualService : IDisposable
                 snapshot.ActiveTierIds,
                 effectiveOverride,
                 Game1.uiViewport.Width,
-                Game1.uiViewport.Height
+                Game1.uiViewport.Height,
+                minigameContext
             )
         );
         if (
@@ -677,7 +696,7 @@ internal sealed class SanitySmapiVisualService : IDisposable
         SanitySlotResourceResult result;
         try
         {
-            result = resources.LoadVisualSlot(DangerBorderProfileId, 0);
+            result = resources.LoadVisualSlot(DangerBorderSlotId, 0);
         }
         catch (Exception exception)
         {

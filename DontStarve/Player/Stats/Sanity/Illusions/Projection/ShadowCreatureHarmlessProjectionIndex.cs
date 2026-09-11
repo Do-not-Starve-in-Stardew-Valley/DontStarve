@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 
 namespace DontStarve.Player.Stats.Sanity.Illusions.Projection;
 
@@ -25,6 +26,141 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
         new(StringComparer.Ordinal);
 
     internal int Count => byCorrelation.Count;
+
+    internal bool HasActivePushBoxInstances
+    {
+        get
+        {
+            foreach (var instance in byCorrelation.Values)
+            {
+                if (
+                    !instance.IsCleanedUp
+                    && !instance.IsBindingProjection
+                    && instance.TryGetPushBoxIntent(out _)
+                )
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    internal bool TryGet(
+        string correlationId,
+        out ShadowCreatureHarmlessProjectionInstance? instance
+    )
+    {
+        if (string.IsNullOrWhiteSpace(correlationId))
+        {
+            instance = null;
+            return false;
+        }
+        return byCorrelation.TryGetValue(correlationId, out instance);
+    }
+
+    /// <summary>
+    /// Copies only unbound instances with a completed local intent. Sorting the bounded copy makes
+    /// host participant order independent of dictionary insertion order.
+    /// </summary>
+    internal int CopyPushBoxIntents(List<ShadowCreaturePushBoxIntent> destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        destination.Clear();
+        foreach (var instance in byCorrelation.Values)
+        {
+            if (
+                !instance.IsCleanedUp
+                && !instance.IsBindingProjection
+                && instance.TryGetPushBoxIntent(out var intent)
+            )
+            {
+                AddBoundedSortedIntent(destination, intent);
+            }
+        }
+        return destination.Count;
+    }
+
+    internal int CopyPushBoxIntents(
+        HarmlessProjectionOwnerContext owner,
+        List<ShadowCreaturePushBoxIntent> destination
+    )
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(destination);
+        destination.Clear();
+        if (!TryGetContextInstances(owner, out var instances) || instances is null)
+            return 0;
+
+        foreach (var instance in instances)
+        {
+            if (
+                !instance.IsCleanedUp
+                && !instance.IsBindingProjection
+                && instance.TryGetPushBoxIntent(out var intent)
+            )
+            {
+                AddBoundedSortedIntent(destination, intent);
+            }
+        }
+        return destination.Count;
+    }
+
+    internal void BeginPushBoxIntentCapture(HarmlessProjectionOwnerContext owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!TryGetContextInstances(owner, out var instances) || instances is null)
+            return;
+        foreach (var instance in instances)
+            instance.BeginPushBoxIntentCapture();
+    }
+
+    internal void CapturePushBoxIntents(HarmlessProjectionOwnerContext owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!TryGetContextInstances(owner, out var instances) || instances is null)
+            return;
+        foreach (var instance in instances)
+            instance.CapturePushBoxIntent();
+    }
+
+    private static void AddBoundedSortedIntent(
+        List<ShadowCreaturePushBoxIntent> destination,
+        ShadowCreaturePushBoxIntent intent
+    )
+    {
+        var insertionIndex = destination.BinarySearch(intent, PushBoxIntentComparer.Instance);
+        if (insertionIndex < 0)
+            insertionIndex = ~insertionIndex;
+
+        if (
+            destination.Count >= HostileShadowProtocol.MaximumPushBoxEntriesPerBatch
+            && insertionIndex >= HostileShadowProtocol.MaximumPushBoxEntriesPerBatch
+        )
+        {
+            return;
+        }
+
+        if (destination.Count >= HostileShadowProtocol.MaximumPushBoxEntriesPerBatch)
+            destination.RemoveAt(destination.Count - 1);
+        destination.Insert(insertionIndex, intent);
+    }
+
+    private sealed class PushBoxIntentComparer : IComparer<ShadowCreaturePushBoxIntent>
+    {
+        internal static readonly PushBoxIntentComparer Instance = new();
+
+        public int Compare(
+            ShadowCreaturePushBoxIntent left,
+            ShadowCreaturePushBoxIntent right
+        )
+        {
+            var owner = string.CompareOrdinal(left.OwnerPlayerKey, right.OwnerPlayerKey);
+            return owner != 0
+                ? owner
+                : string.CompareOrdinal(left.CorrelationId, right.CorrelationId);
+        }
+    }
 
     internal bool TryAdd(
         ShadowCreatureHarmlessProjectionInstance instance,
@@ -77,6 +213,50 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
     internal int CountForOwner(string playerKey)
     {
         return countsByOwner.TryGetValue(playerKey, out var count) ? count : 0;
+    }
+
+    internal int CountForOwnerAtLocation(
+        string playerKey,
+        string locationNameOrUniqueName
+    )
+    {
+        if (string.IsNullOrWhiteSpace(locationNameOrUniqueName))
+            return 0;
+
+        var count = 0;
+        foreach (var pair in byContext)
+        {
+            if (
+                string.Equals(pair.Key.PlayerKey, playerKey, StringComparison.Ordinal)
+                && string.Equals(
+                    pair.Key.LocationNameOrUniqueName,
+                    locationNameOrUniqueName,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                count += pair.Value.Count;
+            }
+        }
+        return count;
+    }
+
+    internal IReadOnlyList<ShadowCreatureHarmlessProjectionInstance>
+        SnapshotOwnerInstances(string playerKey)
+    {
+        var snapshot = new List<ShadowCreatureHarmlessProjectionInstance>();
+        foreach (var pair in byContext)
+        {
+            if (!string.Equals(pair.Key.PlayerKey, playerKey, StringComparison.Ordinal))
+                continue;
+
+            foreach (var instance in pair.Value.Values)
+            {
+                if (!instance.IsCleanedUp)
+                    snapshot.Add(instance);
+            }
+        }
+        return snapshot.AsReadOnly();
     }
 
     internal bool ContainsCorrelation(string correlationId)
@@ -347,7 +527,7 @@ internal sealed class ShadowCreatureHarmlessProjectionIndex
 
         private object LocationReference { get; }
 
-        private string LocationNameOrUniqueName { get; }
+        internal string LocationNameOrUniqueName { get; }
 
         internal bool Matches(HarmlessProjectionOwnerContext owner)
         {

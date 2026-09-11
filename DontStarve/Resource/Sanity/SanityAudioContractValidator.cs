@@ -53,7 +53,7 @@ public static class SanityAudioContractValidator
 
     private const int ExpectedCueSetCount = 9;
     private const int ExpectedCueCount = 23;
-    private const int ExpectedPhysicalClipCount = 144;
+    private const int ExpectedPhysicalClipCount = SanityAudioContract.PhysicalClipCount;
 
     private static readonly IReadOnlyDictionary<string, CueSetExpectation> ExpectedCueSets =
         new Dictionary<string, CueSetExpectation>(StringComparer.Ordinal)

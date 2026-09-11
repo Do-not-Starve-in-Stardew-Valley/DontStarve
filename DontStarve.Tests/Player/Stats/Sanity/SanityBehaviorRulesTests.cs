@@ -1,4 +1,5 @@
 using DontStarve.Player.Stats.Sanity;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
 using DontStarve.Time;
 using Xunit;
@@ -9,11 +10,12 @@ public sealed class SanityBehaviorRulesTests
 {
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(5, 0.5)]
-    [InlineData(9.5, 0.05)]
+    [InlineData(1, 1)]
+    [InlineData(2, 0.25)]
+    [InlineData(5, 0.04)]
     [InlineData(10, 0)]
     [InlineData(11, 0)]
-    public void TenTileFalloffUsesTileDistance(double distance, double expected)
+    public void TenTileFalloffUsesInverseSquareTileDistance(double distance, double expected)
     {
         Assert.Equal(
             expected,
@@ -24,9 +26,10 @@ public sealed class SanityBehaviorRulesTests
 
     [Theory]
     [InlineData(0, 0.294)]
-    [InlineData(5, 0.147)]
+    [InlineData(1, 0.294)]
+    [InlineData(2, 0.0735)]
     [InlineData(10, 0)]
-    public void JunimoRecoveryAppliesTheSameTenTilePercentage(
+    public void JunimoRecoveryAppliesTheSameInverseSquareTenTilePercentage(
         double distance,
         double expected
     )
@@ -43,14 +46,14 @@ public sealed class SanityBehaviorRulesTests
     }
 
     [Theory]
-    [InlineData(1, 0, 5, 0.588)]
+    [InlineData(1, 0, 5, 0.04704)]
     [InlineData(0, 8, 0, 0.588)]
     [InlineData(0, 5, 0, 0.294)]
     [InlineData(0, 4, 0, 0)]
-    [InlineData(2, 5, 0, 0.588)]
-    [InlineData(2, 3, 0, 0.294)]
-    [InlineData(2, 0, 0, 0.147)]
-    public void FriendlyNpcFormulasRemainFrozen(
+    [InlineData(2, 5, 2, 0.147)]
+    [InlineData(2, 3, 2, 0.0735)]
+    [InlineData(2, 0, 2, 0.03675)]
+    public void FriendlyNpcFormulasApplyInverseSquareDistance(
         int kindId,
         int hearts,
         double distance,
@@ -70,7 +73,7 @@ public sealed class SanityBehaviorRulesTests
 
     [Theory]
     [InlineData(0.588, 0, 0.588)]
-    [InlineData(0.588, 5, 0.294)]
+    [InlineData(0.588, 5, 0.02352)]
     [InlineData(0.588, 10, 0)]
     [InlineData(-1, 0, 0)]
     public void MonsterLossUsesConfiguredPositiveValueAndDistance(
@@ -82,6 +85,49 @@ public sealed class SanityBehaviorRulesTests
         Assert.Equal(
             expected,
             SanityBehaviorRules.CalculateMonsterLoss(configured, distance),
+            10
+        );
+    }
+
+    [Theory]
+    [InlineData(false, null, false, false, true)]
+    [InlineData(true, ShadowMonsterAssetBindingIds.CreeperFear, false, false, false)]
+    [InlineData(true, ShadowMonsterAssetBindingIds.Terrorbeak, false, true, true)]
+    [InlineData(true, ShadowMonsterAssetBindingIds.CreeperFear, true, true, false)]
+    [InlineData(true, "unknown-binding", false, true, false)]
+    public void MonsterSanityEligibilityKeepsDangerGateAndHiddenBindingBoundary(
+        bool isHostileShadow,
+        string? assetBindingId,
+        bool isBindingHidden,
+        bool isDangerTierActive,
+        bool expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            SanityBehaviorRules.ShouldApplyMonsterSanityLoss(
+                isHostileShadow,
+                assetBindingId,
+                isBindingHidden,
+                isDangerTierActive
+            )
+        );
+    }
+
+    [Theory]
+    [InlineData(0, 1.1667)]
+    [InlineData(1, 1.1667)]
+    [InlineData(2, 0.291675)]
+    [InlineData(5, 0.046668)]
+    [InlineData(10, 0)]
+    public void SpecialHostileShadowLossUsesConfiguredValueWithInverseSquareDistance(
+        double distance,
+        double expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            SanityBehaviorRules.CalculateMonsterLoss(1.1667, distance),
             10
         );
     }

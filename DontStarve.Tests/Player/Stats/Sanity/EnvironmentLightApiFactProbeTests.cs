@@ -293,6 +293,7 @@ public sealed class EnvironmentLightApiFactProbeTests
                 "SetPoolActive",
                 "SetSpecialEventAudioAllowed",
                 "SetSuspended",
+                "StopDarknessWarningPlayback",
                 "Tick",
                 "TriggerDanger",
                 "TriggerDarknessAttack",

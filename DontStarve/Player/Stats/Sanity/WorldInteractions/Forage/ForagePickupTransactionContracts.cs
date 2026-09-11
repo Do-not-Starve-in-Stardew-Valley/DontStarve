@@ -218,14 +218,12 @@ internal static class ForagePickupTransactionProtocol
             || request.CatalogRevision <= 0
             || !IsIdentifier(request.MappingId)
             || !SanityPlayerKey.IsCanonical(request.PickerPlayerKey)
-            || !long.TryParse(
+            || !SanityPlayerKey.TryParseCanonicalPlayerId(
                 request.PickerPlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var pickerId
             )
             || pickerId != request.PickerMultiplayerId
-            || request.PickerMultiplayerId <= 0
+            || request.PickerMultiplayerId == 0
             || !IsIdentifier(request.LocationId)
             || !IsIdentifier(request.LocationInstanceId)
             || request.TileX < 0

@@ -201,7 +201,10 @@ internal sealed class SanityVisualPreviewDefinition
         double drawScale,
         bool ownerLocalOnly,
         bool isProvisional,
-        bool isPlaceholder
+        bool isPlaceholder,
+        SanityResourceRectangle? pushBoxSourcePx = null,
+        string? pushBoxGroupId = null,
+        double? pushForce = null
     )
     {
         RequestedSlotId = requestedSlotId;
@@ -212,6 +215,9 @@ internal sealed class SanityVisualPreviewDefinition
         ActorOriginSourcePx = actorOriginSourcePx;
         HurtBoxSourcePx = hurtBoxSourcePx;
         AttackBoxSourcePx = attackBoxSourcePx;
+        PushBoxSourcePx = pushBoxSourcePx;
+        PushBoxGroupId = pushBoxGroupId;
+        PushForce = pushForce;
         SliceSourcePx = sliceSourcePx;
         FrameIndex = frameIndex;
         FrameCount = frameCount;
@@ -236,6 +242,12 @@ internal sealed class SanityVisualPreviewDefinition
     internal SanityResourceRectangle? HurtBoxSourcePx { get; }
 
     internal SanityResourceRectangle? AttackBoxSourcePx { get; }
+
+    internal SanityResourceRectangle? PushBoxSourcePx { get; }
+
+    internal string? PushBoxGroupId { get; }
+
+    internal double? PushForce { get; }
 
     internal SanityResourceRectangle? SliceSourcePx { get; }
 

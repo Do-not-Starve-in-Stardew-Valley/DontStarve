@@ -228,7 +228,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
         var budget = service.EvaluateShadowBudget(OwnerA, 0, 0);
         Assert.NotEqual(SanityShadowBudgetEvaluationStatus.SystemDisabled, budget.Status);
         Assert.Equal(SanityShadowPoolTier.Hostile10, budget.PoolTier);
-        Assert.Equal(2, budget.Cap);
+        Assert.Equal(3, budget.Cap);
     }
 
     [Fact]

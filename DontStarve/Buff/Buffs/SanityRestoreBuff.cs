@@ -15,7 +15,6 @@ internal class SanityRestoreBuff : FixedRestoreBuff
         "DS_BUFF_SANITY_RESTORE",
     };
 
-    protected override string SaveKey => "DontStarve.Buff.SanityRestore";
     protected override IReadOnlyList<string> BuffIds => SANITY_RESTORE_BUFF_IDS;
     protected override int AmountPerPulse => 1;
 

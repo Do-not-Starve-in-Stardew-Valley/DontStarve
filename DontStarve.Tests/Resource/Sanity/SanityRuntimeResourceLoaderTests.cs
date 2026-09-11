@@ -127,6 +127,43 @@ public sealed class SanityRuntimeResourceLoaderTests
     }
 
     [Fact]
+    public void DangerBorderUsesManifestTextureSlotAndMetadataOverlayProfile()
+    {
+        using var metadata = JsonDocument.Parse(
+            File.ReadAllText(
+                Path.Combine(
+                    ShippedModRoot,
+                    "Asset",
+                    "Sanity",
+                    "Data",
+                    "animations.json"
+                )
+            )
+        );
+        var profile = Assert.Single(
+            metadata.RootElement.GetProperty("OverlayProfiles").EnumerateArray()
+        );
+        var profileId = profile.GetProperty("OverlayProfileId").GetString();
+        var slotId = profile.GetProperty("TextureSlotId").GetString();
+        Assert.Equal("sanity.overlay.danger-border.profile", profileId);
+        Assert.Equal("sanity.asset.danger-border.overlay", slotId);
+
+        var factory = new FakeFactory();
+        using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
+
+        var profileRequest = loader.LoadSlot(profileId!);
+        Assert.False(profileRequest.Success);
+        Assert.Equal("resource.slot.unknown", profileRequest.Diagnostic.Code);
+
+        var result = loader.LoadSlot(slotId!, frameIndex: 0);
+        Assert.True(result.Success, result.Diagnostic.Reason);
+        Assert.Equal(slotId, result.Diagnostic.SlotId);
+        Assert.Equal(slotId, result.VisualPreview!.RequestedSlotId);
+        Assert.Equal(slotId, result.VisualPreview.TextureSlotId);
+        Assert.Equal(SanityVisualPreviewKind.NineSliceOverlay, result.VisualPreview.Kind);
+    }
+
+    [Fact]
     public void HostilePreviewExposesFramePivotAndCollisionWithoutGameplayState()
     {
         var factory = new FakeFactory();
@@ -320,6 +357,37 @@ public sealed class SanityRuntimeResourceLoaderTests
         Assert.Equal(23, factory.SoundCreates);
         Assert.Equal(23, loader.Snapshot().PhysicalResourceCount);
         Assert.Equal(3, loader.Snapshot().CueSetCount);
+    }
+
+    [Fact]
+    public void All_shipped_audio_sets_fit_the_shared_physical_clip_contract()
+    {
+        var factory = new FakeFactory();
+        using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
+
+        var cueSetIds = new[]
+        {
+            "sanity.cue.ambience",
+            "sanity.cue.whispers",
+            "sanity.cue.thresholds",
+            "sanity.cue.darkness",
+            "sanity.cue.darkness-attack",
+            "sanity.cue.dark-hand",
+            "sanity.cue.creeper-fear",
+            "sanity.cue.terrorbeak",
+        };
+
+        foreach (var cueSetId in cueSetIds)
+        {
+            var result = loader.LoadCueSet(cueSetId);
+            Assert.True(result.Success, $"{cueSetId}: {result.Diagnostic.Reason}");
+        }
+
+        Assert.Equal(SanityAudioContract.PhysicalClipCount, factory.SoundCreates);
+        Assert.Equal(
+            SanityAudioContract.PhysicalClipCount,
+            loader.Snapshot().PhysicalResourceCount
+        );
     }
 
     [Fact]

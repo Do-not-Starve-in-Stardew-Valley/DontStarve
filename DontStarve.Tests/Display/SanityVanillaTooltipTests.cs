@@ -299,8 +299,10 @@ public sealed class SanityVanillaTooltipTests
         var source = File.ReadAllText(RuntimeSourcePath);
 
         Assert.Contains("ExpectedGameVersion = \"1.6.15\"", source, StringComparison.Ordinal);
+        Assert.Contains("ExpectedVanillaTooltipTargetSignature", source, StringComparison.Ordinal);
         Assert.Contains("typeof(IClickableMenu)", source, StringComparison.Ordinal);
         Assert.Contains("nameof(IClickableMenu.drawHoverText)", source, StringComparison.Ordinal);
+        Assert.Contains("nameof(IClickableMenu.drawToolTip)", source, StringComparison.Ordinal);
         Assert.Contains("typeof(StringBuilder)", source, StringComparison.Ordinal);
         Assert.Contains("parameters[1].Name, \"text\"", source, StringComparison.Ordinal);
         Assert.Contains("BuffIconsArgumentIndex = 8", source, StringComparison.Ordinal);
@@ -315,12 +317,16 @@ public sealed class SanityVanillaTooltipTests
         Assert.Contains("parameters[HoveredItemArgumentIndex].Name", source, StringComparison.Ordinal);
         Assert.Contains("\"hoveredItem\"", source, StringComparison.Ordinal);
         Assert.Contains("nameof(TranspileFinalDrawHoverText)", source, StringComparison.Ordinal);
+        Assert.Contains("nameof(TranspileVanillaDrawToolTip)", source, StringComparison.Ordinal);
+        Assert.Contains("GetEffectiveTooltipEdibility", source, StringComparison.Ordinal);
+        Assert.Contains("ReplaceVanillaTooltipEdibilityReads", source, StringComparison.Ordinal);
+        Assert.Contains("replacementCount != 2", source, StringComparison.Ordinal);
         Assert.Contains("ApplyAdditionalWidth", source, StringComparison.Ordinal);
         Assert.Contains("ApplyAdditionalHeight", source, StringComparison.Ordinal);
         Assert.Contains("DrawAdditionalRows", source, StringComparison.Ordinal);
-        Assert.Contains("DrawExtraMachineConfigRows", source, StringComparison.Ordinal);
-        Assert.Contains("DrawExtraMachineConfigRowsFallback", source, StringComparison.Ordinal);
-        Assert.Contains("BuildExtraMachineConfigFallbackInstructions", source, StringComparison.Ordinal);
+        Assert.Contains("DrawExtendedBuffRows", source, StringComparison.Ordinal);
+        Assert.Contains("DrawExtendedBuffRowsFallback", source, StringComparison.Ordinal);
+        Assert.Contains("BuildExtendedBuffFallbackInstructions", source, StringComparison.Ordinal);
         Assert.Contains("NeedsExtraBuffFallback", source, StringComparison.Ordinal);
         Assert.Contains("third vanilla Buff guard", source, StringComparison.Ordinal);
         Assert.Contains("MatchStartForward", source, StringComparison.Ordinal);
@@ -358,10 +364,18 @@ public sealed class SanityVanillaTooltipTests
         Assert.Contains("HarmonyPatchType.Postfix", source, StringComparison.Ordinal);
         Assert.Contains("nameof(BuffEffects.ToLegacyAttributeFormat)", source, StringComparison.Ordinal);
         Assert.Contains("helper.ModRegistry.IsLoaded", source, StringComparison.Ordinal);
-        Assert.Contains("FoodBuffTooltipFormatter.ExtraMachineConfigUniqueId", source, StringComparison.Ordinal);
+        Assert.Contains("FoodBuffTooltipFormatter.ExtraMachineConfigCompatibilityId", source, StringComparison.Ordinal);
         Assert.Contains("nameof(DiagnoseFinalDrawHoverText)", source, StringComparison.Ordinal);
         Assert.Contains("HarmonyPatchType.Prefix", source, StringComparison.Ordinal);
         Assert.Contains("IsOwnedPrefixInstalled", source, StringComparison.Ordinal);
+        Assert.Contains("ModItemDisplayUniqueId = \"Joegosama.ModItemdisplay\"", source, StringComparison.Ordinal);
+        Assert.Contains("ModItemDisplayTooltipPatcherTypeName", source, StringComparison.Ordinal);
+        Assert.Contains("ModItemDisplayTooltipPrefixMethodName", source, StringComparison.Ordinal);
+        Assert.Contains("AccessTools.TypeByName", source, StringComparison.Ordinal);
+        Assert.Contains("TranspileModItemDisplayTooltip", source, StringComparison.Ordinal);
+        Assert.Contains("modItemDisplayPatchOwnerId", source, StringComparison.Ordinal);
+        Assert.Contains("helper.Events.GameLoop.GameLaunched += this.OnGameLaunched", source, StringComparison.Ordinal);
+        Assert.Contains("includeExtendedBuffRows", source, StringComparison.Ordinal);
         Assert.DoesNotContain("BeforeFinalDrawHoverText", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ChangeSanity", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WriteSaveData", source, StringComparison.Ordinal);
@@ -402,7 +416,7 @@ public sealed class SanityVanillaTooltipTests
     }
 
     [Fact]
-    public void FormatterMirrorsExtraMachineConfigBuffAggregationAndCompatibilityGate()
+    public void FormatterUsesEffectiveBuffAggregationAndCompatibilityGate()
     {
         var source = File.ReadAllText(FormatterSourcePath);
 
@@ -415,7 +429,7 @@ public sealed class SanityVanillaTooltipTests
         Assert.Contains("SObject.TryCreateBuffsFromData", source, StringComparison.Ordinal);
         Assert.Contains("item.ModifyItemBuffs", source, StringComparison.Ordinal);
         Assert.Contains("BuffEffects", source, StringComparison.Ordinal);
-        Assert.Contains("externalExtraMachineConfigLoaded", source, StringComparison.Ordinal);
+        Assert.Contains("extraMachineConfigCompatibilityActive", source, StringComparison.Ordinal);
         Assert.DoesNotContain("buff?.CustomAttributes", source, StringComparison.Ordinal);
         Assert.Contains("SanityTooltipRowFilter.RemoveVanillaDuplicates", source, StringComparison.Ordinal);
 
@@ -449,20 +463,33 @@ public sealed class SanityVanillaTooltipTests
     }
 
     [Fact]
-    public void FormatterGatesOnlySanityRowsAndKeepsHungerAndBuffRows()
+    public void FormatterGatesHungerAndSanityRowsIndependently()
     {
-        var source = File.ReadAllText(FormatterSourcePath);
+        var source = File.ReadAllText(FormatterSourcePath).Replace("\r\n", "\n");
         var survivalRowsStart = source.IndexOf("private void AddSurvivalRows", StringComparison.Ordinal);
         var survivalRowsSource = source[survivalRowsStart..];
-        var hungerIndex = survivalRowsSource.IndexOf("HungerEatFood.FoodHunger", StringComparison.Ordinal);
+        var hungerGateIndex = survivalRowsSource.IndexOf(
+            "if (\n            showHunger\n            && HungerEatFood.FoodHunger is not null",
+            StringComparison.Ordinal
+        );
         var sanityGateIndex = survivalRowsSource.IndexOf("if (!showSanity)", StringComparison.Ordinal);
 
         Assert.True(survivalRowsStart >= 0);
-        Assert.True(hungerIndex >= 0);
-        Assert.True(sanityGateIndex > hungerIndex);
+        Assert.True(hungerGateIndex >= 0);
+        Assert.True(sanityGateIndex > hungerGateIndex);
         Assert.Contains(
-            "AddRows(rows, this.GetExtraMachineConfigRows(item))",
+            "this.GetExtendedBuffRows(item, includeExtendedBuffRows)",
             source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "this.GetRows(item, showHunger, showSanity)",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "HungerExtensions.IsEnabled",
+            File.ReadAllText(RuntimeSourcePath),
             StringComparison.Ordinal
         );
         Assert.Contains("this.sanitySystemState.IsEnabled", File.ReadAllText(RuntimeSourcePath), StringComparison.Ordinal);
@@ -614,6 +641,8 @@ public sealed class SanityVanillaTooltipTests
 
         foreach (var qualifier in new[] { "(H)", "(S)", "(P)", "(B)", "(O)", "(TR)" })
             Assert.Contains($"StartsWith(\"{qualifier}\"", source, StringComparison.Ordinal);
+        Assert.Contains("item is Ring", source, StringComparison.Ordinal);
+        Assert.Contains("using StardewValley.Objects;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("StartsWith(\"(R)\"", source, StringComparison.Ordinal);
     }
 }

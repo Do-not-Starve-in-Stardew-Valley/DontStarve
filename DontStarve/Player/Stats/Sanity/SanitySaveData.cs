@@ -32,20 +32,30 @@ internal static class SanityPlayerKey
         return uniqueMultiplayerId.ToString(CultureInfo.InvariantCulture);
     }
 
+    internal static bool TryParseCanonicalPlayerId(string playerKey, out long playerId)
+    {
+        if (
+            !long.TryParse(
+                playerKey,
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out playerId
+            )
+        )
+        {
+            return false;
+        }
+
+        return string.Equals(
+            playerKey,
+            playerId.ToString(CultureInfo.InvariantCulture),
+            System.StringComparison.Ordinal
+        );
+    }
+
     internal static bool IsCanonical(string playerKey)
     {
-        return long.TryParse(
-                playerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out var parsed
-            )
-            && parsed >= 0
-            && string.Equals(
-                playerKey,
-                parsed.ToString(CultureInfo.InvariantCulture),
-                System.StringComparison.Ordinal
-            );
+        return TryParseCanonicalPlayerId(playerKey, out _);
     }
 }
 

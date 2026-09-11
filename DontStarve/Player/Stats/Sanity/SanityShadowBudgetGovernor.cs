@@ -425,9 +425,8 @@ internal sealed class SanityShadowBudgetGovernor
         }
 
         var hadPolicy = owner.HasPolicy;
-        var previousPolicyWasFull = hadPolicy
-            && owner.LastCap > 0
-            && occupancy >= owner.LastCap;
+        var realIntervalChanged = !hadPolicy
+            || owner.RealIntervalMilliseconds != policy.RealIntervalMilliseconds;
         var policyChanged = !hadPolicy
             || owner.LastPoolTier != poolTier
             || !string.Equals(owner.LastIntensityId, policy.IntensityId, StringComparison.Ordinal)
@@ -455,16 +454,26 @@ internal sealed class SanityShadowBudgetGovernor
 
         if (policyChanged)
         {
-            var shouldFillNewVacancy = owner.WasAtCap || previousPolicyWasFull;
+            // A tier/cap change only changes eligibility and capacity. It must never turn an
+            // empty slot into an immediate natural spawn: natural hostile refreshes use one
+            // shared real-time clock, regardless of whether the owner was previously full.
             SetPolicy(owner, poolTier, policy, cap);
-            ResetRealTimer(owner);
+            if (realIntervalChanged)
+                ResetRealTimer(owner);
             owner.RealIntervalMilliseconds = policy.RealIntervalMilliseconds;
-            if (occupancy >= cap)
-                return PauseAtCapRealTime(owner, policy, poolTier);
-            if (shouldFillNewVacancy)
-                return GrantRealTimePermit(owner, policy, poolTier, gameMinute, "budget.permit.vacancy");
             owner.RealTimerStarted = true;
-            owner.RealElapsedMilliseconds = elapsedMilliseconds;
+            if (occupancy >= cap)
+            {
+                // A full pool freezes natural-refresh progress. Do not add the elapsed frame
+                // while at cap; otherwise a later cleanup could look like an immediate vacancy
+                // refill even though the timer completed while no slot was available.
+                return PauseAtCapRealTime(owner, policy, poolTier);
+            }
+            owner.RealElapsedMilliseconds = Math.Min(
+                double.MaxValue - owner.RealElapsedMilliseconds,
+                owner.RealElapsedMilliseconds + elapsedMilliseconds
+            );
+            owner.WasAtCap = false;
             if (owner.RealElapsedMilliseconds >= policy.RealIntervalMilliseconds)
             {
                 return GrantRealTimePermit(
@@ -478,15 +487,19 @@ internal sealed class SanityShadowBudgetGovernor
             return WaitingRealTime(owner, policy, poolTier, "budget.timer-started");
         }
 
+        owner.RealTimerStarted = true;
         if (occupancy >= cap)
             return PauseAtCapRealTime(owner, policy, poolTier);
-        if (owner.WasAtCap)
-            return GrantRealTimePermit(owner, policy, poolTier, gameMinute, "budget.permit.vacancy");
-        owner.RealTimerStarted = true;
         owner.RealElapsedMilliseconds = Math.Min(
             double.MaxValue - owner.RealElapsedMilliseconds,
             owner.RealElapsedMilliseconds + elapsedMilliseconds
         );
+        if (owner.WasAtCap)
+        {
+            // Vacancies resume the same natural-refresh clock. Time spent at cap was not added,
+            // so the owner must still wait for the unspent remainder of the interval.
+            owner.WasAtCap = false;
+        }
         if (owner.RealElapsedMilliseconds < policy.RealIntervalMilliseconds)
             return WaitingRealTime(owner, policy, poolTier, "budget.waiting");
 
@@ -657,9 +670,6 @@ internal sealed class SanityShadowBudgetGovernor
             );
         }
         var hadPolicy = owner.HasPolicy;
-        var previousPolicyWasFull = hadPolicy
-            && owner.LastCap > 0
-            && occupancy >= owner.LastCap;
         var policyChanged = !hadPolicy
             || owner.LastPoolTier != poolTier
             || !string.Equals(
@@ -669,6 +679,14 @@ internal sealed class SanityShadowBudgetGovernor
             )
             || owner.LastCap != cap
             || owner.LastIntervalMinutes != policy.IntervalMinutes;
+        var wasHostileTier = owner.LastPoolTier is SanityShadowPoolTier.Hostile15
+            or SanityShadowPoolTier.Hostile10;
+        var isHostileTier = poolTier is SanityShadowPoolTier.Hostile15
+            or SanityShadowPoolTier.Hostile10;
+        var isHostileTierTransition = hadPolicy
+            && wasHostileTier
+            && isHostileTier
+            && owner.LastPoolTier != poolTier;
 
         if (
             owner.LastGameMinute.HasValue
@@ -713,18 +731,53 @@ internal sealed class SanityShadowBudgetGovernor
 
         if (policyChanged)
         {
-            var shouldFillNewVacancy = owner.WasAtCap || previousPolicyWasFull;
+            // A tier/cap change only changes eligibility and capacity. It must not convert a
+            // vacancy into an immediate natural spawn; the shared game-minute clock continues.
             SetPolicy(owner, poolTier, policy, cap);
             if (occupancy >= cap)
-                return PauseAtCap(owner, policy, poolTier);
-            if (shouldFillNewVacancy)
             {
-                return GrantPermit(
-                    owner,
-                    policy,
+                if (!owner.NextDueMinute.HasValue
+                    && !TrySchedule(owner, gameMinute, policy.IntervalMinutes))
+                {
+                    return Unavailable(
+                        playerKey,
+                        "budget.timer-overflow",
+                        occupancy,
+                        poolTier,
+                        policy.IntensityId,
+                        cap,
+                        policy.IntervalMinutes
+                    );
+                }
+                return PauseAtCap(owner, policy, poolTier);
+            }
+            owner.WasAtCap = false;
+            if (isHostileTierTransition && owner.NextDueMinute.HasValue)
+            {
+                // Hostile15 and Hostile10 are one player's shared natural-refresh lane. A
+                // threshold crossing changes eligibility, not the elapsed countdown; do not make
+                // the player wait a fresh full interval merely because the species tier changed.
+                if (gameMinute >= owner.NextDueMinute.Value)
+                {
+                    return GrantPermit(
+                        owner,
+                        policy,
+                        poolTier,
+                        gameMinute,
+                        "budget.permit.interval-elapsed"
+                    );
+                }
+
+                return new SanityShadowBudgetEvaluationResult(
+                    SanityShadowBudgetEvaluationStatus.Waiting,
+                    "budget.hostile-tier-clock-preserved",
+                    playerKey,
                     poolTier,
-                    gameMinute,
-                    "budget.permit.vacancy"
+                    policy.IntensityId,
+                    occupancy,
+                    cap,
+                    policy.IntervalMinutes,
+                    owner.NextDueMinute
                 );
             }
             if (!TrySchedule(owner, gameMinute, policy.IntervalMinutes))
@@ -756,17 +809,28 @@ internal sealed class SanityShadowBudgetGovernor
         }
 
         if (occupancy >= cap)
+        {
+            if (!owner.NextDueMinute.HasValue
+                && !TrySchedule(owner, gameMinute, policy.IntervalMinutes))
+            {
+                return Unavailable(
+                    playerKey,
+                    "budget.timer-overflow",
+                    occupancy,
+                    poolTier,
+                    policy.IntensityId,
+                    cap,
+                    policy.IntervalMinutes
+                );
+            }
             return PauseAtCap(owner, policy, poolTier);
+        }
 
         if (owner.WasAtCap)
         {
-            return GrantPermit(
-                owner,
-                policy,
-                poolTier,
-                gameMinute,
-                "budget.permit.vacancy"
-            );
+            // A vacancy resumes the same natural-refresh clock. It never receives a special
+            // vacancy permit; the next spawn is allowed only when NextDueMinute is reached.
+            owner.WasAtCap = false;
         }
 
         if (!owner.NextDueMinute.HasValue)
@@ -844,8 +908,8 @@ internal sealed class SanityShadowBudgetGovernor
     }
 
     /// <summary>
-    /// DIAG-20260810: 只读查询当前密度档的“统一上限池”容量（BaseCap+TerrorbeakCap，
-    /// 四类影怪合计上限）。不推进预算/计时器，仅用于超限清理判定。
+    /// DIAG-20260810: 只读查询当前密度档的玩家级共享总容量。不推进预算/计时器，
+    /// 供超限清理和切图补刷使用。
     /// </summary>
     internal bool TryGetTotalCap(string playerKey, out int totalCap)
     {
@@ -876,7 +940,7 @@ internal sealed class SanityShadowBudgetGovernor
         {
             return false;
         }
-        totalCap = policy.BaseCap + policy.TerrorbeakCap;
+        totalCap = policy.TotalCap;
         return true;
     }
 
@@ -953,7 +1017,6 @@ internal sealed class SanityShadowBudgetGovernor
         SanityShadowPoolTier poolTier
     )
     {
-        owner.NextDueMinute = null;
         owner.WasAtCap = true;
         return new SanityShadowBudgetEvaluationResult(
             SanityShadowBudgetEvaluationStatus.PausedAtCap,
@@ -964,7 +1027,7 @@ internal sealed class SanityShadowBudgetGovernor
             owner.Occupancy,
             policy.GetCap(poolTier),
             policy.IntervalMinutes,
-            null
+            owner.NextDueMinute
         );
     }
 
@@ -974,8 +1037,6 @@ internal sealed class SanityShadowBudgetGovernor
         SanityShadowPoolTier poolTier
     )
     {
-        owner.RealElapsedMilliseconds = 0d;
-        owner.RealTimerStarted = false;
         owner.NextDueMinute = null;
         owner.WasAtCap = true;
         return new SanityShadowBudgetEvaluationResult(
@@ -987,7 +1048,7 @@ internal sealed class SanityShadowBudgetGovernor
             owner.Occupancy,
             policy.GetCap(poolTier),
             policy.IntervalMinutes,
-            null
+            owner.NextDueMinute
         );
     }
 

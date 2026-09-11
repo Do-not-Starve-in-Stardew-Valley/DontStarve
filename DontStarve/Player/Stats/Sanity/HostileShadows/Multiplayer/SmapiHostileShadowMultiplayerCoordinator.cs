@@ -49,6 +49,23 @@ internal interface IHostileShadowPhysicalCapabilityHandler
     );
 }
 
+internal interface IHostileShadowPushBoxIntentHandler
+{
+    bool HandlePushBoxIntent(
+        ShadowProjectionPushBoxIntentMessage message,
+        long senderPlayerId,
+        out string reason
+    );
+}
+
+internal interface IHostileShadowPushBoxResultHandler
+{
+    bool HandlePushBoxResult(
+        ShadowProjectionPushBoxResultMessage message,
+        out string reason
+    );
+}
+
 internal interface IDarkHandInteractionTransportHandler
 {
     DarkHandLeaseIssueResult HandleLeaseRequest(
@@ -81,6 +98,10 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         "HostileShadow.AggroHint.v1";
     internal const string PhysicalCapabilityMessageType =
         "HostileShadow.PhysicalCapability.v1";
+    internal const string PushBoxIntentMessageType =
+        "HostileShadow.PushBoxIntent.v1";
+    internal const string PushBoxResultMessageType =
+        "HostileShadow.PushBoxResult.v1";
     internal const string AttackHitRequestMessageType =
         "HostileShadow.AttackHitRequest.v1";
     internal const string ConfigFingerprintMessageType =
@@ -125,6 +146,8 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
     private string lastReportedCapabilityReason = string.Empty;
     private long nextLeaseNonce;
     private IDarkHandInteractionTransportHandler? darkHandInteractionHandler;
+    private IHostileShadowPushBoxIntentHandler? pushBoxIntentHandler;
+    private IHostileShadowPushBoxResultHandler? pushBoxResultHandler;
     private bool disposed;
 
     internal SmapiHostileShadowMultiplayerCoordinator(
@@ -175,6 +198,28 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
     }
 
     internal ShadowStateRevisionStore ClientStore => clientStore;
+
+    internal bool BindPushBoxHandlers(
+        IHostileShadowPushBoxIntentHandler intentHandler,
+        IHostileShadowPushBoxResultHandler resultHandler,
+        out string reason
+    )
+    {
+        ArgumentNullException.ThrowIfNull(intentHandler);
+        ArgumentNullException.ThrowIfNull(resultHandler);
+        if (disposed || pushBoxIntentHandler is not null || pushBoxResultHandler is not null)
+        {
+            reason = disposed
+                ? "hostile-shadow.push-box-transport-disposed"
+                : "hostile-shadow.push-box-transport-already-bound";
+            return false;
+        }
+
+        pushBoxIntentHandler = intentHandler;
+        pushBoxResultHandler = resultHandler;
+        reason = "hostile-shadow.push-box-transport-bound";
+        return true;
+    }
 
     internal bool BindDarkHandInteractionHandler(
         IDarkHandInteractionTransportHandler handler,
@@ -283,6 +328,120 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         return Submission(
             ShadowProjectionConversionSubmissionStatus.Delayed,
             "shadow-conversion.request-sent-to-host"
+        );
+    }
+
+    internal bool SubmitPushBoxIntent(
+        string ownerPlayerKey,
+        string locationId,
+        long batchNonce,
+        IReadOnlyList<ShadowCreaturePushBoxIntent> intents,
+        out string reason
+    )
+    {
+        reason = string.Empty;
+        var localPlayer = Game1.player;
+        var sessionId = sessionIdProvider();
+        if (
+            localPlayer is null
+            || localPlayer.currentLocation is null
+            || !SanityPlayerKey.IsCanonical(ownerPlayerKey)
+            || !string.Equals(
+                ownerPlayerKey,
+                SanityPlayerKey.FromUniqueMultiplayerId(localPlayer.UniqueMultiplayerID),
+                StringComparison.Ordinal
+            )
+            || !string.Equals(
+                locationId,
+                localPlayer.currentLocation.NameOrUniqueName,
+                StringComparison.Ordinal
+            )
+            || intents is null
+        )
+        {
+            reason = "hostile-shadow.push-box-intent-local-context-invalid";
+            return false;
+        }
+
+        var request = new ShadowProjectionPushBoxIntentMessage
+        {
+            SessionId = sessionId,
+            OwnerPlayerKey = ownerPlayerKey,
+            LocationId = locationId,
+            CapabilityId = HostileShadowProtocol.ShadowPushBoxCapabilityId,
+            BatchNonce = batchNonce,
+        };
+        foreach (var intent in intents)
+        {
+            request.Entries.Add(
+                new ShadowProjectionPushBoxIntentEntry
+                {
+                    CorrelationId = intent.CorrelationId,
+                    SpeciesId = intent.SpeciesId,
+                    Revision = intent.Revision,
+                    CurrentPositionX = intent.CurrentPositionX,
+                    CurrentPositionY = intent.CurrentPositionY,
+                    NormalTargetPositionX = intent.NormalTargetPositionX,
+                    NormalTargetPositionY = intent.NormalTargetPositionY,
+                }
+            );
+        }
+        if (
+            !HostileShadowProtocol.IsValidPushBoxIntentMessage(
+                request,
+                ownerPlayerKey,
+                locationId,
+                sessionId,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+
+        if (Game1.IsMasterGame)
+        {
+            // The local host projection index is read directly by the world bridge. This call is
+            // an acknowledgement seam only; it must not create a duplicate remote cache entry.
+            reason = "hostile-shadow.push-box-intent-local-host-authority";
+            return true;
+        }
+
+        var host = Game1.MasterPlayer;
+        if (host is null)
+        {
+            reason = "hostile-shadow.push-box-intent-host-unavailable";
+            return false;
+        }
+        helper.Multiplayer.SendMessage(
+            request,
+            PushBoxIntentMessageType,
+            new[] { modId },
+            new[] { host.UniqueMultiplayerID }
+        );
+        reason = "hostile-shadow.push-box-intent-sent-to-host";
+        return true;
+    }
+
+    internal void SendPushBoxResult(
+        ShadowProjectionPushBoxResultMessage result,
+        long recipientPlayerId
+    )
+    {
+        if (
+            disposed
+            || !Game1.IsMasterGame
+            || result is null
+            || recipientPlayerId == 0
+        )
+        {
+            return;
+        }
+        helper.Multiplayer.SendMessage(
+            result,
+            PushBoxResultMessageType,
+            new[] { modId },
+            new[] { recipientPlayerId }
         );
     }
 
@@ -740,6 +899,8 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         ClearSession();
         darkHandInteractionHandler = null;
+        pushBoxIntentHandler = null;
+        pushBoxResultHandler = null;
     }
 
     private void OnDeltaProduced(ShadowStateDeltaMessage delta)
@@ -854,6 +1015,9 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
                         HandlePhysicalCapabilityReport
                     );
                     break;
+                case PushBoxIntentMessageType:
+                    DispatchByDirection(e, hostReceives: true, HandlePushBoxIntent);
+                    break;
                 case DarkHandLeaseRequestMessageType:
                     DispatchByDirection(e, hostReceives: true, HandleDarkHandLeaseRequest);
                     break;
@@ -865,6 +1029,9 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
                     break;
                 case DeltaMessageType:
                     DispatchByDirection(e, hostReceives: false, HandleDelta);
+                    break;
+                case PushBoxResultMessageType:
+                    DispatchByDirection(e, hostReceives: false, HandlePushBoxResult);
                     break;
                 case DarkHandLeaseMessageType:
                     DispatchByDirection(e, hostReceives: false, HandleDarkHandLease);
@@ -1032,6 +1199,37 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
             )
             || !physicalCapabilityHandler.HandlePhysicalCapabilityReport(
                 report,
+                e.FromPlayerID,
+                out reason
+            )
+        )
+        {
+            LogMessage(e, reason, LogLevel.Trace);
+        }
+    }
+
+    private void HandlePushBoxIntent(ModMessageReceivedEventArgs e)
+    {
+        if (pushBoxIntentHandler is null)
+        {
+            LogMessage(e, "hostile-shadow.push-box-intent-handler-unavailable", LogLevel.Trace);
+            return;
+        }
+
+        var message = e.ReadAs<ShadowProjectionPushBoxIntentMessage>();
+        var expectedPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(e.FromPlayerID);
+        var player = Game1.GetPlayer(e.FromPlayerID, onlyOnline: true);
+        var expectedLocationId = player?.currentLocation?.NameOrUniqueName ?? string.Empty;
+        if (
+            !HostileShadowProtocol.IsValidPushBoxIntentMessage(
+                message,
+                expectedPlayerKey,
+                expectedLocationId,
+                authority.SessionId,
+                out var reason
+            )
+            || !pushBoxIntentHandler.HandlePushBoxIntent(
+                message!,
                 e.FromPlayerID,
                 out reason
             )
@@ -1337,6 +1535,41 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
             LogMessage(e, result.Reason, LogLevel.Warn);
     }
 
+    private void HandlePushBoxResult(ModMessageReceivedEventArgs e)
+    {
+        if (pushBoxResultHandler is null)
+        {
+            LogMessage(e, "hostile-shadow.push-box-result-handler-unavailable", LogLevel.Trace);
+            return;
+        }
+        if (!IsHostSender(e.FromPlayerID))
+        {
+            LogMessage(e, "hostile-shadow.push-box-result-sender-not-host", LogLevel.Trace);
+            return;
+        }
+
+        var message = e.ReadAs<ShadowProjectionPushBoxResultMessage>();
+        var localPlayer = Game1.player;
+        var expectedPlayerKey = localPlayer is null
+            ? string.Empty
+            : SanityPlayerKey.FromUniqueMultiplayerId(localPlayer.UniqueMultiplayerID);
+        var expectedLocationId = localPlayer?.currentLocation?.NameOrUniqueName ?? string.Empty;
+        if (
+            !HostileShadowProtocol.IsValidPushBoxResultMessage(
+                message,
+                expectedPlayerKey,
+                expectedLocationId,
+                sessionIdProvider(),
+                (long)Game1.ticks,
+                out var reason
+            )
+            || !pushBoxResultHandler.HandlePushBoxResult(message!, out reason)
+        )
+        {
+            LogMessage(e, reason, LogLevel.Trace);
+        }
+    }
+
     private bool IsHostSender(long playerId)
     {
         return Game1.MasterPlayer is { } host
@@ -1408,10 +1641,8 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
     {
         locationId = string.Empty;
         if (
-            !long.TryParse(
+            !SanityPlayerKey.TryParseCanonicalPlayerId(
                 ownerPlayerKey,
-                System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture,
                 out var ownerPlayerId
             )
         )

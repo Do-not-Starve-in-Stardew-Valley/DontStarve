@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Food;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -13,9 +14,14 @@ internal class EatFood : INonTimeRelatedBehavior
     public static Dictionary<string, double> FoodSanity { get; private set; } =
         new Dictionary<string, double>();
 
-    internal static bool TryGetSanity(string itemId, out double value)
+    internal static bool TryGetSanity(string qualifiedItemId, out double value)
     {
-        return FoodSanity.TryGetValue(itemId, out value);
+        return FoodRuleRuntime.TryGetSanity(qualifiedItemId, out value);
+    }
+
+    internal static bool TryGetSanity(Item item, out double value)
+    {
+        return FoodRuleRuntime.TryGetSanity(item, out value);
     }
 
     private Item lastFood;
@@ -25,6 +31,7 @@ internal class EatFood : INonTimeRelatedBehavior
     {
         // 食物理智值走资源表，key 使用 Stardew 物品 ItemId；不要把具体食物硬编码进行为逻辑。
         FoodSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/food.json");
+        FoodRuleRuntime.SetSanity(FoodSanity);
         helper.Events.GameLoop.SaveLoaded += (_, _) => ResetCursor();
         helper.Events.GameLoop.DayStarted += (_, _) => ResetCursor();
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => ResetCursor();
@@ -41,8 +48,15 @@ internal class EatFood : INonTimeRelatedBehavior
         if (!isEating && lastEating && lastFood != null)
         {
             // isEating 从 true 变 false 表示吃食动作刚结束，此时用上一帧 itemToEat 结算恢复值。
-            var sanity = FoodSanity?.GetValueOrDefault(lastFood.ItemId, 0.0) ?? 0.0;
-            if (sanity != 0)
+            var sanity = 0d;
+            var isStarfruit = StarfruitFoodRules.IsStarfruit(lastFood.ItemId);
+            var hasSanity = isStarfruit
+                ? (sanity = StarfruitFoodRules.GetFillDelta(
+                    player.GetSanity(),
+                    player.GetMaxSanity()
+                )) >= 0
+                : FoodRuleRuntime.TryGetSanity(lastFood, out sanity);
+            if (hasSanity && sanity != 0)
             {
                 player.ChangeSanity(
                     sanity,

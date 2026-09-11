@@ -15,7 +15,6 @@ internal class StaminaRestoreBuff : FixedRestoreBuff
         "DS_BUFF_STAMINA_RESTORE",
     };
 
-    protected override string SaveKey => "DontStarve.Buff.StaminaRestore";
     protected override IReadOnlyList<string> BuffIds => STAMINA_RESTORE_BUFF_IDS;
     protected override int AmountPerPulse => 1;
 

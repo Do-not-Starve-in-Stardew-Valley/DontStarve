@@ -21,9 +21,9 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     // A removed owner/screen claim keeps its last accepted revision until the day/session is
     // cleared. This prevents an old tier snapshot from immediately resurrecting stale audio.
     private readonly Dictionary<SanityAudioClaimKey, long> revisionReceipts = new();
-    // Local menus remove only their owner from physical eligibility. Claims and tier-edge
-    // receipts remain so another split-screen owner can continue and menu close can't replay
-    // an already-consumed danger edge.
+    // Designated Other minigames remove only their owner from physical eligibility. Claims and
+    // tier-edge receipts remain so another split-screen owner can continue and presentation close
+    // can't replay an already-consumed danger edge.
     private readonly HashSet<SanityAudioClaimKey> locallyPausedClaims = new();
     private readonly Dictionary<SanityAudioClaimKey, SanityDarknessWarningClaim>
         darknessWarningClaims = new();
@@ -275,6 +275,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         generation++;
         if (darknessWarningClaims.Count == 0)
         {
+            // Seeing light releases the logical countdown claim, but the warning instance is
+            // already in flight and must be allowed to reach its natural end.
             SafeOutput(
                 () => output.SetDarknessWarningActive(false),
                 "audio.output.darkness-warning-failed"
@@ -322,6 +324,10 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             SafeOutput(
                 () => output.SetDarknessWarningActive(false),
                 "audio.output.darkness-warning-failed"
+            );
+            SafeOutput(
+                output.StopDarknessWarningPlayback,
+                "audio.output.darkness-warning-hard-stop-failed"
             );
         }
         ApplyDarknessWarningPause();
@@ -414,8 +420,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         darknessWarningProcessPaused = paused;
         generation++;
         // Focus pause is intentionally narrower than the legacy all-lane SetPaused seam: the
-        // low-Sanity ambience/whispers clips must pause in place, while threshold one-shots and
-        // darkness warnings keep their existing behavior.
+        // low-Sanity ambience/whispers and darkness-warning clips pause in place, while threshold
+        // one-shots keep playing and the dedicated attack lane remains independent.
         SafeOutput(
             () => output.SetContinuousPoolsPaused(paused),
             "audio.output.continuous-pools-pause-failed"
@@ -424,7 +430,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     }
 
     /// <summary>
-    /// Game1.paused/dialogue and local menus have different effects on the ordinary tier lanes.
+    /// Game1.paused/dialogue and designated minigame presentation have different effects on the
+    /// ordinary tier lanes.
     /// They still share this process-level warning pause so the selected warning instance resumes
     /// in place instead of being recreated.
     /// </summary>
@@ -446,7 +453,8 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     }
 
     // Compatibility entrypoint for older callers/tests. New production code uses
-    // SetClaimPlaybackPaused for a local menu and reserves this for process-wide pause/focus.
+    // SetClaimPlaybackPaused for a designated minigame and reserves this for process-wide
+    // pause/focus.
     internal void SetMenuPaused(bool paused) => SetProcessPaused(paused);
 
     internal void SetEventSuspended(bool suspended)
@@ -633,6 +641,10 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 () => output.SetDarknessWarningActive(false),
                 "audio.output.darkness-warning-failed"
             );
+            SafeOutput(
+                output.StopDarknessWarningPlayback,
+                "audio.output.darkness-warning-hard-stop-failed"
+            );
         }
         locallyPausedDarknessWarnings.RemoveWhere(key => !darknessWarningClaims.ContainsKey(key));
         ApplyDarknessWarningPause();
@@ -669,11 +681,12 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
                 () => output.SetDarknessWarningActive(false),
                 "audio.output.darkness-warning-failed"
             );
+            SafeOutput(
+                output.StopDarknessWarningPlayback,
+                "audio.output.darkness-warning-hard-stop-failed"
+            );
         }
-        else
-        {
-            ApplyDarknessWarningPause();
-        }
+        ApplyDarknessWarningPause();
         return removals.Count;
     }
 

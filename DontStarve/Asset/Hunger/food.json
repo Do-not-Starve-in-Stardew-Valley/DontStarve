@@ -55,9 +55,8 @@
     "889": 1,
     "DS_Watermelon": 12.5,
     "DS_Durian": 25,
-    "DS_Dragon Fruit": 9.375,
+    "DS_Dragon_Fruit": 9.375,
     "DS_Fig": 12.5,
-    "DS_Halved_Coconut": 4.6875,
 
 //采集品
     "92": 0,
@@ -347,7 +346,6 @@
     "167": 9.375,
     "684": 1,
     "767": 12.5,
-    "434": 1,
     "803": 0,
 
 //饥荒料理
@@ -483,5 +481,8 @@
     "DS_Sesame_Bean_Paste_Mooncake": 37.5,
     "DS_Shrimp_Seafood_Mooncake": 62.5,
     "DS_Snowy_Coconut_Mooncake": 37.5,
-    "DS_Snowy_Durian_Mooncake": 62.5
+    "DS_Snowy_Durian_Mooncake": 62.5,
+
+//种子
+    "Seeds": 4.6875
 }

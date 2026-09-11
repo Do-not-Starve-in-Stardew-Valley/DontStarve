@@ -26,6 +26,8 @@ public sealed class HostileShadowMonster : Monster
         "Yurin.DontStarve/HostileShadow/AssetBindingId";
     internal const string StateModDataKey =
         "Yurin.DontStarve/HostileShadow/StateId";
+    internal const string HitTeleportVisualPhaseModDataKey =
+        "Yurin.DontStarve/HostileShadow/HitTeleportVisualPhase";
     internal const string AttackInstanceModDataKey =
         "Yurin.DontStarve/HostileShadow/AttackInstanceId";
     internal const string AttackInstanceRevisionModDataKey =
@@ -96,6 +98,16 @@ public sealed class HostileShadowMonster : Monster
             return;
         }
         SuppressTaggedControlEffects();
+        // Monster.update decrements stunTime only on the master game. The custom world runtime
+        // owns movement, but it still needs this small vanilla timer contract so a future profile
+        // without Frozen immunity observes the same temporary hit-stun before knockback moves.
+        if (Game1.IsMasterGame && stunTime.Value > 0)
+        {
+            stunTime.Value = Math.Max(
+                0,
+                stunTime.Value - (int)time.ElapsedGameTime.TotalMilliseconds
+            );
+        }
         // DIAG-20260807: Lookup 显示欺骗的恢复端——LookupAnythingDisplayFake 通过
         // Monster.DamageToFarmer getter 拦截显示配置攻击力（不写字段，仅 Lookup 枚举
         // 瞬间生效）；此处保留兜底：万一其他路径写入了 DamageToFarmer，一律恢复 0，
@@ -104,9 +116,9 @@ public sealed class HostileShadowMonster : Monster
         if (DamageToFarmer != 0)
             DamageToFarmer = 0;
         Debug.LookupAnythingDisplayFake.EndLookupWindow();
-        // DIAG-20260806: 模拟原版 Character.update 的无敌递减。原版在 base.update 里做这件事，
-        // 但我们不调用 base.update（避免原版寻路/接触攻击），所以手动递减，让受击无敌帧
-        // （HandleIncomingHit 设置的 1000ms）与其他怪物一样正常倒计时。
+        // DIAG-20260902: 模拟原版 Character.update 的无敌递减。原版在 base.update 里做这件事，
+        // 但我们不调用 base.update（避免原版寻路/接触攻击），所以手动递减，让
+        // GameLocation.damageMonster 设置的武器相关无敌帧与其他怪物一样正常倒计时。
         // 注意：不能每 tick 清零——那样会禁用无敌帧，导致玩家挥剑每帧多段伤害（实测多段帧伤）。
         if (invincibleCountdown > 0)
         {
@@ -114,6 +126,8 @@ public sealed class HostileShadowMonster : Monster
                 0,
                 invincibleCountdown - time.ElapsedGameTime.Milliseconds
             );
+            if (invincibleCountdown <= 0)
+                stopGlowing();
         }
     }
 
@@ -131,6 +145,22 @@ public sealed class HostileShadowMonster : Monster
         // 空实现：移动/碰撞/接触伤害全部由自有攻击框（红框）系统负责。
     }
 
+    public override bool isInvincible()
+    {
+        // BindingHidden/Retreating must stay invulnerable even when a mixed area attack also
+        // contains a normal shadow. The damageMonster prefix skips an all-guarded area, while
+        // this per-entity seam prevents vanilla from showing a zero hit for mixed areas.
+        if (
+            HasImmunity(BindingHiddenModDataKey)
+            || HasImmunity(RetreatingModDataKey)
+        )
+        {
+            return true;
+        }
+
+        return base.isInvincible();
+    }
+
     public override void setTrajectory(Vector2 trajectory)
     {
         if (HasImmunity(KnockbackImmunityModDataKey))
@@ -140,7 +170,52 @@ public sealed class HostileShadowMonster : Monster
             return;
         }
 
-        base.setTrajectory(trajectory);
+        // The host world runtime owns movement and does not poll Monster.trajectoryEvent.
+        // Apply the same max-absolute-component rule directly so a future profile without the
+        // Knockback tag can receive vanilla trajectory from every damage source.
+        HostileShadowKnockbackPolicy.ApplyIncomingTrajectory(
+            ref xVelocity,
+            ref yVelocity,
+            trajectory.X,
+            trajectory.Y
+        );
+    }
+
+    internal void ApplyIncomingHitTrajectory(
+        int xTrajectory,
+        int yTrajectory
+    )
+    {
+        if (HasImmunity(KnockbackImmunityModDataKey))
+        {
+            xVelocity = 0f;
+            yVelocity = 0f;
+            return;
+        }
+
+        HostileShadowKnockbackPolicy.ApplyDamageTrajectory(
+            ref xVelocity,
+            ref yVelocity,
+            xTrajectory,
+            yTrajectory
+        );
+    }
+
+    internal void ApplyKnockbackStep(
+        HostileShadowKnockbackStep step
+    )
+    {
+        if (!step.Valid || !step.Active)
+            return;
+
+        xVelocity = step.NextVelocityX;
+        yVelocity = step.NextVelocityY;
+    }
+
+    internal void ClearKnockbackVelocity()
+    {
+        xVelocity = 0f;
+        yVelocity = 0f;
     }
 
     public override int takeDamage(
@@ -152,7 +227,13 @@ public sealed class HostileShadowMonster : Monster
         Farmer who
     )
     {
-        return HostileShadowMonsterHitBridge.HandleHit(this, damage, who);
+        return HostileShadowMonsterHitBridge.HandleHit(
+            this,
+            damage,
+            xTrajectory,
+            yTrajectory,
+            who
+        );
     }
 
     public override void shedChunks(int number, float scale)
@@ -196,6 +277,41 @@ public sealed class HostileShadowMonster : Monster
         SuppressTaggedControlEffects();
     }
 
+    internal void ApplyDeclaredCombatImmunities(
+        IReadOnlyList<string> immunityTags
+    )
+    {
+        if (immunityTags is null)
+            throw new ArgumentNullException(nameof(immunityTags));
+
+        for (var index = 0; index < immunityTags.Count; index++)
+        {
+            var tag = immunityTags[index];
+            if (
+                string.Equals(
+                    tag,
+                    ShadowMonsterProfileContractIds.KnockbackImmunity,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                modData[KnockbackImmunityModDataKey] = EnabledModDataValue;
+                Slipperiness = -1;
+            }
+            else if (
+                string.Equals(
+                    tag,
+                    ShadowMonsterProfileContractIds.FrozenImmunity,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                modData[FrozenImmunityModDataKey] = EnabledModDataValue;
+            }
+        }
+        SuppressTaggedControlEffects();
+    }
+
     private void SuppressTaggedControlEffects()
     {
         if (HasImmunity(KnockbackImmunityModDataKey))
@@ -225,17 +341,17 @@ public sealed class HostileShadowMonster : Monster
 
 internal static class HostileShadowMonsterHitBridge
 {
-    private static Func<HostileShadowMonster, int, Farmer?, int>? handler;
+    private static Func<HostileShadowMonster, int, int, int, Farmer?, int>? handler;
 
     internal static void Configure(
-        Func<HostileShadowMonster, int, Farmer?, int> value
+        Func<HostileShadowMonster, int, int, int, Farmer?, int> value
     )
     {
         handler = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     internal static void Clear(
-        Func<HostileShadowMonster, int, Farmer?, int> value
+        Func<HostileShadowMonster, int, int, int, Farmer?, int> value
     )
     {
         if (ReferenceEquals(handler, value))
@@ -245,10 +361,12 @@ internal static class HostileShadowMonsterHitBridge
     internal static int HandleHit(
         HostileShadowMonster monster,
         int damage,
+        int xTrajectory,
+        int yTrajectory,
         Farmer? attacker
     )
     {
-        return handler?.Invoke(monster, damage, attacker) ?? 0;
+        return handler?.Invoke(monster, damage, xTrajectory, yTrajectory, attacker) ?? 0;
     }
 }
 
@@ -302,6 +420,13 @@ internal sealed class HostileShadowMonsterRenderer
         double DrawScale
     );
 
+    private readonly record struct PushBoxLayout(
+        HostileAttackPoint ActorOriginSourcePx,
+        HostileAttackPoint PivotSourcePx,
+        SanityResourceRectangle SourcePx,
+        double DrawScale
+    );
+
     private readonly record struct MovementLayout(
         int FrameCount,
         int DownRow,
@@ -342,6 +467,8 @@ internal sealed class HostileShadowMonsterRenderer
     private readonly Dictionary<string, HurtBoxLayout> hurtBoxes =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, AttackBoxLayout> attackBoxes =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PushBoxLayout> pushBoxes =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, MovementLayout> movementLayouts =
         new(StringComparer.Ordinal);
@@ -480,6 +607,18 @@ internal sealed class HostileShadowMonsterRenderer
                 metadata.Collision.AttackBoxSourcePx.Height
             ),
             metadata.Attack.DrawScale
+        );
+        pushBoxes[assetBindingId] = new PushBoxLayout(
+            new HostileAttackPoint(
+                metadata.Collision.ActorOriginSourcePx.X,
+                metadata.Collision.ActorOriginSourcePx.Y
+            ),
+            new HostileAttackPoint(
+                metadata.Idle.PivotSourcePx.X,
+                metadata.Idle.PivotSourcePx.Y
+            ),
+            metadata.Collision.PushBox.SourcePx,
+            metadata.Idle.DrawScale
         );
         if (HostileShadowMovementPresentationBindings.Supports(assetBindingId))
         {
@@ -688,7 +827,7 @@ internal sealed class HostileShadowMonsterRenderer
             HostileShadowStateIds.Taunt => HostileShadowStateIds.Taunt,
             HostileShadowStateIds.Chase => HostileShadowStateIds.Chase,
             HostileShadowStateIds.Attack => HostileShadowStateIds.Attack,
-            HostileShadowStateIds.HitTeleport => HitResponseVisualStateId,
+            HostileShadowStateIds.HitTeleport => ResolveHitTeleportVisualState(monster),
             HostileShadowStateIds.Dying => HitResponseVisualStateId,
             HostileShadowStateIds.Despawn => string.Empty,
             _ => HostileShadowStateIds.Idle,
@@ -1107,6 +1246,35 @@ internal sealed class HostileShadowMonsterRenderer
         }
         }
 
+        // Stage 05: yellow PushBox is diagnostic-only and uses independent crowd geometry. It is
+        // intentionally drawn once on the visible hostile representative; binding projections
+        // are hidden here and draw no duplicate box.
+        if (
+            pushBoxes.TryGetValue(bindingId, out var pushLayout)
+            && pushLayout.SourcePx.Width > 0
+            && pushLayout.SourcePx.Height > 0
+        )
+        {
+            var actorScreenX = screen.X
+                + (pushLayout.ActorOriginSourcePx.X - pushLayout.PivotSourcePx.X)
+                    * (float)pushLayout.DrawScale;
+            var actorScreenY = screen.Y
+                + (pushLayout.ActorOriginSourcePx.Y - pushLayout.PivotSourcePx.Y)
+                    * (float)pushLayout.DrawScale;
+            DrawBoxOutline(
+                spriteBatch,
+                new Rectangle(
+                    (int)actorScreenX
+                        + (int)(pushLayout.SourcePx.X * pushLayout.DrawScale),
+                    (int)actorScreenY
+                        + (int)(pushLayout.SourcePx.Y * pushLayout.DrawScale),
+                    (int)(pushLayout.SourcePx.Width * pushLayout.DrawScale),
+                    (int)(pushLayout.SourcePx.Height * pushLayout.DrawScale)
+                ),
+                new Color(255, 240, 70)
+            );
+        }
+
         // 攻击框（红色）：仅在攻击状态绘制，用攻击框自己的 pivot/drawScale 旋转包围盒，
         // 与判定侧 TryCreateWorldAttackBox 保持一致（DIAG-20260807 回退）。
         if (
@@ -1218,6 +1386,24 @@ internal sealed class HostileShadowMonsterRenderer
             new Rectangle(boxX, boxY, (int)attackWidth, (int)attackHeight),
             new Color(255, 80, 80)
         );
+    }
+
+    private static string ResolveHitTeleportVisualState(HostileShadowMonster monster)
+    {
+        // HitTeleport remains the shared gameplay state for the whole response. Only its
+        // synchronized visual phase changes after arrival, so the renderer can show the same
+        // one-shot Spawn row without exposing a second combat state to targeting or authority.
+        return monster.modData.TryGetValue(
+                HostileShadowMonster.HitTeleportVisualPhaseModDataKey,
+                out var phase
+            )
+            && string.Equals(
+                phase,
+                HostileShadowHitTeleportVisualPhaseIds.Spawn,
+                StringComparison.Ordinal
+            )
+            ? HostileShadowStateIds.Spawn
+            : HitResponseVisualStateId;
     }
 
     /// <summary>

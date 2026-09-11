@@ -1294,21 +1294,10 @@ internal static class ShadowMonsterProfileValidator
             parsed.Add(tag);
         }
 
-        if (
-            !seen.Contains(ShadowMonsterProfileContractIds.KnockbackImmunity)
-            || !seen.Contains(ShadowMonsterProfileContractIds.FrozenImmunity)
-        )
-        {
-            issues.Add(
-                Issue(
-                    "shadow-profile.immunity-required-tag-missing",
-                    filePath,
-                    key,
-                    "Both Knockback and Frozen immunity must be explicit."
-                )
-            );
-            valid = false;
-        }
+        // An empty list is the explicit contract for a future profile which has no control-effect
+        // immunity. Current Creeper Fear/Terrorbeak bindings still require both tags in their
+        // binding-specific combat-immunity policies; keeping that rule there avoids weakening the
+        // shipped monsters while allowing new profiles to receive vanilla knockback.
         tags = parsed.AsReadOnly();
         return valid;
     }

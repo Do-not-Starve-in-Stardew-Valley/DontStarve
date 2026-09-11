@@ -80,7 +80,7 @@ internal sealed class HostileShadowSessionLifecycleCoordinator : IDisposable
             || !IsSessionActive
             || !IsEnabled
             || !IsWorldActive
-            || peerPlayerId <= 0
+            || peerPlayerId == 0
             || !SanityPlayerKey.IsCanonical(playerKey)
             || !HostileShadowProtocol.IsValidLocationId(locationId)
             || !HostileShadowProtocol.IsValidSnapshotTrigger(trigger)
@@ -156,7 +156,7 @@ internal sealed class HostileShadowSessionLifecycleCoordinator : IDisposable
         if (
             disposed
             || !IsSessionActive
-            || peerPlayerId <= 0
+            || peerPlayerId == 0
             || !HostileShadowConfigFingerprintProtocol.IsValidReport(
                 report,
                 expectedPlayerKey,

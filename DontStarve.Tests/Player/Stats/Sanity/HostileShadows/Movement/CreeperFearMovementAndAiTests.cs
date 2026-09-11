@@ -55,7 +55,7 @@ public sealed class CreeperFearMovementAndAiTests
     }
 
     [Fact]
-    public void First_target_discovery_taunts_then_chases_without_retaunting_on_reacquire()
+    public void Each_target_reacquisition_taunts_before_chasing_again()
     {
         var definition = HostileAttackTestFactory.Definition(intervalSeconds: 1d);
         var random = new SequenceTransitionRandom(0.999999d);
@@ -100,7 +100,24 @@ public sealed class CreeperFearMovementAndAiTests
             0d
         );
         Assert.Equal(HostileShadowStateIds.Idle, lost.StateId);
-        Assert.Equal(HostileShadowStateIds.Chase, reacquired.StateId);
+        Assert.Equal(HostileShadowStateIds.Taunt, reacquired.StateId);
+        Assert.Equal(0, random.CallCount);
+
+        var chasedAgain = machine.Advance(
+            HostileAttackTestFactory.Input(inRange: false),
+            definition.TauntDurationMilliseconds
+        );
+        var lostAgain = machine.Advance(
+            HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+            0d
+        );
+        var reacquiredAgain = machine.Advance(
+            HostileAttackTestFactory.Input(inRange: false),
+            0d
+        );
+        Assert.Equal(HostileShadowStateIds.Chase, chasedAgain.StateId);
+        Assert.Equal(HostileShadowStateIds.Idle, lostAgain.StateId);
+        Assert.Equal(HostileShadowStateIds.Taunt, reacquiredAgain.StateId);
         Assert.Equal(0, random.CallCount);
     }
 
@@ -220,8 +237,8 @@ public sealed class CreeperFearMovementAndAiTests
         var world = Contract("SmapiHostileShadowWorldRuntime.cs");
 
         Assert.Contains("entry.Profile.MovementSpeed * 0.5d", world, StringComparison.Ordinal);
-        Assert.Contains("FixedUpdateSeconds * 1000d * (isWanderingNow ? 0.5d : 1d)", world, StringComparison.Ordinal);
-        Assert.Contains("|| isWanderingNow", world, StringComparison.Ordinal);
+        Assert.Contains("(entry.CrowdPlanIsWandering ? 0.5d : 1d)", world, StringComparison.Ordinal);
+        Assert.Contains("|| entry.CrowdPlanIsWandering", world, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -310,6 +327,90 @@ public sealed class CreeperFearMovementAndAiTests
             arrival,
             StringComparison.Ordinal
         );
+    }
+
+    [Fact]
+    public void Losing_a_chase_target_captures_current_position_before_idle_wander_runs()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var advance = Slice(
+            world,
+            "private void AdvanceCachedTargets(bool snapshotCadence)",
+            "private void ObserveShadowCreatureSfx("
+        );
+        var transitionStart = advance.IndexOf(
+            "var hadTargetLastTick = entry.HadTargetLastTick;",
+            StringComparison.Ordinal
+        );
+        var wanderStart = advance.IndexOf(
+            "// DIAG-20260809: 无索敌游荡——Idle 且无目标时",
+            transitionStart,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(transitionStart >= 0);
+        Assert.True(wanderStart > transitionStart);
+        var transition = advance[transitionStart..wanderStart];
+        Assert.Contains("if (hadTargetLastTick)", transition, StringComparison.Ordinal);
+        Assert.Contains("currentPositionX", transition, StringComparison.Ordinal);
+        Assert.Contains("currentPositionY", transition, StringComparison.Ordinal);
+        Assert.Contains("state.PositionX", transition, StringComparison.Ordinal);
+        Assert.Contains("state.PositionY", transition, StringComparison.Ordinal);
+        Assert.Contains("entry.WanderAnchorX = anchorX", transition, StringComparison.Ordinal);
+        Assert.Contains("entry.WanderAnchorY = anchorY", transition, StringComparison.Ordinal);
+        Assert.Contains("entry.HadTargetLastTick = hasTarget", transition, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reacquiring_a_target_clears_the_pending_wander_destination_before_attack_advance()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var advance = Slice(
+            world,
+            "private void AdvanceCachedTargets(bool snapshotCadence)",
+            "private void ObserveShadowCreatureSfx("
+        );
+        var transitionStart = advance.IndexOf(
+            "var hadTargetLastTick = entry.HadTargetLastTick;",
+            StringComparison.Ordinal
+        );
+        var attackAdvance = advance.IndexOf(
+            "var decision = entry.AttackState.Advance(",
+            transitionStart,
+            StringComparison.Ordinal
+        );
+        Assert.True(transitionStart >= 0);
+        Assert.True(attackAdvance > transitionStart);
+
+        var transition = advance[transitionStart..attackAdvance];
+        Assert.Contains("if (hasTarget)", transition, StringComparison.Ordinal);
+        Assert.Contains("entry.HasWanderTarget = false", transition, StringComparison.Ordinal);
+        Assert.True(
+            transition.IndexOf("entry.HasWanderTarget = false", StringComparison.Ordinal)
+                < transition.IndexOf("var inAttackRange = hasTarget", StringComparison.Ordinal)
+        );
+        Assert.True(
+            transition.IndexOf("entry.HadTargetLastTick = hasTarget", StringComparison.Ordinal)
+                < transition.IndexOf("var inAttackRange = hasTarget", StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
+    public void Invalid_wander_anchor_falls_back_to_current_position_or_stays_idle()
+    {
+        var world = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var wander = Slice(
+            world,
+            "private bool TryAdvanceWander(",
+            "private void ResolvePendingLethalDamage"
+        );
+
+        Assert.Contains("TryResolveFinitePosition(", wander, StringComparison.Ordinal);
+        Assert.Contains("entry.WanderAnchorX", wander, StringComparison.Ordinal);
+        Assert.Contains("currentPositionX", wander, StringComparison.Ordinal);
+        Assert.Contains("currentPositionY", wander, StringComparison.Ordinal);
+        Assert.Contains("return false", wander, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game1.player", wander, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -645,6 +746,15 @@ public sealed class CreeperFearMovementAndAiTests
                 fileName
             )
         );
+    }
+
+    private static string Slice(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        return source[start..end];
     }
 
     private sealed class SequenceTransitionRandom : IHostileAttackTransitionRandom

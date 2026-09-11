@@ -36,15 +36,21 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             result.RegisteredKeys
         );
         Assert.Equal(
-            new[] { "config.sanity.section", "config.music.section" },
+            new[] { "config.hunger.section", "config.sanity.section", "config.music.section" },
             menu.Sections
         );
         Assert.Equal(
             registry.Options.Select(option => option.Key),
             menu.FieldOrder
         );
-        Assert.Equal(7, menu.BooleanFields.Count);
+        Assert.Equal(10, menu.BooleanFields.Count);
         Assert.Equal(4, menu.EnumFields.Count);
+        Assert.False(
+            menu.BooleanFields[ConfigKeys.EnableHungerSystem].GetValue()
+        );
+        Assert.True(
+            menu.BooleanFields[ConfigKeys.EnableSeedEdibility].GetValue()
+        );
         Assert.False(
             menu.BooleanFields[ConfigKeys.EnableDawnDuskMusic].GetValue()
         );
@@ -188,7 +194,15 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
 
         Assert.Equal(ConfigMenuRegistrationStatus.Available, result.Status);
         var sanity = menu.BooleanFields[ConfigKeys.EnableSanitySystem];
+        var hunger = menu.BooleanFields[ConfigKeys.EnableHungerSystem];
+        var seedEdibility = menu.BooleanFields[ConfigKeys.EnableSeedEdibility];
         var darkHand = menu.EnumFields[ConfigKeys.DarkHandMode];
+        Assert.Equal(
+            "Hunger",
+            menu.SectionTextGetters["config.hunger.section"]()
+        );
+        Assert.Equal("Enable Hunger system (Beta)", hunger.GetName());
+        Assert.Equal("Enable seed edibility", seedEdibility.GetName());
         Assert.Equal(
             "Sanity",
             menu.SectionTextGetters["config.sanity.section"]()
@@ -204,6 +218,11 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
         Assert.Equal("启用理智系统", sanity.GetName());
         Assert.Equal("启用理智系统及其玩法效果。", sanity.GetTooltip());
+        Assert.Equal("饱食度", menu.SectionTextGetters["config.hunger.section"]());
+        Assert.Equal("启用饱食度系统（beta）", hunger.GetName());
+        Assert.Equal("启用饱食度系统及其玩法效果。此功能目前处于 beta 阶段。", hunger.GetTooltip());
+        Assert.Equal("种子可食用", seedEdibility.GetName());
+        Assert.Equal("允许符合条件的作物种子被食用。此设置由种子食用功能使用。", seedEdibility.GetTooltip());
         Assert.Equal("偷火", darkHand.FormatAllowedValue("FireThief"));
     }
 
@@ -269,7 +288,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 );
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
-                Assert.Equal(11, document.RootElement.EnumerateObject().Count(property =>
+                Assert.Equal(14, document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 ));
             }
@@ -378,7 +397,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
 
         Assert.Equal(ConfigMenuRegistrationStatus.Degraded, partial.Status);
-        Assert.Equal(10, partial.RegisteredKeys.Count);
+        Assert.Equal(13, partial.RegisteredKeys.Count);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, partial.RegisteredKeys);
         Assert.Equal(
             new[] { $"gmcm.option-registration-failed:{ConfigKeys.DarkHandMode}" },

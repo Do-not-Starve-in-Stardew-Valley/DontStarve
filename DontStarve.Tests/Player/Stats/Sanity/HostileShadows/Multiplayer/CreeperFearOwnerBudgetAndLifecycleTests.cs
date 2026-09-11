@@ -118,11 +118,11 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         Assert.Contains(danger.Events, IsDangerEnter);
         Assert.True(harness.Sink.LocalPoolWasEmptyBeforeEverySubmission);
         var spawn = Assert.Single(harness.Sink.Results);
-        Assert.Equal(policy!.BaseCap, spawn.Cap);
-        Assert.Equal(policy.BaseCap > 0, spawn.Spawned);
-        Assert.Equal(policy.BaseCap > 0 ? 1 : 0, harness.Authority.Count);
+        Assert.Equal(policy!.TotalCap, spawn.Cap);
+        Assert.Equal(policy.TotalCap > 0, spawn.Spawned);
+        Assert.Equal(policy.TotalCap > 0 ? 1 : 0, harness.Authority.Count);
 
-        if (policy.BaseCap == 0)
+        if (policy.TotalCap == 0)
         {
             Assert.False(local.IsCleanedUp);
             Assert.Null(local.CleanupReason);
@@ -143,7 +143,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             harness.Authority.GetOwnerOccupancy(OwnerA)
         );
         Assert.Equal(policy.IntervalMinutes, budget.IntervalMinutes);
-        Assert.Equal(policy.BaseCap, budget.Cap);
+        Assert.Equal(policy.TotalCap, budget.Cap);
 
         var shared = Assert.Single(harness.Authority.CreateFullSnapshot().Entities);
         Assert.Equal(OwnerA, shared.OwnerPlayerKey);
@@ -220,13 +220,15 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     }
 
     [Fact]
-    public void Ten_percent_terrorbeak_consumes_the_same_owner_pool_without_a_global_cap()
+    public void Ten_percent_terrorbeak_shares_the_owner_total_cap_with_the_same_species()
     {
         var harness = new Harness(SanityMonsterIntensityIds.Default);
         harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "creeper-conversion");
         harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 0);
         harness.Observe(OwnerA, 10d, revision: 3, gameMinute: 1);
+        var converted = Assert.Single(harness.Authority.CreateFullSnapshot().Entities);
+        LockToPlayer(harness.Authority, converted, OwnerA);
 
         var terrorbeak = harness.Authority.TrySpawn(
             Command(
@@ -234,17 +236,29 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 HostileShadowSpawnOrigin.Interval,
                 OwnerA,
                 "Farm",
-                gameMinute: 1,
+                gameMinute: 181,
                 ShippedProfiles.Value.Terrorbeak
             )
         );
+        LockToPlayer(harness.Authority, terrorbeak, OwnerA);
+        var sameSpeciesBeforeCap = harness.Authority.TrySpawn(
+            Command(
+                "same-species-before-cap",
+                HostileShadowSpawnOrigin.Interval,
+                OwnerA,
+                "Farm",
+                gameMinute: 241,
+                ShippedProfiles.Value.CreeperFear
+            )
+        );
+        LockToPlayer(harness.Authority, sameSpeciesBeforeCap, OwnerA);
         var sameOwnerAtCap = harness.Authority.TrySpawn(
             Command(
                 "same-owner-at-cap",
                 HostileShadowSpawnOrigin.Interval,
                 OwnerA,
                 "Farm",
-                gameMinute: 1,
+                gameMinute: 242,
                 ShippedProfiles.Value.CreeperFear
             )
         );
@@ -263,11 +277,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         );
 
         Assert.True(terrorbeak.Spawned);
+        Assert.True(sameSpeciesBeforeCap.Spawned);
         Assert.Equal(HostileShadowSpawnStatus.AtCap, sameOwnerAtCap.Status);
         Assert.True(otherOwner.Spawned);
-        Assert.Equal(2, harness.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(3, harness.Authority.GetOwnerOccupancy(OwnerA));
         Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerB));
-        Assert.Equal(3, harness.Authority.Count);
+        Assert.Equal(4, harness.Authority.Count);
         var ownerBindings = harness.Authority.CreateFullSnapshot().Entities
             .Where(state => state.OwnerPlayerKey == OwnerA)
             .Select(state => state.AssetBindingId)
@@ -301,6 +316,46 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 )
             ).Spawned
         );
+        Assert.True(
+            harness.Authority.TrySpawn(
+                Command(
+                    "fill-cap-second",
+                    HostileShadowSpawnOrigin.Interval,
+                    OwnerA,
+                    "Farm",
+                    120,
+                    ShippedProfiles.Value.CreeperFear
+                )
+            ).Spawned
+        );
+        Assert.True(
+            harness.Authority.TrySpawn(
+                Command(
+                    "fill-cap-third",
+                    HostileShadowSpawnOrigin.Interval,
+                    OwnerA,
+                    "Farm",
+                    180,
+                    ShippedProfiles.Value.CreeperFear
+                )
+            ).Spawned
+        );
+        Assert.True(
+            harness.Authority.TrySpawn(
+                Command(
+                    "fill-cap-fourth",
+                    HostileShadowSpawnOrigin.Interval,
+                    OwnerA,
+                    "Farm",
+                    240,
+                    ShippedProfiles.Value.CreeperFear
+                )
+            ).Spawned
+        );
+        var original = harness.Authority.CreateFullSnapshot().Entities.ToArray();
+        Assert.Equal(5, original.Length);
+        foreach (var state in original)
+            LockToPlayer(harness.Authority, state, OwnerA);
         Assert.Equal(
             HostileShadowSpawnStatus.AtCap,
             harness.Authority.TrySpawn(
@@ -309,7 +364,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                     HostileShadowSpawnOrigin.Interval,
                     OwnerA,
                     "Farm",
-                    120,
+                    300,
                     ShippedProfiles.Value.CreeperFear
                 )
             ).Status
@@ -331,12 +386,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 HostileShadowSpawnOrigin.Interval,
                 OwnerA,
                 "Farm",
-                120,
+                300,
                 ShippedProfiles.Value.CreeperFear
             )
         );
         Assert.True(replacement.Spawned);
-        Assert.Equal(2, harness.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(5, harness.Authority.GetOwnerOccupancy(OwnerA));
 
         Assert.True(
             harness.Authority.CleanupEntity(
@@ -350,12 +405,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 HostileShadowSpawnOrigin.Interval,
                 OwnerA,
                 "Farm",
-                120,
+                300,
                 ShippedProfiles.Value.CreeperFear
             )
         );
         Assert.Equal(HostileShadowSpawnStatus.Waiting, sameMinute.Status);
-        Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(4, harness.Authority.GetOwnerOccupancy(OwnerA));
     }
 
     [Fact]
@@ -661,6 +716,41 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 ElapsedSeconds = 0d,
             },
             index
+        );
+    }
+
+    private static void LockToPlayer(
+        HostileShadowAuthority authority,
+        HostileShadowSpawnResult result,
+        string targetPlayerKey
+    )
+    {
+        Assert.True(result.Spawned, result.Reason);
+        Assert.True(authority.TryGetEntity(result.EntityId!.Value, out var state));
+        LockToPlayer(authority, state!, targetPlayerKey);
+    }
+
+    private static void LockToPlayer(
+        HostileShadowAuthority authority,
+        ShadowStateSnapshot state,
+        string targetPlayerKey
+    )
+    {
+        Assert.True(
+            authority.TryUpdate(
+                new HostileShadowStateUpdate(
+                    state.EntityId,
+                    state.LocationId,
+                    state.StateId,
+                    targetPlayerKey,
+                    state.PositionX,
+                    state.PositionY,
+                    state.Health,
+                    "hostile-shadow.test-target-locked"
+                ),
+                out var reason
+            ),
+            reason
         );
     }
 

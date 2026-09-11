@@ -276,9 +276,20 @@ public sealed class CreeperFearCombatAndHitTeleportTests
         Assert.Equal(100d, hit.PositionX, precision: 8);
         Assert.Equal(200d, hit.PositionY, precision: 8);
         Assert.Null(started.Machine.CurrentInstance);
-        var completed = controller.Advance(
+        var arrival = controller.Advance(
             hit.PositionX,
             hit.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, arrival.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        var completed = controller.Advance(
+            arrival.PositionX,
+            arrival.PositionY,
             HostileShadowHitResponseController.TransitionDurationMilliseconds,
             hasTarget: true
         );

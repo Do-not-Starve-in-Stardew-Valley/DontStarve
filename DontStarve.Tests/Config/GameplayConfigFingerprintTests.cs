@@ -10,7 +10,9 @@ public sealed class GameplayConfigFingerprintTests
     {
         var registry = ConfigTestData.LoadShippedRegistry();
         const string first =
-            "{\"EnableSanitySystem\":true,"
+            "{\"EnableHungerSystem\":false,"
+            + "\"EnableSeedEdibility\":true,"
+            + "\"EnableSanitySystem\":true,"
             + "\"SanityMonsterIntensity\":\"Default\","
             + "\"DarkHandMode\":\"FireThief\","
             + "\"EnableNaturalDarkness\":true,"
@@ -21,6 +23,8 @@ public sealed class GameplayConfigFingerprintTests
             + "\"EnableDawnDuskMusic\":false}";
         const string reversed =
             "{\"EnableDawnDuskMusic\":false,"
+            + "\"EnableHungerSystem\":false,"
+            + "\"EnableSeedEdibility\":true,"
             + "\"EnableSanityVisualEffects\":true,"
             + "\"EnableJunimoBlessing\":false,"
             + "\"MonsterDifficultyProfile\":\"Compatible\","
@@ -40,16 +44,18 @@ public sealed class GameplayConfigFingerprintTests
         Assert.Equal(left.FullHash[..12], left.PublicIdentifier);
         Assert.Equal(64, left.FullHash.Length);
         Assert.Equal(
-            "8A699C9C87B825F64199B81698CD6D0CAA9072145B2ECEB2CFBDF95901503B3C",
+            "9E1EFC6ED5D94DA8D0D4929D4212C209D0D033177E363A7BE983584A65F61748",
             left.FullHash
         );
         Assert.Equal(
             "SchemaVersion=1\n"
                 + "DarkHandMode=FireThief\n"
                 + "DarknessDamageMode=Default\n"
+                + "EnableHungerSystem=false\n"
                 + "EnableJunimoBlessing=false\n"
                 + "EnableNaturalDarkness=true\n"
                 + "EnableSanitySystem=true\n"
+                + "EnableSeedEdibility=true\n"
                 + "MonsterDifficultyProfile=Compatible\n"
                 + "SanityMonsterIntensity=Default\n",
             left.CanonicalText

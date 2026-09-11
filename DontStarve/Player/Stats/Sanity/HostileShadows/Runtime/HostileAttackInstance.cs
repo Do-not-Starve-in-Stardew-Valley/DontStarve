@@ -94,25 +94,54 @@ internal sealed class HostileAttackInstance
 
     internal string InstanceId { get; }
     internal long EntityId { get; }
-    internal long Revision { get; }
+    internal long Revision { get; private set; }
     internal string LocationId { get; }
     internal string TargetPlayerKey { get; }
-    internal double OriginPositionX { get; }
-    internal double OriginPositionY { get; }
+    internal double OriginPositionX { get; private set; }
+    internal double OriginPositionY { get; private set; }
     internal double DirectionX { get; }
     internal double DirectionY { get; }
     internal HostileAttackFacing Facing { get; }
     internal int FrameNumber { get; set; }
     internal int HitPlayerCount => hitPlayerKeys.Count;
 
+    internal bool TryTranslateOrigin(
+        double deltaX,
+        double deltaY
+    )
+    {
+        if (!double.IsFinite(deltaX) || !double.IsFinite(deltaY))
+            return false;
+
+        var nextX = OriginPositionX + deltaX;
+        var nextY = OriginPositionY + deltaY;
+        if (!double.IsFinite(nextX) || !double.IsFinite(nextY))
+            return false;
+
+        OriginPositionX = nextX;
+        OriginPositionY = nextY;
+        return true;
+    }
+
+    internal bool TrySetRevision(long revision)
+    {
+        if (revision <= 0)
+            return false;
+
+        Revision = revision;
+        return true;
+    }
+
     internal bool HasSettledPlayer(long playerId)
     {
-        return playerId >= 0 && hitPlayerIds.Contains(playerId);
+        return playerId != 0 && hitPlayerIds.Contains(playerId);
     }
 
     internal bool TryClaimHit(string nonce, string playerKey, out string reason)
     {
-        return TryClaimHit(nonce, playerKey, playerId: -1, out reason);
+        // Zero is the no-player sentinel for this overload; every non-zero signed long is a
+        // possible Stardew UniqueMultiplayerID, including negative IDs.
+        return TryClaimHit(nonce, playerKey, playerId: 0, out reason);
     }
 
     internal bool TryClaimHit(
@@ -147,7 +176,7 @@ internal sealed class HostileAttackInstance
         if (
             nonces.Count >= MaximumLedgerEntries
             || hitPlayerKeys.Count >= MaximumLedgerEntries
-            || (playerId >= 0 && hitPlayerIds.Count >= MaximumLedgerEntries)
+            || (playerId != 0 && hitPlayerIds.Count >= MaximumLedgerEntries)
         )
         {
             reason = "hostile-shadow.attack-hit-ledger-capacity";
@@ -156,7 +185,7 @@ internal sealed class HostileAttackInstance
 
         nonces.Add(nonce);
         hitPlayerKeys.Add(playerKey);
-        if (playerId >= 0)
+        if (playerId != 0)
             hitPlayerIds.Add(playerId);
         reason = "hostile-shadow.attack-hit-ledger-claimed";
         return true;

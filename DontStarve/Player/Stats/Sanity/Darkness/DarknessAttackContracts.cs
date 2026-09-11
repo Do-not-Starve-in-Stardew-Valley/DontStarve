@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 
 namespace DontStarve.Player.Stats.Sanity.Darkness;
@@ -17,6 +18,7 @@ internal static class DarknessAttackContract
     internal const int RepeatMaximumSeconds = 11;
     internal const int MaximumOwnerStates = 16;
     internal const int MaximumRequestIdLength = 128;
+    internal const string PlayerHasNoHealthReason = "darkness.mode.player-has-no-health";
 }
 
 internal enum DarknessAttackOwnerState
@@ -154,6 +156,58 @@ internal readonly record struct DarknessAttackUpdateResult(
             string.Empty,
             null
         );
+}
+
+/// <summary>
+/// Presentation-only guard for the "entered darkness" message. A darkness attack can restart
+/// its countdown without ending the underlying authorized-darkness segment, so this decision must
+/// not be derived from the current request ID or attack state alone.
+/// </summary>
+internal sealed class DarknessAttackEntryPromptGate
+{
+    private readonly HashSet<DarknessAttackOwnerKey> shownOwners = new();
+
+    internal DarknessAttackPromptKind Filter(
+        DarknessAttackObservation observation,
+        DarknessAttackPromptKind prompt
+    )
+    {
+        if (!observation.GameplaySettleable || !observation.IsAuthorizedPitchBlack)
+        {
+            shownOwners.Remove(observation.Key);
+            return prompt;
+        }
+
+        if (prompt != DarknessAttackPromptKind.EnteredDarkness)
+            return prompt;
+
+        return shownOwners.Add(observation.Key)
+            ? prompt
+            : DarknessAttackPromptKind.None;
+    }
+
+    internal void Remove(DarknessAttackOwnerKey key) => shownOwners.Remove(key);
+
+    internal void RemovePlayer(string playerKey)
+    {
+        if (!SanityPlayerKey.IsCanonical(playerKey))
+            return;
+
+        List<DarknessAttackOwnerKey>? removals = null;
+        foreach (var key in shownOwners)
+        {
+            if (!string.Equals(key.PlayerKey, playerKey, StringComparison.Ordinal))
+                continue;
+            removals ??= new List<DarknessAttackOwnerKey>();
+            removals.Add(key);
+        }
+        if (removals is null)
+            return;
+        foreach (var key in removals)
+            shownOwners.Remove(key);
+    }
+
+    internal void Clear() => shownOwners.Clear();
 }
 
 internal sealed class DarknessAttackStateSnapshot

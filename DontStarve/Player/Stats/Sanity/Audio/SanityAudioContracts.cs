@@ -175,7 +175,14 @@ internal interface ISanityProcessAudioOutput : IDisposable
 
     void TriggerDanger();
 
+    /// <summary>
+    /// Changes whether a new warning may be armed. Releasing the logical claim does not stop an
+    /// already-playing one-shot; hard lifecycle cleanup uses StopDarknessWarningPlayback instead.
+    /// </summary>
     void SetDarknessWarningActive(bool active);
+
+    /// <summary>Stops and disposes the current warning instance for hard lifecycle cleanup.</summary>
+    void StopDarknessWarningPlayback() { }
 
     /// <summary>
     /// Selects the host-authorized warning clip before the shared warning lane is activated. An
@@ -183,12 +190,13 @@ internal interface ISanityProcessAudioOutput : IDisposable
     /// </summary>
     void SetDarknessWarningClip(string warningClipId) { }
 
-    /// <summary>Pauses/resumes only the warning one-shot without touching the attack one-shot.</summary>
+    /// <summary>Pauses/resumes the warning one-shot in place without touching the attack one-shot.</summary>
     void SetDarknessWarningPaused(bool paused) { }
 
     /// <summary>
     /// Plays the settled darkness-attack one-shot. This lane is deliberately independent from
-    /// process pause, local menus, and window focus, so the current instance can finish naturally.
+    /// process pause, designated minigames, and window focus, so the current instance can finish
+    /// naturally.
     /// </summary>
     void TriggerDarknessAttack() { }
 

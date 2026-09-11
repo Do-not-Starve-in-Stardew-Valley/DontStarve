@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Player.Stats.Food;
 using HungerEatFood = DontStarve.Player.Stats.Hunger.HungerBehaviors.EatFood;
 using SanityEatFood = DontStarve.Player.Stats.Sanity.SanityBehaviors.EatFood;
 using Wearing = DontStarve.Player.Stats.Sanity.SanityBehaviors.Wearing;
@@ -21,7 +22,7 @@ namespace DontStarve.Display.UIElements;
 /// </summary>
 internal sealed class FoodBuffTooltipFormatter : IDisposable
 {
-    internal const string ExtraMachineConfigUniqueId = "selph.ExtraMachineConfig";
+    internal const string ExtraMachineConfigCompatibilityId = "selph.ExtraMachineConfig";
 
     private const int AttackMultiplierIconSourceX = 120;
     private const int ImmunityIconSourceX = 150;
@@ -31,57 +32,78 @@ internal sealed class FoodBuffTooltipFormatter : IDisposable
     private const int WeaponPrecisionMultiplierIconSourceX = 40;
 
     private readonly IModHelper helper;
-    private readonly bool externalExtraMachineConfigLoaded;
+    private readonly bool extraMachineConfigCompatibilityActive;
     private CultureInfo culture;
     private bool disposed;
 
     internal FoodBuffTooltipFormatter(IModHelper helper)
         : this(
             helper,
-            helper.ModRegistry.IsLoaded(ExtraMachineConfigUniqueId)
+            helper.ModRegistry.IsLoaded(ExtraMachineConfigCompatibilityId)
         ) { }
 
     internal FoodBuffTooltipFormatter(
         IModHelper helper,
-        bool externalExtraMachineConfigLoaded
+        bool extraMachineConfigCompatibilityActive
     )
     {
         this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
-        this.externalExtraMachineConfigLoaded = externalExtraMachineConfigLoaded;
+        this.extraMachineConfigCompatibilityActive = extraMachineConfigCompatibilityActive;
         this.culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
         helper.Events.Content.LocaleChanged += this.OnLocaleChanged;
     }
 
     internal IReadOnlyList<SanityTooltipRow> GetRows(
         Item? item,
+        bool showHunger,
         bool showSanity,
         string[]? vanillaBuffIcons = null,
-        FoodBuffTooltipTextMode textMode = FoodBuffTooltipTextMode.Descriptive
+        FoodBuffTooltipTextMode textMode = FoodBuffTooltipTextMode.Descriptive,
+        bool includeExtendedBuffRows = false
     )
     {
         if (item == null || string.IsNullOrWhiteSpace(item.QualifiedItemId))
             return Array.Empty<SanityTooltipRow>();
 
         var rows = new List<SanityTooltipRow>();
-        AddSurvivalRows(item, showSanity, textMode, rows);
-        AddRows(rows, this.GetExtraMachineConfigRows(item));
+        AddSurvivalRows(item, showHunger, showSanity, textMode, rows);
+        AddRows(
+            rows,
+            this.GetExtendedBuffRows(item, includeExtendedBuffRows)
+        );
         return SanityTooltipRowFilter.RemoveVanillaDuplicates(rows, vanillaBuffIcons);
     }
 
-    internal IReadOnlyList<SanityTooltipRow> GetSurvivalRows(Item? item, bool showSanity)
+    internal IReadOnlyList<SanityTooltipRow> GetSurvivalRows(
+        Item? item,
+        bool showHunger,
+        bool showSanity
+    )
     {
         if (item == null || string.IsNullOrWhiteSpace(item.QualifiedItemId))
             return Array.Empty<SanityTooltipRow>();
 
         var rows = new List<SanityTooltipRow>();
-        AddSurvivalRows(item, showSanity, FoodBuffTooltipTextMode.Descriptive, rows);
+        AddSurvivalRows(
+            item,
+            showHunger,
+            showSanity,
+            FoodBuffTooltipTextMode.Descriptive,
+            rows
+        );
         return rows.Count == 0 ? Array.Empty<SanityTooltipRow>() : rows;
     }
 
-    internal IReadOnlyList<SanityTooltipRow> GetExtraMachineConfigRows(Item? item)
+    internal IReadOnlyList<SanityTooltipRow> GetExtendedBuffRows(
+        Item? item,
+        bool includeExtendedBuffRows = false
+    )
     {
         if (
-            this.externalExtraMachineConfigLoaded
+            (
+                this.extraMachineConfigCompatibilityActive
+                && !includeExtendedBuffRows
+            )
             || item == null
             || !Game1.objectData.TryGetValue(item.ItemId, out var objectData)
         )
@@ -89,8 +111,8 @@ internal sealed class FoodBuffTooltipFormatter : IDisposable
             return Array.Empty<SanityTooltipRow>();
         }
 
-        // This deliberately mirrors ExtraMachineConfig and the vanilla tooltip path. Reading
-        // ObjectData.CustomAttributes directly misses BuffId resolution and ModifyItemBuffs.
+        // Use Stardew's effective item-Buff aggregation so BuffId resolution and ModifyItemBuffs
+        // remain consistent with the vanilla tooltip path.
         var effects = new BuffEffects();
         foreach (
             var buff in SObject.TryCreateBuffsFromData(
@@ -147,9 +169,9 @@ internal sealed class FoodBuffTooltipFormatter : IDisposable
         return rows.Count == 0 ? Array.Empty<SanityTooltipRow>() : rows;
     }
 
-    internal IReadOnlyList<string> GetLines(Item? item, bool showSanity)
+    internal IReadOnlyList<string> GetLines(Item? item, bool showHunger, bool showSanity)
     {
-        var rows = this.GetRows(item, showSanity);
+        var rows = this.GetRows(item, showHunger, showSanity);
         if (rows.Count == 0)
             return Array.Empty<string>();
 
@@ -183,14 +205,61 @@ internal sealed class FoodBuffTooltipFormatter : IDisposable
 
     private void AddSurvivalRows(
         Item item,
+        bool showHunger,
         bool showSanity,
         FoodBuffTooltipTextMode textMode,
         List<SanityTooltipRow> rows
     )
     {
         if (
-            HungerEatFood.FoodHunger is not null
-            && HungerEatFood.FoodHunger.TryGetValue(item.ItemId, out var hungerValue)
+            SeedEdibilityRuntime.Classify(item) == SeedClassification.ExplicitlyExcluded
+            || (
+                SeedEdibilityRuntime.IsTargetSeed(item)
+                && !SeedEdibilityRuntime.ShouldExposeFoodRules(item)
+            )
+        )
+        {
+            return;
+        }
+
+        if (StarfruitFoodRules.IsStarfruit(item.ItemId))
+        {
+            if (showHunger)
+            {
+                rows.Add(
+                    new SanityTooltipRow(
+                        SanityTooltipRowKind.Hunger,
+                        this.helper.Translation
+                            .Get("hunger-tooltip.percent", new { value = "100%" })
+                            .ToString(),
+                        SanityTooltipIconKind.HungerIcon,
+                        -1,
+                        -1
+                    )
+                );
+            }
+
+            if (showSanity)
+            {
+                rows.Add(
+                    new SanityTooltipRow(
+                        SanityTooltipRowKind.Sanity,
+                        this.helper.Translation
+                            .Get("sanity-tooltip.food-percent", new { value = "100%" })
+                            .ToString(),
+                        SanityTooltipIconKind.SanityBrain,
+                        -1,
+                        -1
+                    )
+                );
+            }
+            return;
+        }
+
+        if (
+            showHunger
+            && HungerEatFood.FoodHunger is not null
+            && FoodRuleRuntime.TryGetHunger(item, out var hungerValue)
             && this.TryFormatSigned(hungerValue, out var formattedHunger)
         )
         {
@@ -214,7 +283,7 @@ internal sealed class FoodBuffTooltipFormatter : IDisposable
 
         if (
             SanityEatFood.FoodSanity is not null
-            && SanityEatFood.FoodSanity.TryGetValue(item.ItemId, out var foodSanity)
+            && FoodRuleRuntime.TryGetSanity(item, out var foodSanity)
             && this.TryFormatSigned(foodSanity, out var formattedFoodSanity)
         )
         {

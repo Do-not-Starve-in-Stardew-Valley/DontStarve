@@ -171,6 +171,49 @@ internal readonly record struct HarmlessProjectionWorldPoint(double X, double Y)
 }
 
 /// <summary>
+/// One owner-local movement intent for the shared shadow PushBox bridge. The host treats the
+/// geometry as authoritative metadata and consumes only this bounded position intent.
+/// </summary>
+internal readonly record struct ShadowCreaturePushBoxIntent(
+    string CorrelationId,
+    string OwnerPlayerKey,
+    string SpeciesId,
+    string LocationId,
+    long Revision,
+    double CurrentPositionX,
+    double CurrentPositionY,
+    double NormalTargetPositionX,
+    double NormalTargetPositionY
+)
+{
+    internal bool IsFinite =>
+        !string.IsNullOrWhiteSpace(CorrelationId)
+        && !string.IsNullOrWhiteSpace(OwnerPlayerKey)
+        && !string.IsNullOrWhiteSpace(SpeciesId)
+        && !string.IsNullOrWhiteSpace(LocationId)
+        && Revision > 0
+        && double.IsFinite(CurrentPositionX)
+        && double.IsFinite(CurrentPositionY)
+        && double.IsFinite(NormalTargetPositionX)
+        && double.IsFinite(NormalTargetPositionY);
+}
+
+/// <summary>
+/// Farmhands submit intents through this seam; the host never needs to expose the projection
+/// index or accept client-supplied PushBox geometry.
+/// </summary>
+internal interface IShadowCreaturePushBoxIntentSink
+{
+    bool SubmitShadowCreaturePushBoxIntent(
+        string ownerPlayerKey,
+        string locationId,
+        long batchNonce,
+        IReadOnlyList<ShadowCreaturePushBoxIntent> intents,
+        out string reason
+    );
+}
+
+/// <summary>
 /// A bounded animation-state contract consumed by the stage 03 resource facade. Species own the
 /// timing and IDs; the host only validates and retains one loader-owned frame-zero result per state.
 /// </summary>

@@ -108,18 +108,37 @@ internal sealed class HostileShadowHitResponseController
     private bool hasTeleportPoint;
     private bool completeWithoutTeleport;
     private bool removalIssued;
+    private string hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
 
     internal HostileShadowHitResponseController(
         HostileAttackStateMachine attackState,
-        HostileShadowTeleportPointSelector? selector = null
+        HostileShadowTeleportPointSelector? selector = null,
+        string initialHitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None
     )
     {
         this.attackState = attackState
             ?? throw new ArgumentNullException(nameof(attackState));
         this.selector = selector ?? new HostileShadowTeleportPointSelector();
+        if (
+            string.Equals(
+                attackState.StateId,
+                HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            hitTeleportVisualPhase = string.Equals(
+                initialHitTeleportVisualPhase,
+                HostileShadowHitTeleportVisualPhaseIds.Spawn,
+                StringComparison.Ordinal
+            )
+                ? HostileShadowHitTeleportVisualPhaseIds.Spawn
+                : HostileShadowHitTeleportVisualPhaseIds.Hit;
+        }
     }
 
     internal string StateId => attackState.StateId;
+    internal string HitTeleportVisualPhase => hitTeleportVisualPhase;
     internal HostileShadowLifecycleReceipt? ActiveReceipt { get; private set; }
     internal double ElapsedMilliseconds => elapsedMilliseconds;
 
@@ -171,6 +190,90 @@ internal sealed class HostileShadowHitResponseController
             )
         )
         {
+            if (
+                string.Equals(
+                    hitTeleportVisualPhase,
+                    HostileShadowHitTeleportVisualPhaseIds.Spawn,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                // A valid hit during the arrival Spawn presentation interrupts that one-shot
+                // visual immediately. The business state remains HitTeleport, but the new hit
+                // owns one fresh 400ms hurt phase and one fresh destination selection.
+                var spawnSelection = selector.Select(
+                    input.Map,
+                    input.LocationId,
+                    input.PositionX,
+                    input.PositionY,
+                    input.TileSizePixels,
+                    input.Random
+                );
+                elapsedMilliseconds = 0d;
+                hasTeleportPoint = spawnSelection.Selected;
+                completeWithoutTeleport = spawnSelection.Status
+                    == HostileShadowTeleportSelectionStatus.NoLegalPoint;
+                teleportPoint = spawnSelection.Point;
+
+                if (
+                    spawnSelection.Status
+                        is HostileShadowTeleportSelectionStatus.LocationInvalid
+                        or HostileShadowTeleportSelectionStatus.Rejected
+                )
+                {
+                    var despawn = attackState.TransitionToExternalState(
+                        HostileShadowStateIds.Despawn,
+                        input.PositionX,
+                        input.PositionY
+                    );
+                    if (
+                        !despawn.Valid
+                        || !TryReceipt(
+                            input,
+                            HostileShadowLifecycleTransitionKind.Despawn,
+                            spawnSelection.Reason,
+                            null,
+                            out var despawnReceipt
+                        )
+                    )
+                    {
+                        return Rejected(
+                            input,
+                            "hostile-shadow.hit-response-despawn-transition-failed"
+                        );
+                    }
+                    hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
+                    ActiveReceipt = despawnReceipt;
+                    return new HostileShadowHitResponseDecision(
+                        HostileShadowHitResponseDecisionStatus.RemovalRequested,
+                        HostileShadowStateIds.Despawn,
+                        despawn.PositionX,
+                        despawn.PositionY,
+                        false,
+                        true,
+                        !Same(input.PositionX, despawn.PositionX)
+                            || !Same(input.PositionY, despawn.PositionY),
+                        true,
+                        despawnReceipt,
+                        spawnSelection.Reason
+                    );
+                }
+
+                hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.Hit;
+                return new HostileShadowHitResponseDecision(
+                    HostileShadowHitResponseDecisionStatus.Advanced,
+                    HostileShadowStateIds.HitTeleport,
+                    input.PositionX,
+                    input.PositionY,
+                    false,
+                    true,
+                    false,
+                    false,
+                    ActiveReceipt,
+                    "hostile-shadow.hit-teleport-spawn-interrupted"
+                );
+            }
+
             // Damage/health may still advance, but the first hit owns the transition target,
             // seed, duration, and correlation. A repeat never restarts or rerolls it.
             return Existing(
@@ -230,6 +333,7 @@ internal sealed class HostileShadowHitResponseController
                     "hostile-shadow.hit-response-despawn-transition-failed"
                 );
             }
+            hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
             ActiveReceipt = despawnReceipt;
             return new HostileShadowHitResponseDecision(
                 HostileShadowHitResponseDecisionStatus.RemovalRequested,
@@ -259,6 +363,7 @@ internal sealed class HostileShadowHitResponseController
             return Rejected(input, "hostile-shadow.hit-teleport-receipt-invalid");
         }
         ActiveReceipt = receipt;
+        hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.Hit;
         return new HostileShadowHitResponseDecision(
             HostileShadowHitResponseDecisionStatus.Started,
             HostileShadowStateIds.HitTeleport,
@@ -382,7 +487,12 @@ internal sealed class HostileShadowHitResponseController
         {
             elapsedMilliseconds += elapsed;
             if (
-                !completeWithoutTeleport
+                string.Equals(
+                    hitTeleportVisualPhase,
+                    HostileShadowHitTeleportVisualPhaseIds.Hit,
+                    StringComparison.Ordinal
+                )
+                && !completeWithoutTeleport
                 && elapsedMilliseconds < TransitionDurationMilliseconds
             )
             {
@@ -392,6 +502,54 @@ internal sealed class HostileShadowHitResponseController
                     HostileShadowHitResponseDecisionStatus.Advanced,
                     false,
                     "hostile-shadow.hit-teleport-active"
+                );
+            }
+            if (
+                string.Equals(
+                    hitTeleportVisualPhase,
+                    HostileShadowHitTeleportVisualPhaseIds.Spawn,
+                    StringComparison.Ordinal
+                )
+                && elapsedMilliseconds < TransitionDurationMilliseconds
+            )
+            {
+                return Existing(
+                    positionX,
+                    positionY,
+                    HostileShadowHitResponseDecisionStatus.Advanced,
+                    false,
+                    "hostile-shadow.hit-teleport-arrival-spawn-active"
+                );
+            }
+
+            if (
+                !completeWithoutTeleport
+                && string.Equals(
+                    hitTeleportVisualPhase,
+                    HostileShadowHitTeleportVisualPhaseIds.Hit,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                var arrivalX = hasTeleportPoint
+                    ? teleportPoint.PositionX
+                    : positionX;
+                var arrivalY = hasTeleportPoint
+                    ? teleportPoint.PositionY
+                    : positionY;
+                hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.Spawn;
+                elapsedMilliseconds = 0d;
+                return new HostileShadowHitResponseDecision(
+                    HostileShadowHitResponseDecisionStatus.Advanced,
+                    HostileShadowStateIds.HitTeleport,
+                    arrivalX,
+                    arrivalY,
+                    false,
+                    false,
+                    !Same(positionX, arrivalX) || !Same(positionY, arrivalY),
+                    false,
+                    ActiveReceipt,
+                    "hostile-shadow.hit-teleport-arrival-spawn-started"
                 );
             }
 
@@ -412,6 +570,7 @@ internal sealed class HostileShadowHitResponseController
             hasTeleportPoint = false;
             completeWithoutTeleport = false;
             elapsedMilliseconds = 0d;
+            hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
             return new HostileShadowHitResponseDecision(
                 HostileShadowHitResponseDecisionStatus.Completed,
                 completion.StateId,
@@ -435,6 +594,7 @@ internal sealed class HostileShadowHitResponseController
             )
         )
         {
+            hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
             elapsedMilliseconds += elapsed;
             if (elapsedMilliseconds < TransitionDurationMilliseconds)
             {
@@ -474,6 +634,7 @@ internal sealed class HostileShadowHitResponseController
             )
         )
         {
+            hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
             return Existing(
                 positionX,
                 positionY,
@@ -519,6 +680,7 @@ internal sealed class HostileShadowHitResponseController
         hasTeleportPoint = false;
         completeWithoutTeleport = false;
         removalIssued = false;
+        hitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
         ActiveReceipt = receipt;
         return new HostileShadowHitResponseDecision(
             HostileShadowHitResponseDecisionStatus.Started,

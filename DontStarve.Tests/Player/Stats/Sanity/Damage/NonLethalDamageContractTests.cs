@@ -590,6 +590,7 @@ public sealed class NonLethalDamageApplyDamageUpToFloorContractTests
         Assert.Contains("player.buffs.Defense", source, StringComparison.Ordinal);
         Assert.Contains("Book_Defense", source, StringComparison.Ordinal);
         Assert.Contains("player.health = afterHealth", source, StringComparison.Ordinal);
+        Assert.Contains("player.playNearbySoundAll(\"ow\")", source, StringComparison.Ordinal);
         Assert.Contains("health-snapshot-drift", source, StringComparison.Ordinal);
         Assert.DoesNotContain("takeDamage(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Game1.random", source, StringComparison.Ordinal);

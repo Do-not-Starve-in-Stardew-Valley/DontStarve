@@ -10,7 +10,7 @@ internal static class MusicManager
     private static string _manifestId;
     private static bool _initialized;
     private static bool _enabled;
-    private static bool _sanityMusicSuppressed;
+    private static bool _bossMusicOverrideActive;
 
     internal static void Initialize(
         IModHelper helper,
@@ -37,8 +37,8 @@ internal static class MusicManager
         {
             DawnMusicService.Enable(_helper, _monitor, _manifestId);
             DuskMusicService.Enable(_helper, _monitor);
-            DawnMusicService.SetSuppressed(_sanityMusicSuppressed);
-            DuskMusicService.SetSuppressed(_sanityMusicSuppressed);
+            DawnMusicService.SetBossMusicOverrideActive(_bossMusicOverrideActive);
+            DuskMusicService.SetBossMusicOverrideActive(_bossMusicOverrideActive);
             return;
         }
 
@@ -47,19 +47,20 @@ internal static class MusicManager
     }
 
     /// <summary>
-    /// Joins the independent dawn/dusk SoundEffect instances to the same process ownership as
-    /// game-channel music. Releasing suppression never resumes an interrupted cue.
+    /// Reserves the highest-priority music lane for a future boss battle. The boss owner can
+    /// interrupt either independent dawn/dusk one-shot, but releasing the override never
+    /// resumes an interrupted cue.
     /// </summary>
-    internal static void SetSanityMusicSuppressed(bool suppressed)
+    internal static void SetBossMusicOverrideActive(bool active)
     {
-        if (_sanityMusicSuppressed == suppressed)
+        if (_bossMusicOverrideActive == active)
             return;
 
-        _sanityMusicSuppressed = suppressed;
+        _bossMusicOverrideActive = active;
         if (!_initialized || !_enabled)
             return;
 
-        DawnMusicService.SetSuppressed(suppressed);
-        DuskMusicService.SetSuppressed(suppressed);
+        DawnMusicService.SetBossMusicOverrideActive(active);
+        DuskMusicService.SetBossMusicOverrideActive(active);
     }
 }

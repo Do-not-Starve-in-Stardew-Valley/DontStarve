@@ -38,7 +38,7 @@ internal class NearNpc : ITimeRelatedBehavior
             var distance = Util.Distance(playerPosition, npc.Tile);
             if (npc is Junimo or JunimoHarvester)
             {
-                // player.Tile 与 npc.Tile 都是格坐标；Junimo 也必须应用相同的 10 格线性衰减。
+                // player.Tile 与 npc.Tile 都是格坐标；Junimo 也必须应用相同的 10 格反平方衰减。
                 junimoValue += SanityBehaviorRules.CalculateFriendlyNpcRecovery(
                     FriendlyNpcSanityKind.Junimo,
                     0,

@@ -2,6 +2,28 @@
   "SchemaVersion": 1,
   "Options": [
     {
+      "Key": "EnableHungerSystem",
+      "Type": "Boolean",
+      "Default": false,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.hunger.section",
+      "NameI18n": "config.enable-hunger-system.name",
+      "TooltipI18n": "config.enable-hunger-system.tooltip",
+      "Order": 5
+    },
+    {
+      "Key": "EnableSeedEdibility",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": true,
+      "SectionI18n": "config.hunger.section",
+      "NameI18n": "config.enable-seed-edibility.name",
+      "TooltipI18n": "config.enable-seed-edibility.tooltip",
+      "Order": 7
+    },
+    {
       "Key": "EnableSanitySystem",
       "Type": "Boolean",
       "Default": true,
@@ -135,6 +157,17 @@
       "NameI18n": "config.enable-junimo-blessing.name",
       "TooltipI18n": "config.enable-junimo-blessing.tooltip",
       "Order": 60
+    },
+    {
+      "Key": "EnableDangerMinigameBlocking",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "SectionI18n": "config.sanity.section",
+      "NameI18n": "config.enable-danger-minigame-blocking.name",
+      "TooltipI18n": "config.enable-danger-minigame-blocking.tooltip",
+      "Order": 65
     },
     {
       "Key": "EnableDawnDuskMusic",

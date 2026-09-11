@@ -332,6 +332,42 @@ public sealed class SanityProcessAudioCoordinatorTests
     }
 
     [Fact]
+    public void Darkness_warning_claim_removal_releases_claim_without_stopping_in_flight_warning()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+        var claim = new SanityDarknessWarningClaim(
+            "1",
+            0,
+            SessionId,
+            "warning-request",
+            2,
+            "sanity.clip.darkness.warning",
+            1d
+        );
+
+        coordinator.SubmitDarknessWarningClaim(claim);
+        Assert.Equal(
+            SanityAudioClaimUpdateStatus.Removed,
+            coordinator.RemoveDarknessWarningClaim("1", 0, SessionId, "warning-request").Status
+        );
+
+        Assert.Empty(coordinator.Snapshot().DarknessWarningClaims);
+        Assert.True(output.DarknessWarningPhysical);
+        Assert.Equal(0, output.DarknessWarningReleaseCount);
+
+        coordinator.SetProcessPaused(true);
+        Assert.True(output.DarknessWarningPaused);
+        Assert.True(output.DarknessWarningPhysical);
+        coordinator.SetProcessPaused(false);
+        Assert.False(output.DarknessWarningPaused);
+        Assert.True(output.DarknessWarningPhysical);
+
+        output.CompleteDarknessWarningNaturally();
+        Assert.False(output.DarknessWarningPhysical);
+    }
+
+    [Fact]
     public void Darkness_attack_triggers_once_and_does_not_replay_after_process_menu_or_focus_pause()
     {
         var output = new FakeProcessOutput();
@@ -710,6 +746,8 @@ public sealed class SanityProcessAudioCoordinatorTests
 
         internal int DarknessWarningActivationCount { get; private set; }
 
+        internal int DarknessWarningReleaseCount { get; private set; }
+
         internal int DarknessAttackTriggerCount { get; private set; }
 
         internal int AmbienceTransitionCount { get; private set; }
@@ -763,8 +801,17 @@ public sealed class SanityProcessAudioCoordinatorTests
             if (active && !DarknessWarningPhysical)
                 DarknessWarningActivationCount++;
             darknessWarningDesired = active;
-            DarknessWarningPhysical =
-                active && !DarknessWarningPaused && (!suspended || specialEventAudioAllowed);
+            // Logical release does not stop an already-created one-shot. The real output owns the
+            // same distinction; tests explicitly complete or hard-stop the physical instance.
+            if (active)
+                DarknessWarningPhysical = true;
+        }
+
+        public void StopDarknessWarningPlayback()
+        {
+            if (DarknessWarningPhysical)
+                DarknessWarningReleaseCount++;
+            DarknessWarningPhysical = false;
         }
 
         public void SetDarknessWarningClip(string warningClipId)
@@ -775,10 +822,6 @@ public sealed class SanityProcessAudioCoordinatorTests
         public void SetDarknessWarningPaused(bool paused)
         {
             DarknessWarningPaused = paused;
-            DarknessWarningPhysical =
-                darknessWarningDesired
-                && !paused
-                && (!suspended || specialEventAudioAllowed);
         }
 
         public void TriggerDarknessAttack()
@@ -804,24 +847,21 @@ public sealed class SanityProcessAudioCoordinatorTests
                 AmbiencePhysical = false;
                 WhispersPhysical = false;
                 DangerPhysical = false;
-                DarknessWarningPhysical = specialEventAudioAllowed
-                    && darknessWarningDesired
-                    && !DarknessWarningPaused;
+                if (!specialEventAudioAllowed)
+                    StopDarknessWarningPlayback();
             }
             else
             {
                 AmbiencePhysical = ambienceDesired && !ContinuousPoolsPaused;
                 WhispersPhysical = whispersDesired && !ContinuousPoolsPaused;
-                DarknessWarningPhysical = darknessWarningDesired && !DarknessWarningPaused;
             }
         }
 
         public void SetSpecialEventAudioAllowed(bool allowed)
         {
             specialEventAudioAllowed = allowed;
-            DarknessWarningPhysical = darknessWarningDesired
-                && !DarknessWarningPaused
-                && (!suspended || specialEventAudioAllowed);
+            if (!allowed && suspended)
+                StopDarknessWarningPlayback();
         }
 
         public void InvalidateResources() => SetSuspended(true);
@@ -846,6 +886,8 @@ public sealed class SanityProcessAudioCoordinatorTests
             DarknessAttackPhysical = false;
             WarningClipId = string.Empty;
         }
+
+        internal void CompleteDarknessWarningNaturally() => DarknessWarningPhysical = false;
 
         public void Dispose() => DisposeCount++;
     }

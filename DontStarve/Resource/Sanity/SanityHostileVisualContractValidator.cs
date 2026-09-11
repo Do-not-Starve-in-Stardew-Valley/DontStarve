@@ -371,6 +371,7 @@ public static class SanityHostileVisualContractValidator
         }
         ValidateRectangle(collision.GetProperty("HurtBoxSourcePx"), "hurt", issues);
         ValidateRectangle(collision.GetProperty("AttackBoxSourcePx"), "attack", issues);
+        ValidatePushBox(collision, issues);
         var activeFrames = collision.GetProperty("AttackActiveFrames")
             .EnumerateArray()
             .Select(value => value.GetInt32())
@@ -378,6 +379,46 @@ public static class SanityHostileVisualContractValidator
         if (!activeFrames.SequenceEqual(new[] { 3, 4 }))
         {
             issues.Add(new("hostile.collision.active-frame-mismatch", "The attack box may be active only on frames 3 and 4."));
+        }
+    }
+
+    private static void ValidatePushBox(
+        JsonElement collision,
+        List<SanityHostileVisualContractIssue> issues
+    )
+    {
+        if (
+            !collision.TryGetProperty("PushBox", out var pushBox)
+            || pushBox.ValueKind != JsonValueKind.Object
+        )
+        {
+            issues.Add(new("hostile.push-box.missing", "Every hostile collision contract must declare a PushBox."));
+            return;
+        }
+
+        if (pushBox.GetProperty("CoordinateSpace").GetString() != SanityHostilePushBoxDefinition.CoordinateSpaceId)
+        {
+            issues.Add(new("hostile.push-box.coordinate-space-mismatch", "PushBox must use actor-origin-relative source pixels."));
+        }
+
+        if (!pushBox.TryGetProperty("SourcePx", out var sourcePx) || sourcePx.ValueKind != JsonValueKind.Object)
+        {
+            issues.Add(new("hostile.push-box.source-missing", "PushBox must declare a SourcePx rectangle."));
+        }
+        else
+        {
+            ValidateRectangle(sourcePx, "push", issues);
+        }
+
+        var groupId = pushBox.GetProperty("GroupId").GetString();
+        if (!SanityHostilePushBoxDefinition.IsStableGroupId(groupId))
+        {
+            issues.Add(new("hostile.push-box.group-id-invalid", "PushBox GroupId must be a bounded lowercase stable identifier."));
+        }
+
+        if (!SanityHostilePushBoxDefinition.IsValidPushForce(pushBox.GetProperty("PushForce").GetDouble()))
+        {
+            issues.Add(new("hostile.push-box.push-force-invalid", "PushBox PushForce must be finite and positive."));
         }
     }
 

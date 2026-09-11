@@ -41,6 +41,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
     private readonly Dictionary<int, OwnerBinding> ownersByScreen = new();
     private readonly Dictionary<DarknessAttackOwnerKey, RemoteOwnerBinding>
         remoteOwners = new();
+    private readonly DarknessAttackEntryPromptGate entryPromptGate = new();
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private DarknessAttackStateMachine? stateMachine;
     private double attackDurationSeconds;
@@ -282,6 +283,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
                 break;
             case SanityStateEventKind.OwnerInvalidated:
                 stateMachine?.RemoveOwner(stateEvent.PlayerKey);
+                entryPromptGate.RemovePlayer(stateEvent.PlayerKey);
                 audio.RemoveDarknessWarningOwner(stateEvent.PlayerKey);
                 RemoveBindingsForOwner(stateEvent.PlayerKey);
                 RemoveRemoteBindingsForOwner(stateEvent.PlayerKey);
@@ -626,6 +628,10 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         bool isRemote
     )
     {
+        result = result with
+        {
+            Prompt = entryPromptGate.Filter(observation, result.Prompt),
+        };
         if (result.Status != DarknessAttackMutationStatus.Applied)
             return;
 
@@ -699,6 +705,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
     {
         if (!ownersByScreen.Remove(screenId, out var binding))
             return;
+        entryPromptGate.Remove(binding.Key);
         if (stateMachine is not null)
         {
             var result = stateMachine.Cancel(binding.Key, reason);
@@ -754,6 +761,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
     )
     {
         remoteOwners.Remove(key);
+        entryPromptGate.Remove(key);
         if (stateMachine is not null)
         {
             var result = stateMachine.Cancel(key, reason);
@@ -855,6 +863,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
 
     private void RemoveRemoteBindingsForOwner(string playerKey)
     {
+        entryPromptGate.RemovePlayer(playerKey);
         List<DarknessAttackOwnerKey>? removals = null;
         foreach (var key in remoteOwners.Keys)
         {
@@ -898,6 +907,7 @@ internal sealed class SmapiDarknessAttackService : IDisposable
         ownersByScreen.Clear();
         remoteOwners.Clear();
         modeTrackersByScreen.Clear();
+        entryPromptGate.Clear();
         audio.ClearDarknessWarningClaims();
         stateMachine?.Clear();
     }

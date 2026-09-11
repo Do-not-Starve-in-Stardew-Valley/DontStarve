@@ -16,7 +16,7 @@ internal static class DuskMusicService
     private static SoundEffectInstance _islandDuskSound;
     private static IMonitor _monitor;
     private static bool _initialized;
-    private static bool _suppressed;
+    private static bool _bossMusicOverrideActive;
     private static int _previousTime;
 
     internal static void Enable(IModHelper helper, IMonitor monitor)
@@ -52,20 +52,21 @@ internal static class DuskMusicService
         _duskSound = null;
         _islandDuskSound = null;
         _initialized = false;
-        _suppressed = false;
+        _bossMusicOverrideActive = false;
         _previousTime = 0;
     }
 
-    internal static void SetSuppressed(bool suppressed)
+    internal static void SetBossMusicOverrideActive(bool active)
     {
-        if (_suppressed == suppressed)
+        if (_bossMusicOverrideActive == active)
             return;
 
-        _suppressed = suppressed;
-        if (!_initialized || !suppressed)
+        _bossMusicOverrideActive = active;
+        if (!_initialized || !active)
             return;
 
-        // Release does not replay the crossed dusk edge; a later day supplies a new edge.
+        // Releasing the boss override does not replay the crossed dusk edge; a later day
+        // supplies a new edge.
         _duskSound?.Stop();
         _islandDuskSound?.Stop();
     }
@@ -85,7 +86,7 @@ internal static class DuskMusicService
 
             // 用 old < trigger <= new 判断跨越，避免黄昏之后读档或重复 TimeChanged 多次播放。
             if (
-                !_suppressed
+                !_bossMusicOverrideActive
                 && oldTime < triggerTime
                 && newTime >= triggerTime
                 && !IsInDungeon()
@@ -104,7 +105,7 @@ internal static class DuskMusicService
     {
         try
         {
-            if (_suppressed)
+            if (_bossMusicOverrideActive)
                 return;
 
             var targetSound = island ? _islandDuskSound : _duskSound;

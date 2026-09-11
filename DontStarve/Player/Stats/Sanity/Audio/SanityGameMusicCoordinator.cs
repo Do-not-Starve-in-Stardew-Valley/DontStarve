@@ -90,7 +90,7 @@ internal readonly record struct SanityGameMusicCapability(
         MiniJukeboxIsAlwaysExempt: true,
         IslandIsBlanketExempt: false,
         ControlsIndependentAudio: false,
-        OwnsDawnDuskLifecycle: true,
+        OwnsDawnDuskLifecycle: false,
         RestoresInterruptedTrack: false,
         "original-reselect-current-state"
     );
@@ -112,7 +112,7 @@ internal readonly record struct SanityGameMusicCapability(
         MiniJukeboxIsAlwaysExempt: true,
         IslandIsBlanketExempt: false,
         ControlsIndependentAudio: false,
-        OwnsDawnDuskLifecycle: true,
+        OwnsDawnDuskLifecycle: false,
         RestoresInterruptedTrack: false,
         "original-reselect-current-state"
     );

@@ -8,6 +8,8 @@ using DontStarve.Display;
 using DontStarve.Display.UIElements;
 using DontStarve.Music;
 using DontStarve.Player;
+using DontStarve.Player.Stats.Food;
+using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.Darkness;
@@ -16,6 +18,7 @@ using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 using DontStarve.Player.Stats.Sanity.Illusions.Projection;
+using DontStarve.Player.Stats.Sanity.Minigames;
 using DontStarve.Player.Stats.Sanity.PassOut;
 using DontStarve.Player.Stats.Sanity.Visual;
 using DontStarve.Player.Stats.Sanity.WorldInteractions.DarkHand;
@@ -609,6 +612,8 @@ internal class ModEntry : Mod, IDisposable
     private SmapiDarkHandThiefService _darkHandThief;
     private SmapiDarkHandLeaseCoordinatorService _darkHandLeaseCoordinator;
     private SmapiHostileShadowHost _hostileShadowHost;
+    private MinigameDangerGateService _minigameDangerGate;
+    private MinigameFishingInterruptionService _minigameFishingInterruption;
     private SmapiEnvironmentLightFinalVisibilitySampler _environmentLightSampler;
     private SmapiNaturalDarknessLightmapService _naturalDarknessLightmap;
     private SmapiNpcFlashlightService _npcFlashlights;
@@ -621,11 +626,15 @@ internal class ModEntry : Mod, IDisposable
     private SmapiPassOutReasonService _passOutReasonService;
     private SmapiSanityTwoAmSpecialDeathService _sanityTwoAmPassOut;
     private SmapiEnvironmentLightDebugOverlay _environmentLightDebugOverlay;
+    private SeedEdibilityInteractionService _seedEdibilityInteraction;
+    private bool _hungerSystemEnabled;
+    private bool _seedEdibilityEnabled = true;
     private bool _sanitySystemEnabled = true;
     private bool _sanityVisualEffectsEnabled = true;
     private bool _lowSanityScreenDistortionEnabled = true;
     private bool _sanityVignetteEnabled = true;
     private bool _naturalDarknessEnabled = true;
+    private bool _dangerMinigameBlockingEnabled = true;
 
     private bool IsNaturalDarknessRuntimeEnabled =>
         _sanitySystemEnabled && _naturalDarknessEnabled;
@@ -639,6 +648,14 @@ internal class ModEntry : Mod, IDisposable
     public override void Entry(IModHelper helper)
     {
         _config = ReadModConfig(helper);
+
+        SeedEdibilityRuntime.TryInstall(ModManifest.UniqueID, Monitor);
+        SeedEdibilityRuntime.SetEnabled(_seedEdibilityEnabled);
+        _seedEdibilityInteraction = new SeedEdibilityInteractionService(
+            helper,
+            Monitor,
+            () => _seedEdibilityEnabled
+        );
 
         // 后续模块不要再从外部 mod 获取 MinuteTimeHelper；本项目的时间契约由内部 TimeApi 提供。
         _timeApi.Initialize(helper);
@@ -657,6 +674,7 @@ internal class ModEntry : Mod, IDisposable
             _canWriteConfig ? _configurationRuntime.Resolver : null,
             _passOutReasonLedger
         );
+        HungerExtensions.SetEnabled(_hungerSystemEnabled);
         DisplayManager.Initialize(helper, _timeApi, _sanityLifecycle);
         _taggedHudMessages = new TaggedHudMessageService(helper);
         // EatFood/Wearing have already loaded their unique data tables through StatManager.
@@ -874,6 +892,25 @@ internal class ModEntry : Mod, IDisposable
             _canWriteConfig ? _configurationRuntime.Resolver : null,
             _sanitySystemEnabled,
             _sanityResources
+        );
+        HostileShadowNpcGreetingPatch.TryInstall(
+            ModManifest.UniqueID + ".npc-greeting",
+            Monitor
+        );
+        _minigameDangerGate = new MinigameDangerGateService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _sanityLifecycle,
+            _hostileShadowHost,
+            () => _dangerMinigameBlockingEnabled
+        );
+        _minigameFishingInterruption = new MinigameFishingInterruptionService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            () => _sanityLifecycle.SessionId,
+            () => _dangerMinigameBlockingEnabled
         );
         IDarkHandModeResolver darkHandModeResolver = _canWriteConfig
             ? new TypedConfigDarkHandModeResolver(_configurationRuntime.Resolver)
@@ -1115,6 +1152,10 @@ internal class ModEntry : Mod, IDisposable
                 LogLevel.Warn
             );
         }
+        DarknessVanillaHurtSoundBridge.TryInstall(
+            ModManifest.UniqueID + ".darkness-audio",
+            Monitor
+        );
         // The forage presentation remains private to the current owner screen. Its shared startup
         // catalog now drives both the exact ground-object draw projection and host pickup authority.
         _forageVisualProjection = new SmapiForageVisualProjectionService(
@@ -1148,10 +1189,17 @@ internal class ModEntry : Mod, IDisposable
 
     void IDisposable.Dispose()
     {
+        _minigameFishingInterruption?.Dispose();
+        _minigameFishingInterruption = null;
+        _minigameDangerGate?.Dispose();
+        _minigameDangerGate = null;
         _shadowCreatureSfx?.Dispose();
         _shadowCreatureSfx = null;
         _taggedHudMessages?.Dispose();
         _taggedHudMessages = null;
+        _seedEdibilityInteraction?.Dispose();
+        _seedEdibilityInteraction = null;
+        SeedEdibilityRuntime.Dispose();
         ActiveShadowCreatureSfx = null;
     }
 
@@ -1237,6 +1285,36 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
 
+            var hungerSystem = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableHungerSystem
+            );
+            if (hungerSystem.HasValue)
+            {
+                _hungerSystemEnabled = hungerSystem.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableHungerSystem is unavailable ({hungerSystem.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var seedEdibility = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableSeedEdibility
+            );
+            if (seedEdibility.HasValue)
+            {
+                _seedEdibilityEnabled = seedEdibility.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableSeedEdibility is unavailable ({seedEdibility.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
             var sanityVisualEffects = _configurationRuntime.Resolver.GetBoolean(
                 ConfigKeys.EnableSanityVisualEffects
             );
@@ -1293,6 +1371,21 @@ internal class ModEntry : Mod, IDisposable
             {
                 Monitor.Log(
                     $"EnableNaturalDarkness is unavailable ({naturalDarkness.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var dangerMinigameBlocking = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableDangerMinigameBlocking
+            );
+            if (dangerMinigameBlocking.HasValue)
+            {
+                _dangerMinigameBlockingEnabled = dangerMinigameBlocking.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableDangerMinigameBlocking is unavailable ({dangerMinigameBlocking.Reason}); using its safe runtime default without overwriting the raw value.",
                     LogLevel.Warn
                 );
             }
@@ -1392,6 +1485,38 @@ internal class ModEntry : Mod, IDisposable
             );
         }
 
+        var savedHungerSystem = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableHungerSystem
+        );
+        if (savedHungerSystem.HasValue)
+        {
+            _hungerSystemEnabled = savedHungerSystem.Value;
+            HungerExtensions.SetEnabled(savedHungerSystem.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableHungerSystem remains unavailable after GMCM save ({savedHungerSystem.Reason}); the active Hunger system state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedSeedEdibility = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableSeedEdibility
+        );
+        if (savedSeedEdibility.HasValue)
+        {
+            _seedEdibilityEnabled = savedSeedEdibility.Value;
+            SeedEdibilityRuntime.SetEnabled(savedSeedEdibility.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableSeedEdibility remains unavailable after GMCM save ({savedSeedEdibility.Reason}); the active seed Edibility state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
         var savedSanitySystem = _configurationRuntime.Resolver.GetBoolean(
             ConfigKeys.EnableSanitySystem
         );
@@ -1483,6 +1608,21 @@ internal class ModEntry : Mod, IDisposable
         {
             Monitor.Log(
                 $"EnableSanityVignette remains unavailable after GMCM save ({savedSanityVignette.Reason}); the active vignette state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedDangerMinigameBlocking = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableDangerMinigameBlocking
+        );
+        if (savedDangerMinigameBlocking.HasValue)
+        {
+            _dangerMinigameBlockingEnabled = savedDangerMinigameBlocking.Value;
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableDangerMinigameBlocking remains unavailable after GMCM save ({savedDangerMinigameBlocking.Reason}); the active minigame danger gate state was left unchanged.",
                 LogLevel.Warn
             );
         }

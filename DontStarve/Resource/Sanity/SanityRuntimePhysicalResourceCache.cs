@@ -10,12 +10,12 @@ namespace DontStarve.Resource.Sanity;
 
 /// <summary>
 /// Owns decoded XNA resources by deployment-relative physical path. The explicit limits
-/// match the frozen stage-05 contract, so malformed metadata cannot grow the cache unbounded.
+/// match the frozen audio contract, so malformed metadata cannot grow the cache unbounded.
 /// </summary>
 internal sealed class SanityRuntimePhysicalResourceCache
 {
     private const int MaxTextureResources = 9;
-    private const int MaxSoundResources = 140;
+    private const int MaxSoundResources = SanityAudioContract.PhysicalClipCount;
 
     private readonly string deploymentRoot;
     private readonly ISanityAssetFileAccess fileAccess;

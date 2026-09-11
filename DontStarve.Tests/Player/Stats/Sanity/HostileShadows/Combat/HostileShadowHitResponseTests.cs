@@ -129,6 +129,10 @@ public sealed class HostileShadowHitResponseTests
 
         Assert.True(first.Valid, first.Reason);
         Assert.Equal(HostileShadowStateIds.HitTeleport, first.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Hit,
+            controller.HitTeleportVisualPhase
+        );
         Assert.True(first.AttackInterrupted);
         Assert.Equal(100d, first.PositionX, precision: 8);
         Assert.Equal(200d, first.PositionY, precision: 8);
@@ -156,15 +160,283 @@ public sealed class HostileShadowHitResponseTests
             hasTarget: true
         );
         Assert.Equal(HostileShadowStateIds.HitTeleport, active.StateId);
-        var completed = controller.Advance(
+        var arrival = controller.Advance(
             active.PositionX,
             active.PositionY,
             1d,
             hasTarget: true
         );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, arrival.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        Assert.Equal(100d + 4d * 64d, arrival.PositionX, precision: 8);
+        Assert.Equal(200d, arrival.PositionY, precision: 8);
+
+        var spawnActive = controller.Advance(
+            arrival.PositionX,
+            arrival.PositionY,
+            399d,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, spawnActive.StateId);
+        var completed = controller.Advance(
+            spawnActive.PositionX,
+            spawnActive.PositionY,
+            1d,
+            hasTarget: true
+        );
         Assert.Equal(HostileShadowStateIds.Chase, completed.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.None,
+            controller.HitTeleportVisualPhase
+        );
         Assert.Equal(100d + 4d * 64d, completed.PositionX, precision: 8);
         Assert.Equal(200d, completed.PositionY, precision: 8);
+    }
+
+    [Fact]
+    public void Spawn_phase_hit_restarts_hurt_animation_and_selects_one_new_destination()
+    {
+        var machine = HostileAttackTestFactory.StartAttack().Machine;
+        var random = new SequenceRandom(12345, 4, 0, 8, 2);
+        var controller = new HostileShadowHitResponseController(machine);
+
+        var first = controller.HandleHit(
+            Input(12, health: 80, 100d, 200d, random)
+        );
+        var arrival = controller.Advance(
+            first.PositionX,
+            first.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: true
+        );
+
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        Assert.Equal(2, random.Calls);
+        var interrupted = controller.HandleHit(
+            Input(
+                13,
+                health: 60,
+                arrival.PositionX,
+                arrival.PositionY,
+                random
+            )
+        );
+
+        Assert.True(interrupted.Valid, interrupted.Reason);
+        Assert.Equal(
+            HostileShadowHitResponseDecisionStatus.Advanced,
+            interrupted.Status
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, interrupted.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Hit,
+            controller.HitTeleportVisualPhase
+        );
+        Assert.True(interrupted.StateChanged);
+        Assert.False(interrupted.PositionChanged);
+        Assert.Equal(0d, controller.ElapsedMilliseconds, precision: 8);
+        Assert.Equal(
+            first.Receipt!.Value.CorrelationId,
+            interrupted.Receipt!.Value.CorrelationId
+        );
+        Assert.Equal(4, random.Calls);
+
+        var hurtActive = controller.Advance(
+            interrupted.PositionX,
+            interrupted.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds - 1d,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, hurtActive.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Hit,
+            controller.HitTeleportVisualPhase
+        );
+
+        var secondArrival = controller.Advance(
+            hurtActive.PositionX,
+            hurtActive.PositionY,
+            1d,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, secondArrival.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        Assert.Equal(arrival.PositionX, secondArrival.PositionX, precision: 8);
+        Assert.Equal(arrival.PositionY + 8d * 64d, secondArrival.PositionY, precision: 8);
+
+        var completed = controller.Advance(
+            secondArrival.PositionX,
+            secondArrival.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.Chase, completed.StateId);
+        Assert.Equal(secondArrival.PositionX, completed.PositionX, precision: 8);
+        Assert.Equal(secondArrival.PositionY, completed.PositionY, precision: 8);
+    }
+
+    [Fact]
+    public void Spawn_phase_hit_with_no_legal_point_keeps_existing_no_teleport_completion()
+    {
+        var machine = HostileAttackTestFactory.StartAttack().Machine;
+        var map = new FakeMap(width: 40, height: 40);
+        var random = new SequenceRandom(12345, 4, 0);
+        var controller = new HostileShadowHitResponseController(machine);
+
+        var first = controller.HandleHit(
+            Input(12, health: 80, 100d, 200d, random, map)
+        );
+        var arrival = controller.Advance(
+            first.PositionX,
+            first.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: true
+        );
+        map.Open = false;
+
+        var interrupted = controller.HandleHit(
+            Input(
+                13,
+                health: 60,
+                arrival.PositionX,
+                arrival.PositionY,
+                random,
+                map
+            )
+        );
+        Assert.True(interrupted.Valid, interrupted.Reason);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Hit,
+            controller.HitTeleportVisualPhase
+        );
+
+        var completed = controller.Advance(
+            interrupted.PositionX,
+            interrupted.PositionY,
+            0d,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.Idle, completed.StateId);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.None,
+            controller.HitTeleportVisualPhase
+        );
+        Assert.Equal(interrupted.PositionX, completed.PositionX, precision: 8);
+        Assert.Equal(interrupted.PositionY, completed.PositionY, precision: 8);
+    }
+
+    [Fact]
+    public void Pending_target_reacquisition_survives_hit_teleport_and_prevents_direct_chase()
+    {
+        var machine = HostileAttackTestFactory.StartAttack().Machine;
+        Assert.True(
+            machine.RequestTargetReacquisition(out var requestReason),
+            requestReason
+        );
+        var controller = new HostileShadowHitResponseController(machine);
+        var hit = controller.HandleHit(
+            Input(
+                12,
+                health: 80,
+                100d,
+                200d,
+                new SequenceRandom(12345, 4, 0)
+            )
+        );
+
+        Assert.Equal(HostileShadowStateIds.HitTeleport, hit.StateId);
+        var activeHit = controller.Advance(
+            hit.PositionX,
+            hit.PositionY,
+            400d,
+            hasTarget: true
+        );
+        var completed = controller.Advance(
+            activeHit.PositionX,
+            activeHit.PositionY,
+            400d,
+            hasTarget: true
+        );
+
+        Assert.Equal(
+            HostileShadowHitResponseDecisionStatus.Completed,
+            completed.Status
+        );
+        Assert.Equal(HostileShadowStateIds.Idle, completed.StateId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Different_attacker_handoff_after_hit_teleport_resumes_chase_without_taunt(
+        bool wasChasing
+    )
+    {
+        var (machine, definition, _) = HostileAttackTestFactory.StartAttack();
+        if (wasChasing)
+        {
+            var chase = machine.Advance(
+                HostileAttackTestFactory.Input(),
+                definition.AttackFrameDurationMilliseconds
+                    * definition.AttackFrameCount
+            );
+            Assert.Equal(HostileShadowStateIds.Chase, chase.StateId);
+        }
+
+        Assert.True(
+            machine.RequestTargetHandoffAfterHit(out var handoffReason),
+            handoffReason
+        );
+        var controller = new HostileShadowHitResponseController(machine);
+        var hit = controller.HandleHit(
+            Input(
+                12,
+                health: 80,
+                100d,
+                200d,
+                new SequenceRandom(12345, 4, 0),
+                attackerPlayerKey: HostileAttackTestFactory.PlayerTwo
+            )
+        );
+
+        Assert.Equal(HostileShadowStateIds.HitTeleport, hit.StateId);
+        var arrival = controller.Advance(
+            hit.PositionX,
+            hit.PositionY,
+            400d,
+            hasTarget: true
+        );
+        var completed = controller.Advance(
+            arrival.PositionX,
+            arrival.PositionY,
+            400d,
+            hasTarget: true
+        );
+
+        Assert.Equal(
+            HostileShadowHitResponseDecisionStatus.Completed,
+            completed.Status
+        );
+        Assert.Equal(HostileShadowStateIds.Chase, completed.StateId);
+        Assert.Equal(
+            HostileShadowStateIds.Chase,
+            machine.Advance(
+                HostileAttackTestFactory.Input(
+                    inRange: false,
+                    targetPlayerKey: HostileAttackTestFactory.PlayerTwo
+                ),
+                0d
+            ).StateId
+        );
     }
 
     [Fact]
@@ -460,7 +732,8 @@ public sealed class HostileShadowHitResponseTests
         double positionX,
         double positionY,
         IHostileShadowTeleportRandom? random,
-        IHostileShadowTeleportMap? map = null
+        IHostileShadowTeleportMap? map = null,
+        string attackerPlayerKey = HostileAttackTestFactory.PlayerOne
     )
     {
         return new HostileShadowHitResponseInput
@@ -473,7 +746,7 @@ public sealed class HostileShadowHitResponseTests
             PositionY = positionY,
             TileSizePixels = 64d,
             Health = health,
-            AttackerPlayerKey = HostileAttackTestFactory.PlayerOne,
+            AttackerPlayerKey = attackerPlayerKey,
             Map = health == 0 ? null : map ?? new FakeMap(40, 40),
             Random = health == 0 ? null : random,
         };

@@ -6,7 +6,7 @@ namespace DontStarve.Tests.Config;
 public sealed class ConfigSchemaLoaderTests
 {
     [Fact]
-    public void ShippedSchemaPublishesFrozenElevenOptionRegistry()
+    public void ShippedSchemaPublishesFrozenFourteenOptionRegistry()
     {
         var result = ConfigSchemaLoader.LoadFromFile(ConfigTestData.ShippedSchemaPath);
 
@@ -15,8 +15,10 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Empty(result.Diagnostics);
         var registry = Assert.IsType<ConfigRegistry>(result.Registry);
         Assert.Equal(1, registry.SchemaVersion);
-        Assert.Equal(11, registry.Options.Count);
+        Assert.Equal(14, registry.Options.Count);
 
+        AssertBoolean(registry, ConfigKeys.EnableHungerSystem, false, false, true, 5);
+        AssertBoolean(registry, ConfigKeys.EnableSeedEdibility, true, false, true, 7);
         AssertBoolean(registry, ConfigKeys.EnableSanitySystem, true, true, true, 10);
         AssertEnum(
             registry,
@@ -96,6 +98,14 @@ public sealed class ConfigSchemaLoaderTests
         );
         AssertBoolean(
             registry,
+            ConfigKeys.EnableDangerMinigameBlocking,
+            true,
+            false,
+            false,
+            65
+        );
+        AssertBoolean(
+            registry,
             ConfigKeys.EnableDawnDuskMusic,
             true,
             false,
@@ -103,6 +113,14 @@ public sealed class ConfigSchemaLoaderTests
             90
         );
 
+        Assert.Equal(
+            "config.hunger.section",
+            Get(registry, ConfigKeys.EnableHungerSystem).SectionI18n
+        );
+        Assert.Equal(
+            "config.hunger.section",
+            Get(registry, ConfigKeys.EnableSeedEdibility).SectionI18n
+        );
         Assert.Equal(
             "config.sanity.section",
             Get(registry, ConfigKeys.EnableSanitySystem).SectionI18n
@@ -117,9 +135,12 @@ public sealed class ConfigSchemaLoaderTests
             {
                 var kebab = ToKebabCase(option.Key);
                 Assert.Equal(
-                    option.Key == ConfigKeys.EnableDawnDuskMusic
-                        ? "config.music.section"
-                        : "config.sanity.section",
+                    option.Key == ConfigKeys.EnableHungerSystem
+                        || option.Key == ConfigKeys.EnableSeedEdibility
+                        ? "config.hunger.section"
+                        : option.Key == ConfigKeys.EnableDawnDuskMusic
+                            ? "config.music.section"
+                            : "config.sanity.section",
                     option.SectionI18n
                 );
                 Assert.Equal($"config.{kebab}.name", option.NameI18n);

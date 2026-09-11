@@ -2,7 +2,6 @@
 
 using System;
 using System.Reflection;
-using DontStarve.Music;
 using HarmonyLib;
 using Microsoft.Xna.Framework.Audio;
 using StardewValley;
@@ -187,40 +186,16 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         {
             suppressionRequested = false;
             vanillaReselectPending = true;
-            try
-            {
-                MusicManager.SetSanityMusicSuppressed(false);
-            }
-            catch (Exception exception)
-            {
-                Report(
-                    "music.dawn-dusk.release-failed",
-                    $"Dawn/dusk suppression could not be released ({exception.GetType().Name}: {exception.Message})."
-                );
-                return Result(false, "music.dawn-dusk.release-failed");
-            }
             return Result(true, "music.suppression.released-for-vanilla-reselect");
         }
 
         suppressionRequested = true;
         vanillaReselectPending = false;
-        try
-        {
-            MusicManager.SetSanityMusicSuppressed(true);
-        }
-        catch (Exception exception)
-        {
-            return FailAppliedSuppression(
-                "music.dawn-dusk.suppression-failed",
-                exception
-            );
-        }
 
         if (!TryStopCurrentGameMusic(out var reason))
         {
             suppressionRequested = false;
             vanillaReselectPending = true;
-            TryReleaseProjectMusicAfterFailure();
             return Result(false, reason);
         }
         return Result(true, "music.suppression.applied");
@@ -239,7 +214,6 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
             {
                 suppressionRequested = false;
                 vanillaReselectPending = true;
-                TryReleaseProjectMusicAfterFailure();
                 return Result(false, reason);
             }
             return Result(true, "music.suppression.applied");
@@ -268,17 +242,6 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         var shouldReselectVanilla = suppressionRequested || vanillaReselectPending;
         suppressionRequested = false;
         vanillaReselectPending = false;
-        try
-        {
-            MusicManager.SetSanityMusicSuppressed(false);
-        }
-        catch (Exception exception)
-        {
-            Report(
-                "music.dawn-dusk.release-failed",
-                $"Dawn/dusk release failed during adapter disposal ({exception.GetType().Name}: {exception.Message})."
-            );
-        }
 
         if (ReferenceEquals(activeAdapter, this))
             activeAdapter = null;
@@ -313,36 +276,6 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
             Game1.requestedMusicDirty = true;
         }
         disposed = true;
-    }
-
-    private SanityGameMusicPhysicalResult FailAppliedSuppression(
-        string code,
-        Exception exception
-    )
-    {
-        suppressionRequested = false;
-        vanillaReselectPending = true;
-        TryReleaseProjectMusicAfterFailure();
-        Report(
-            code,
-            $"The game-music adapter failed with {exception.GetType().Name}: {exception.Message}."
-        );
-        return Result(false, code);
-    }
-
-    private void TryReleaseProjectMusicAfterFailure()
-    {
-        try
-        {
-            MusicManager.SetSanityMusicSuppressed(false);
-        }
-        catch (Exception releaseException)
-        {
-            Report(
-                "music.dawn-dusk.failure-release-failed",
-                $"Dawn/dusk suppression cleanup failed with {releaseException.GetType().Name}: {releaseException.Message}."
-            );
-        }
     }
 
     private bool TryStopCurrentGameMusic(out string reason)

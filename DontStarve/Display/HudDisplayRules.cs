@@ -30,6 +30,7 @@ internal readonly record struct HudDisplayLayout(
     VanillaHudLayout Vanilla,
     HudBounds HungerBounds,
     HudBounds SanityBounds,
+    bool ShowingHunger,
     bool ShowingSanity
 )
 {
@@ -80,6 +81,7 @@ internal static class HudDisplayRules
         int viewportWidth,
         int viewportHeight,
         bool showingHealth,
+        bool showingHunger,
         bool showingSanity,
         int maxHealth,
         int maxStamina,
@@ -96,27 +98,32 @@ internal static class HudDisplayRules
             maxStamina
         );
         var anchor = vanilla.AnchorBounds;
-        // Keep the existing slot geometry: right-to-left is vanilla Energy, vanilla Health,
-        // Sanity, then Hunger. When Sanity is hidden, Hunger occupies the first custom slot.
-        var sanityBounds = PlaceCustomBar(
+        // Keep the existing slot geometry when both systems are visible: right-to-left is
+        // vanilla Energy, vanilla Health, Sanity, then Hunger. A visible system reuses the first
+        // custom slot when its sibling system is hidden.
+        var firstCustomBounds = PlaceCustomBar(
             anchor,
             customBarWidth,
             customBarHeight,
             customBarGap
         );
-        var hungerBounds = showingSanity
-            ? PlaceCustomBar(
+        var sanityBounds = firstCustomBounds;
+        var hungerBounds = firstCustomBounds;
+        if (showingSanity && showingHunger)
+        {
+            hungerBounds = PlaceCustomBar(
                 sanityBounds,
                 customBarWidth,
                 customBarHeight,
                 customBarGap
-            )
-            : sanityBounds;
+            );
+        }
 
         return new HudDisplayLayout(
             vanilla,
             hungerBounds,
             sanityBounds,
+            showingHunger,
             showingSanity
         );
     }

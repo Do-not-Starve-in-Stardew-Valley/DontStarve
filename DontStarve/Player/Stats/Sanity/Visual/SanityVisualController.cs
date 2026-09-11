@@ -20,6 +20,7 @@ internal enum SanityVisualLayerMask
 internal enum SanityVisualCapabilityStatus
 {
     AvailableProduction,
+    Disabled,
 }
 
 internal readonly record struct SanityVisualCapability(
@@ -49,8 +50,8 @@ internal static class SanityVisualCapabilityCatalog
 
     internal static readonly SanityVisualCapability DangerBorder = new(
         "visual.hud.danger-border",
-        SanityVisualCapabilityStatus.AvailableProduction,
-        "available-owner-local-hud-nine-slice"
+        SanityVisualCapabilityStatus.Disabled,
+        "disabled-development-placeholder"
     );
 
     internal static readonly SanityVisualCapability Grayscale = new(
@@ -71,7 +72,6 @@ internal static class SanityVisualCapabilityCatalog
             {
                 SanityVisualLayerMask.LowSaturation,
                 SanityVisualLayerMask.ViewShake,
-                SanityVisualLayerMask.DangerBorder,
                 SanityVisualLayerMask.Grayscale,
             }
         );
@@ -94,7 +94,8 @@ internal readonly record struct SanityVisualObservation(
     IReadOnlyCollection<string> ActiveTierIds,
     bool EffectiveSanityOverrideActive,
     int ViewportWidth,
-    int ViewportHeight
+    int ViewportHeight,
+    SanityMinigameVisualContext MinigameContext = SanityMinigameVisualContext.None
 );
 
 internal enum SanityVisualMutationStatus
@@ -271,7 +272,8 @@ internal readonly record struct SanityVisualOwnerSnapshot(
     int ViewportHeight,
     SanityNineSliceLayout DangerBorderLayout,
     bool IdleEligible,
-    SanityIdleSnapshot Idle
+    SanityIdleSnapshot Idle,
+    SanityMinigameVisualContext MinigameContext = SanityMinigameVisualContext.None
 );
 
 /// <summary>
@@ -305,6 +307,7 @@ internal sealed class SanityVisualController
         internal double Current { get; private set; }
         internal double Maximum { get; private set; }
         internal SanityVisualLayerMask RequestedLayers { get; private set; }
+        internal SanityMinigameVisualContext MinigameContext { get; private set; }
         internal bool IdleEligible { get; private set; }
         internal bool EffectiveSanityOverrideActive { get; private set; }
         internal int ViewportWidth { get; private set; }
@@ -314,6 +317,7 @@ internal sealed class SanityVisualController
 
         internal SanityVisualLayerMask RenderableLayers =>
             EffectiveSanityOverrideActive
+                || MinigameContext == SanityMinigameVisualContext.Other
                 ? SanityVisualLayerMask.None
                 : RequestedLayers;
 
@@ -333,6 +337,7 @@ internal sealed class SanityVisualController
             ViewportWidth = observation.ViewportWidth;
             ViewportHeight = observation.ViewportHeight;
             DangerBorderLayout = layout;
+            MinigameContext = observation.MinigameContext;
             if (observation.EffectiveSanityOverrideActive)
                 Idle.Reset("idle.effective-sanity-override");
             else if (!IdleEligible)
@@ -365,14 +370,23 @@ internal sealed class SanityVisualController
             SanityVisualLayerMask requestedLayers
         )
         {
+            return MatchesAuthoritativeState(observation, requestedLayers)
+                && MinigameContext == observation.MinigameContext
+                && ViewportWidth == observation.ViewportWidth
+                && ViewportHeight == observation.ViewportHeight;
+        }
+
+        internal bool MatchesAuthoritativeState(
+            SanityVisualObservation observation,
+            SanityVisualLayerMask requestedLayers
+        )
+        {
             return Current.Equals(observation.Current)
                 && Maximum.Equals(observation.Maximum)
                 && RequestedLayers == requestedLayers
                 && IdleEligible == IsIdleEligible(observation)
                 && EffectiveSanityOverrideActive
-                    == observation.EffectiveSanityOverrideActive
-                && ViewportWidth == observation.ViewportWidth
-                && ViewportHeight == observation.ViewportHeight;
+                    == observation.EffectiveSanityOverrideActive;
         }
 
         internal SanityVisualOwnerSnapshot Snapshot()
@@ -388,7 +402,8 @@ internal sealed class SanityVisualController
                 ViewportHeight,
                 DangerBorderLayout,
                 IdleEligible,
-                Idle.Snapshot
+                Idle.Snapshot,
+                MinigameContext
             );
         }
 
@@ -444,9 +459,38 @@ internal sealed class SanityVisualController
                 return new SanityVisualMutation(SanityVisualMutationStatus.IgnoredStale, "visual.revision-stale");
             if (observation.Revision == existing.Revision)
             {
-                return existing.Matches(observation, requestedLayers)
-                    ? new SanityVisualMutation(SanityVisualMutationStatus.IgnoredDuplicate, "visual.revision-duplicate")
-                    : new SanityVisualMutation(SanityVisualMutationStatus.Invalid, "visual.revision-conflict");
+                if (existing.Matches(observation, requestedLayers))
+                {
+                    return new SanityVisualMutation(
+                        SanityVisualMutationStatus.IgnoredDuplicate,
+                        "visual.revision-duplicate"
+                    );
+                }
+
+                // Minigame context and viewport are presentation inputs, not Sanity state. They
+                // can change while the authoritative tier snapshot keeps the same revision; do
+                // not retain the previous context or turn that normal transition into a conflict.
+                if (existing.MatchesAuthoritativeState(observation, requestedLayers))
+                {
+                    if (!TryCreateDangerBorderLayout(observation.ViewportWidth, observation.ViewportHeight, out var presentationLayout))
+                    {
+                        return new SanityVisualMutation(
+                            SanityVisualMutationStatus.Invalid,
+                            "visual.viewport-invalid"
+                        );
+                    }
+
+                    existing.Apply(observation, requestedLayers, presentationLayout);
+                    return new SanityVisualMutation(
+                        SanityVisualMutationStatus.Applied,
+                        "visual.presentation-applied"
+                    );
+                }
+
+                return new SanityVisualMutation(
+                    SanityVisualMutationStatus.Invalid,
+                    "visual.revision-conflict"
+                );
             }
 
             if (!TryCreateDangerBorderLayout(observation.ViewportWidth, observation.ViewportHeight, out var updatedLayout))
@@ -629,9 +673,8 @@ internal sealed class SanityVisualController
                 case SanityTierIds.Eyes:
                     result |= SanityVisualLayerMask.ViewShake;
                     break;
-                case SanityTierIds.Danger:
-                    result |= SanityVisualLayerMask.DangerBorder;
-                    break;
+                // The danger-border texture is retained as a resource contract, but its DEV
+                // placeholder is intentionally not requested by production runtime state.
                 case SanityTierIds.Terrorbeak:
                     result |= SanityVisualLayerMask.Grayscale;
                     break;

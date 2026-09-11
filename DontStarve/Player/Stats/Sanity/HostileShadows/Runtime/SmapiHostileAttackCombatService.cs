@@ -16,18 +16,47 @@ namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 /// </summary>
 internal sealed class SmapiHostileAttackCombatService
 {
+    private const int MaximumDiagnosticEntries = 256;
+
+    // Attack diagnostics are deliberately bounded because this service runs on the fixed update
+    // path. Re-enabling the command starts a fresh bounded sample for the next reproduction.
+    private sealed class BoundedDiagnosticSet
+    {
+        private readonly HashSet<string> values = new(StringComparer.Ordinal);
+
+        internal bool Add(string value)
+        {
+            if (values.Count >= MaximumDiagnosticEntries)
+                return false;
+            return values.Add(value);
+        }
+
+        internal void Clear() => values.Clear();
+    }
+
     private readonly HostileShadowAuthority authority;
     private readonly Action<string, LogLevel> log;
     // DIAG-20260806: 攻击命中但结算被拒时记录一次原因（去重，不刷屏），
     // 用于定位“受击传送后无法对玩家造成伤害”。
-    private readonly HashSet<string> loggedRejectedReasons =
-        new(StringComparer.Ordinal);
+    private readonly BoundedDiagnosticSet loggedRejectedReasons = new();
     // DIAG-20260806: 攻击框未命中玩家的静默分支也记录（去重）——否则“影怪打不到人”无任何日志。
-    private readonly HashSet<string> loggedMissReasons =
-        new(StringComparer.Ordinal);
-    // DIAG-20260809: 攻击 miss / 位置不匹配诊断黄字总开关。主策划要求暂时停用
-    // （定位已收敛、黄字刷屏）；方法完整保留，下次需要排查时置 true 即可（或后续接 ds 命令）。
+    private readonly BoundedDiagnosticSet loggedMissReasons = new();
+    private readonly BoundedDiagnosticSet loggedDecisionKeys = new();
+    // DIAG-20260809: 攻击 miss / 位置不匹配诊断总开关。默认关闭；通过 ds_attacklog on
+    // 开启一次有界样本，不让正常游玩固定产生攻击诊断日志。
     internal static bool MissDiagnosticsEnabled = false;
+    private static int missDiagnosticsEpoch;
+    internal static int MissDiagnosticsEpoch => missDiagnosticsEpoch;
+
+    internal static void SetMissDiagnosticsEnabled(bool enabled)
+    {
+        if (MissDiagnosticsEnabled == enabled)
+            return;
+        MissDiagnosticsEnabled = enabled;
+        missDiagnosticsEpoch++;
+    }
+
+    private int observedMissDiagnosticsEpoch = -1;
 
     internal SmapiHostileAttackCombatService(
         HostileShadowAuthority authority,
@@ -47,10 +76,40 @@ internal sealed class SmapiHostileAttackCombatService
         ShadowStateSnapshot state
     )
     {
+        SynchronizeDiagnosticState();
         var instance = attackState.CurrentInstance;
+        if (instance is null)
+        {
+            LogAttackPreflightDecision(
+                "attack-instance-missing",
+                state.EntityId,
+                state.StateId,
+                string.Empty,
+                0,
+                string.Empty,
+                string.Empty,
+                LogLevel.Warn
+            );
+            return;
+        }
+
+        if (!definition.IsActiveFrame(instance.FrameNumber))
+        {
+            LogAttackPreflightDecision(
+                "inactive-frame",
+                state.EntityId,
+                state.StateId,
+                instance.InstanceId,
+                instance.FrameNumber,
+                string.Empty,
+                string.Empty,
+                LogLevel.Info
+            );
+            return;
+        }
+
         if (
-            instance is null
-            || !HostileAttackCollisionResolver.TryCreateWorldAttackBox(
+            !HostileAttackCollisionResolver.TryCreateWorldAttackBox(
                 definition,
                 monster.Position.X,
                 monster.Position.Y,
@@ -58,7 +117,19 @@ internal sealed class SmapiHostileAttackCombatService
                 out var attackBox
             )
         )
+        {
+            LogAttackPreflightDecision(
+                "attack-box-unavailable",
+                state.EntityId,
+                state.StateId,
+                instance.InstanceId,
+                instance.FrameNumber,
+                string.Empty,
+                string.Empty,
+                LogLevel.Warn
+            );
             return;
+        }
 
         var attackerStanding = new HostileAttackPoint(
             monster.StandingPixel.X,
@@ -82,14 +153,7 @@ internal sealed class SmapiHostileAttackCombatService
                 if (MissDiagnosticsEnabled && loggedMissReasons.Add("attack-hit.player-location-mismatch"))
                 {
                     log(
-                        string.Concat(
-                            "hostile-shadow.attack-hit.player-location-mismatch (",
-                            "stateId=",
-                            state.StateId,
-                            ", location=",
-                            state.LocationId,
-                            ")"
-                        ),
+                        FormatPlayerLocationMismatch(farmer, state),
                         LogLevel.Warn
                     );
                 }
@@ -99,12 +163,50 @@ internal sealed class SmapiHostileAttackCombatService
             var playerId = farmer.UniqueMultiplayerID;
             var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(playerId);
             if (!string.Equals(playerKey, state.TargetPlayerKey, StringComparison.Ordinal))
+            {
+                LogAttackPreflightDecision(
+                    "target-mismatch",
+                    state.EntityId,
+                    state.StateId,
+                    instance.InstanceId,
+                    instance.FrameNumber,
+                    playerKey,
+                    state.TargetPlayerKey,
+                    LogLevel.Info
+                );
                 continue;
+            }
             // Automatic hits have no observable rejected receipt. Keep all allocation-free host
             // prechecks ahead of canonical keys and protocol/damage objects, then allocate once
             // only for the first legal settlement event.
-            if (playerId < 0 || instance.HasSettledPlayer(playerId))
+            if (playerId == 0)
+            {
+                LogAttackPreflightDecision(
+                    "invalid-player-id",
+                    state.EntityId,
+                    state.StateId,
+                    instance.InstanceId,
+                    instance.FrameNumber,
+                    playerKey,
+                    state.TargetPlayerKey,
+                    LogLevel.Warn
+                );
                 continue;
+            }
+            if (instance.HasSettledPlayer(playerId))
+            {
+                LogAttackPreflightDecision(
+                    "player-already-settled",
+                    state.EntityId,
+                    state.StateId,
+                    instance.InstanceId,
+                    instance.FrameNumber,
+                    playerKey,
+                    state.TargetPlayerKey,
+                    LogLevel.Info
+                );
+                continue;
+            }
 
             var farmerBoundingBox = farmer.GetBoundingBox();
             var targetBox = new HostileAttackRectangle(
@@ -126,6 +228,14 @@ internal sealed class SmapiHostileAttackCombatService
                 // 绿框=受击判定区，玩家站在绿框内不应受伤（接触伤害另由 DamageToFarmer 控制）。
                 var missKey = string.Concat(
                     "attack-hit.box-miss-or-out-of-range@",
+                    state.EntityId.ToString(CultureInfo.InvariantCulture),
+                    "@",
+                    instance.InstanceId,
+                    "@",
+                    instance.FrameNumber.ToString(CultureInfo.InvariantCulture),
+                    "@",
+                    playerKey,
+                    "@",
                     ((int)monster.Position.X).ToString(CultureInfo.InvariantCulture),
                     ",",
                     ((int)monster.Position.Y).ToString(CultureInfo.InvariantCulture),
@@ -234,8 +344,188 @@ internal sealed class SmapiHostileAttackCombatService
                             : LogLevel.Warn
                     );
                 }
+                if (MissDiagnosticsEnabled)
+                {
+                    LogAttackDecision(
+                        string.Concat(
+                            "attack-decision:rejected:",
+                            state.EntityId.ToString(CultureInfo.InvariantCulture),
+                            ":",
+                            instance.InstanceId,
+                            ":",
+                            instance.FrameNumber.ToString(CultureInfo.InvariantCulture),
+                            ":",
+                            playerKey,
+                            ":",
+                            receipt.Result.Reason
+                        ),
+                        FormatAttackDecision(
+                            "rejected",
+                            state,
+                            instance,
+                            playerKey,
+                            receipt
+                        ),
+                        receipt.Result.Status == HostileAttackReceiptStatus.PipelineFailed
+                            ? LogLevel.Error
+                            : LogLevel.Warn
+                    );
+                }
+            }
+            else if (MissDiagnosticsEnabled)
+            {
+                LogAttackDecision(
+                    string.Concat(
+                        "attack-decision:accepted:",
+                        state.EntityId.ToString(CultureInfo.InvariantCulture),
+                        ":",
+                        instance.InstanceId,
+                        ":",
+                        instance.FrameNumber.ToString(CultureInfo.InvariantCulture),
+                        ":",
+                        playerKey
+                    ),
+                    FormatAttackDecision(
+                        receipt.Result.Status == HostileAttackReceiptStatus.Applied
+                            ? "applied"
+                            : "settled-without-health-change",
+                        state,
+                        instance,
+                        playerKey,
+                        receipt
+                    ),
+                    LogLevel.Info
+                );
             }
         }
+    }
+
+    private void LogAttackPreflightDecision(
+        string reason,
+        long entityId,
+        string stateId,
+        string attackInstanceId,
+        int frameNumber,
+        string playerKey,
+        string lockedTargetPlayerKey,
+        LogLevel level
+    )
+    {
+        if (!MissDiagnosticsEnabled)
+            return;
+
+        var instancePart = string.IsNullOrEmpty(attackInstanceId)
+            ? "<none>"
+            : attackInstanceId;
+        var playerPart = string.IsNullOrEmpty(playerKey) ? "<none>" : playerKey;
+        var targetPart = string.IsNullOrEmpty(lockedTargetPlayerKey)
+            ? "<none>"
+            : lockedTargetPlayerKey;
+        LogAttackDecision(
+            string.Concat(
+                "attack-decision:",
+                reason,
+                ":",
+                entityId.ToString(CultureInfo.InvariantCulture),
+                ":",
+                instancePart,
+                ":",
+                frameNumber.ToString(CultureInfo.InvariantCulture),
+                ":",
+                playerPart
+            ),
+            string.Concat(
+                "hostile-shadow.attack-decision (result=skip, reason=",
+                reason,
+                ", entity=",
+                entityId.ToString(CultureInfo.InvariantCulture),
+                ", state=",
+                stateId,
+                ", attackInstance=",
+                instancePart,
+                ", frame=",
+                frameNumber.ToString(CultureInfo.InvariantCulture),
+                ", candidatePlayer=",
+                playerPart,
+                ", lockedTarget=",
+                targetPart,
+                ")"
+            ),
+            level
+        );
+    }
+
+    private static string FormatPlayerLocationMismatch(
+        Farmer farmer,
+        ShadowStateSnapshot state
+    )
+    {
+        return string.Concat(
+            "hostile-shadow.attack-hit.player-location-mismatch (player=",
+            farmer.UniqueMultiplayerID.ToString(CultureInfo.InvariantCulture),
+            ", currentLocation=",
+            farmer.currentLocation?.NameOrUniqueName ?? "<null>",
+            ", stateId=",
+            state.StateId,
+            ", location=",
+            state.LocationId,
+            ")"
+        );
+    }
+
+    private void SynchronizeDiagnosticState()
+    {
+        if (observedMissDiagnosticsEpoch == MissDiagnosticsEpoch)
+            return;
+        observedMissDiagnosticsEpoch = MissDiagnosticsEpoch;
+        loggedRejectedReasons.Clear();
+        loggedMissReasons.Clear();
+        loggedDecisionKeys.Clear();
+    }
+
+    private void LogAttackDecision(string key, string message, LogLevel level)
+    {
+        if (!MissDiagnosticsEnabled || !loggedDecisionKeys.Add(key))
+            return;
+        log(message, level);
+    }
+
+    private static string FormatAttackDecision(
+        string result,
+        ShadowStateSnapshot state,
+        HostileAttackInstance instance,
+        string playerKey,
+        HostileAttackReceipt receipt
+    )
+    {
+        var attackResult = receipt.Result;
+        return string.Concat(
+            "hostile-shadow.attack-decision (result=",
+            result,
+            ", entity=",
+            state.EntityId.ToString(CultureInfo.InvariantCulture),
+            ", attackInstance=",
+            instance.InstanceId,
+            ", frame=",
+            instance.FrameNumber.ToString(CultureInfo.InvariantCulture),
+            ", player=",
+            playerKey,
+            ", reason=",
+            attackResult.Reason,
+            ", status=",
+            attackResult.Status.ToString(),
+            ", requestedDamage=",
+            attackResult.RequestedDamage.ToString(CultureInfo.InvariantCulture),
+            ", appliedDamage=",
+            attackResult.AppliedDamage.ToString(CultureInfo.InvariantCulture),
+            ", health=",
+            attackResult.HealthBefore.ToString(CultureInfo.InvariantCulture),
+            "->",
+            attackResult.HealthAfter.ToString(CultureInfo.InvariantCulture),
+            ", pipelineInvoked=",
+            attackResult.PipelineInvoked.ToString(),
+            ")"
+        );
     }
 
     internal bool TryProcessHit(

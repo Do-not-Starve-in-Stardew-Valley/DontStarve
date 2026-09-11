@@ -19,6 +19,15 @@ internal class HungerCycle : ITimeRelatedBehavior
 
     public void Update(long time)
     {
+        if (!HungerExtensions.IsEnabled)
+        {
+            // 关闭期间冻结饱食度和饥饿伤害；同步清掉旧节奏，重开后不补扣关闭期间的伤害。
+            lastHasHunger = false;
+            lastTime = time;
+            wait = 0;
+            return;
+        }
+
         if (wait > 0)
         {
             wait--;
@@ -31,7 +40,7 @@ internal class HungerCycle : ITimeRelatedBehavior
 
         if (player.GetHunger() > 0)
         {
-            player.SetHunger(player.GetHunger() - 0.052f);
+            player.SetHunger(player.GetHunger() - 0.052d);
             lastHasHunger = true;
         }
         else
@@ -54,6 +63,12 @@ internal class HungerCycle : ITimeRelatedBehavior
 
     public void Sync(long _, long delta)
     {
+        if (!HungerExtensions.IsEnabled)
+        {
+            wait = 0;
+            return;
+        }
+
         // 正向分钟已由 TimeApi 逐分钟发布；回退只累加旧 wait，保留玩家存档中的兼容游标。
         if (delta < 0)
             wait += -delta;
@@ -61,6 +76,12 @@ internal class HungerCycle : ITimeRelatedBehavior
 
     public void Load(IModHelper helper)
     {
+        if (!Context.IsMainPlayer)
+        {
+            ResetRuntime();
+            return;
+        }
+
         var data = helper.Data.ReadSaveData<HungerCycleData>(SAVE_KEY);
         lastHasHunger = data?.LastHasHunger ?? false;
         lastTime = data?.LastTime ?? 0;
@@ -69,6 +90,9 @@ internal class HungerCycle : ITimeRelatedBehavior
 
     public void Save(IModHelper helper)
     {
+        if (!Context.IsMainPlayer)
+            return;
+
         helper.Data.WriteSaveData(
             SAVE_KEY,
             new HungerCycleData
@@ -78,6 +102,13 @@ internal class HungerCycle : ITimeRelatedBehavior
                 Wait = wait,
             }
         );
+    }
+
+    internal void ResetRuntime()
+    {
+        lastHasHunger = false;
+        lastTime = 0;
+        wait = 0;
     }
 }
 

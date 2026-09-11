@@ -84,7 +84,8 @@ internal sealed class HostileAttackHitContext
     internal string LocationId { get; set; } = string.Empty;
     internal string StateId { get; set; } = string.Empty;
     internal int CurrentFrameNumber { get; set; }
-    internal long TargetPlayerId { get; set; } = -1;
+    // Zero is the no-player sentinel; every non-zero signed long is a legal Stardew player ID.
+    internal long TargetPlayerId { get; set; }
     internal HostileAttackInstance? Instance { get; set; }
     internal HostileAttackRuntimeDefinition? Definition { get; set; }
     internal HostileAttackRectangle AttackBox { get; set; }

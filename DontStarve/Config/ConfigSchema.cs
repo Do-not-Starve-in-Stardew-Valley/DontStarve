@@ -8,6 +8,8 @@ namespace DontStarve.Config;
 
 internal static class ConfigKeys
 {
+    internal const string EnableHungerSystem = "EnableHungerSystem";
+    internal const string EnableSeedEdibility = "EnableSeedEdibility";
     internal const string EnableSanitySystem = "EnableSanitySystem";
     internal const string SanityMonsterIntensity = "SanityMonsterIntensity";
     internal const string DarkHandMode = "DarkHandMode";
@@ -19,11 +21,15 @@ internal static class ConfigKeys
     internal const string DarknessDamageMode = "DarknessDamageMode";
     internal const string MonsterDifficultyProfile = "MonsterDifficultyProfile";
     internal const string EnableJunimoBlessing = "EnableJunimoBlessing";
+    internal const string EnableDangerMinigameBlocking =
+        "EnableDangerMinigameBlocking";
     internal const string EnableDawnDuskMusic = "EnableDawnDuskMusic";
 
     private static readonly HashSet<string> FrozenKeys = new(
         new[]
         {
+            EnableHungerSystem,
+            EnableSeedEdibility,
             EnableSanitySystem,
             SanityMonsterIntensity,
             DarkHandMode,
@@ -34,6 +40,7 @@ internal static class ConfigKeys
             DarknessDamageMode,
             MonsterDifficultyProfile,
             EnableJunimoBlessing,
+            EnableDangerMinigameBlocking,
             EnableDawnDuskMusic,
         },
         StringComparer.Ordinal

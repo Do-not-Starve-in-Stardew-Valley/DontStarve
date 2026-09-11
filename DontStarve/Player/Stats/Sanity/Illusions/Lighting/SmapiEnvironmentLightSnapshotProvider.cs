@@ -258,7 +258,6 @@ internal sealed class SmapiEnvironmentLightSnapshotProvider
                         candidatePosition.IsFinite
                         && float.IsFinite(rawRadius)
                         && rawRadius >= 0f
-                        && attachedPlayerId >= 0
                         && lightContext != EnvironmentLightCandidateContext.Unknown;
                     var distance = valid
                         ? Math.Sqrt(

@@ -24,8 +24,12 @@ public sealed class HostileShadowPassThroughStaticTests
             world,
             StringComparison.Ordinal
         );
-        Assert.Contains("\"Creeper Fear\"", world, StringComparison.Ordinal);
-        Assert.Contains("\"Terrorbeak\"", world, StringComparison.Ordinal);
+        Assert.Contains("profile.DisplayNameKey", world, StringComparison.Ordinal);
+        Assert.Contains(
+            "helper.Translation.Get(profile.DisplayNameKey)",
+            world,
+            StringComparison.Ordinal
+        );
         Assert.DoesNotContain("HostileShadowCollisionPatch", entry, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "nameof(GameLocation.isCollidingPosition)",

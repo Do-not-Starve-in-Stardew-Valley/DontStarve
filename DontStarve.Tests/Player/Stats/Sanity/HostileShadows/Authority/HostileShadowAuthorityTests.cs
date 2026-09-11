@@ -16,11 +16,11 @@ public sealed class HostileShadowAuthorityTests
         new()
         {
             { SanityMonsterIntensityIds.None, false, 0, 60 },
-            { SanityMonsterIntensityIds.Less, true, 1, 120 },
-            { SanityMonsterIntensityIds.Default, true, 1, 60 },
-            { SanityMonsterIntensityIds.More, true, 2, 60 },
-            { SanityMonsterIntensityIds.Many, true, 3, 30 },
-            { SanityMonsterIntensityIds.Insane, true, 4, 30 },
+            { SanityMonsterIntensityIds.Less, true, 2, 120 },
+            { SanityMonsterIntensityIds.Default, true, 3, 60 },
+            { SanityMonsterIntensityIds.More, true, 5, 60 },
+            { SanityMonsterIntensityIds.Many, true, 7, 30 },
+            { SanityMonsterIntensityIds.Insane, true, 9, 30 },
         };
 
     [Theory]
@@ -103,22 +103,27 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
-    public void Full_cap_pauses_without_budget_consumption_and_vacancy_fills_only_one()
+    public void Full_cap_preserves_natural_clock_and_vacancies_wait_until_due()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
         EnterDanger(fixture, OwnerA, revision: 1);
         EnterTier(fixture, OwnerA, SanityTierIds.Terrorbeak, revision: 2);
 
-        Assert.True(fixture.Authority.TrySpawn(Conversion("convert", OwnerA, 0)).Spawned);
-        Assert.Equal(
-            HostileShadowSpawnStatus.Spawned,
-            fixture.Authority.TrySpawn(Interval("interval-60", OwnerA, 60)).Status
+        var converted = fixture.Authority.TrySpawn(Conversion("convert", OwnerA, 0));
+        LockToPlayer(fixture, converted, OwnerA);
+        var interval = fixture.Authority.TrySpawn(Interval("interval-60", OwnerA, 60));
+        Assert.Equal(HostileShadowSpawnStatus.Spawned, interval.Status);
+        LockToPlayer(fixture, interval, OwnerA);
+        var intervalSecond = fixture.Authority.TrySpawn(
+            Interval("interval-120", OwnerA, 120)
         );
-        var atCap = fixture.Authority.TrySpawn(Interval("interval-cap", OwnerA, 120));
+        Assert.Equal(HostileShadowSpawnStatus.Spawned, intervalSecond.Status);
+        LockToPlayer(fixture, intervalSecond, OwnerA);
+        var atCap = fixture.Authority.TrySpawn(Interval("interval-cap", OwnerA, 150));
         Assert.Equal(HostileShadowSpawnStatus.AtCap, atCap.Status);
         Assert.True(fixture.Governor.TryGetOwnerState(OwnerA, out var paused));
         Assert.True(paused!.IsPausedAtCap);
-        Assert.Null(paused.NextDueMinute);
+        Assert.Equal(180, paused.NextDueMinute);
 
         var ids = fixture.Authority.CreateFullSnapshot().Entities
             .Select(state => state.EntityId)
@@ -130,9 +135,9 @@ public sealed class HostileShadowAuthorityTests
             )
         );
         var vacancy = fixture.Authority.TrySpawn(
-            Interval("interval-vacancy", OwnerA, 120)
+            Interval("interval-vacancy", OwnerA, 150)
         );
-        Assert.True(vacancy.Spawned);
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, vacancy.Status);
 
         Assert.True(
             fixture.Authority.CleanupEntity(
@@ -141,10 +146,14 @@ public sealed class HostileShadowAuthorityTests
             )
         );
         var secondVacancy = fixture.Authority.TrySpawn(
-            Interval("interval-no-fill-all", OwnerA, 120)
+            Interval("interval-no-fill-all", OwnerA, 150)
         );
         Assert.Equal(HostileShadowSpawnStatus.Waiting, secondVacancy.Status);
         Assert.Equal(1, fixture.Authority.GetOwnerOccupancy(OwnerA));
+
+        var due = fixture.Authority.TrySpawn(Interval("interval-due", OwnerA, 180));
+        Assert.True(due.Spawned, due.Reason);
+        Assert.Equal(2, fixture.Authority.GetOwnerOccupancy(OwnerA));
     }
 
     [Fact]
@@ -242,28 +251,47 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
-    public void Failed_conversion_request_can_retry_with_the_same_correlation_after_vacancy()
+    public void Conversion_request_is_allowed_over_owner_cap_while_interval_stays_at_cap()
     {
         var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
         EnterDanger(fixture, OwnerA, revision: 1);
         var first = fixture.Authority.TrySpawn(Conversion("first", OwnerA, 0));
+        LockToPlayer(fixture, first, OwnerA);
         Assert.True(first.Spawned, first.Reason);
+        Assert.Equal(3, first.Cap);
 
-        var retryable = fixture.Authority.TrySpawn(Conversion("retryable", OwnerA, 0));
-        Assert.Equal(HostileShadowSpawnStatus.AtCap, retryable.Status);
-        Assert.Null(retryable.EntityId);
+        var secondConversion = fixture.Authority.TrySpawn(
+            Conversion("second-conversion", OwnerA, 0)
+        );
+        LockToPlayer(fixture, secondConversion, OwnerA);
+        Assert.True(secondConversion.Spawned, secondConversion.Reason);
+        var thirdConversion = fixture.Authority.TrySpawn(
+            Conversion("third-conversion", OwnerA, 0)
+        );
+        LockToPlayer(fixture, thirdConversion, OwnerA);
+        Assert.True(thirdConversion.Spawned, thirdConversion.Reason);
 
+        var overCapConversion = fixture.Authority.TrySpawn(
+            Conversion("over-cap-conversion", OwnerA, 0)
+        );
+        LockToPlayer(fixture, overCapConversion, OwnerA);
+        Assert.True(overCapConversion.Spawned, overCapConversion.Reason);
+        Assert.Equal(HostileShadowSpawnStatus.Spawned, overCapConversion.Status);
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PausedAtCap,
+            overCapConversion.BudgetStatus
+        );
         Assert.True(
-            fixture.Authority.CleanupEntity(
-                first.EntityId!.Value,
-                HostileShadowCleanupReasonIds.Natural
+            fixture.Authority.TryGetEntity(
+                overCapConversion.EntityId!.Value,
+                out var convertedState
             )
         );
+        Assert.Equal(HostileShadowStateIds.Taunt, convertedState!.StateId);
 
-        var retried = fixture.Authority.TrySpawn(Conversion("retryable", OwnerA, 1));
-        Assert.True(retried.Spawned, retried.Reason);
-        Assert.NotEqual(first.EntityId, retried.EntityId);
-        Assert.Equal(1, fixture.Authority.Count);
+        var naturalRefresh = fixture.Authority.TrySpawn(Interval("natural-refresh", OwnerA, 1));
+        Assert.Equal(HostileShadowSpawnStatus.AtCap, naturalRefresh.Status);
+        Assert.Equal(4, fixture.Authority.Count);
     }
 
     [Fact]
@@ -291,6 +319,106 @@ public sealed class HostileShadowAuthorityTests
             result.BudgetStatus
         );
         Assert.Equal(1, fixture.Authority.Count);
+    }
+
+    [Fact]
+    public void Warp_fast_compensation_uses_destination_cap_without_global_old_map_occupancy()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var oldMapCommand = new HostileShadowSpawnCommand(
+            "debug-old-map",
+            HostileShadowSpawnOrigin.DebugCommand,
+            OwnerA,
+            "OldMap",
+            128d,
+            256d,
+            gameMinute: 0,
+            RuntimeProfile(),
+            "hostile-shadow.spawn.debug-command"
+        );
+        var oldMap = fixture.Authority.TrySpawn(oldMapCommand);
+        LockToPlayer(fixture, oldMap, OwnerA);
+
+        var refill = fixture.Authority.TrySpawn(
+            WarpFast("warp-fast", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+
+        Assert.True(refill.Spawned, refill.Reason);
+        Assert.Equal(HostileShadowSpawnStatus.Spawned, refill.Status);
+        Assert.Equal(0, refill.Occupancy);
+        Assert.Equal(3, refill.Cap);
+        Assert.Equal(2, fixture.Authority.GetOwnerOccupancy(OwnerA));
+        Assert.Equal(1, fixture.Authority.GetOwnerOccupancyAtLocation(OwnerA, "Farm"));
+    }
+
+    [Fact]
+    public void Warp_fast_compensation_stops_at_the_destination_cap()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var first = fixture.Authority.TrySpawn(
+            WarpFast("warp-fast-first", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+        LockToPlayer(fixture, first, OwnerA);
+        var second = fixture.Authority.TrySpawn(
+            WarpFast("warp-fast-second", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+        LockToPlayer(fixture, second, OwnerA);
+        var third = fixture.Authority.TrySpawn(
+            WarpFast("warp-fast-third", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+        LockToPlayer(fixture, third, OwnerA);
+        var fourth = fixture.Authority.TrySpawn(
+            WarpFast("warp-fast-fourth", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+
+        Assert.True(first.Spawned, first.Reason);
+        Assert.True(second.Spawned, second.Reason);
+        Assert.True(third.Spawned, third.Reason);
+        Assert.Equal(HostileShadowSpawnStatus.AtCap, fourth.Status);
+        Assert.Equal(3, fixture.Authority.GetOwnerOccupancyAtLocation(OwnerA, "Farm"));
+    }
+
+    [Fact]
+    public void Current_map_unlocked_shadow_does_not_consume_natural_refresh_slot()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var timerStart = fixture.Authority.TrySpawn(Interval("unlocked-timer-start", OwnerA, 0));
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, timerStart.Status);
+
+        var first = fixture.Authority.TrySpawn(Interval("unlocked-first", OwnerA, 60));
+        Assert.True(first.Spawned, first.Reason);
+        Assert.Equal(0, first.Occupancy);
+
+        var second = fixture.Authority.TrySpawn(Interval("unlocked-second", OwnerA, 120));
+        Assert.True(second.Spawned, second.Reason);
+        Assert.Equal(0, second.Occupancy);
+        Assert.Equal(2, fixture.Authority.Count);
+    }
+
+    [Fact]
+    public void Current_map_shadow_locked_to_another_player_does_not_consume_owner_slot()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var timerStart = fixture.Authority.TrySpawn(
+            Interval("other-player-timer-start", OwnerA, 0)
+        );
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, timerStart.Status);
+
+        var first = fixture.Authority.TrySpawn(Interval("other-player-first", OwnerA, 60));
+        LockToPlayer(fixture, first, OwnerB);
+
+        var second = fixture.Authority.TrySpawn(Interval("other-player-second", OwnerA, 120));
+        Assert.True(second.Spawned, second.Reason);
+        Assert.Equal(0, second.Occupancy);
+        Assert.Equal(2, fixture.Authority.Count);
     }
 
     [Fact]
@@ -800,6 +928,34 @@ public sealed class HostileShadowAuthorityTests
         );
     }
 
+    private static void LockToPlayer(
+        Fixture fixture,
+        HostileShadowSpawnResult result,
+        string targetPlayerKey
+    )
+    {
+        Assert.True(result.Spawned, result.Reason);
+        Assert.True(
+            fixture.Authority.TryGetEntity(result.EntityId!.Value, out var state)
+        );
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                new HostileShadowStateUpdate(
+                    state!.EntityId,
+                    state.LocationId,
+                    state.StateId,
+                    targetPlayerKey,
+                    state.PositionX,
+                    state.PositionY,
+                    state.Health,
+                    "hostile-shadow.test-target-locked"
+                ),
+                out var reason
+            ),
+            reason
+        );
+    }
+
     private static HostileShadowSpawnCommand Interval(
         string requestId,
         string owner,
@@ -811,6 +967,28 @@ public sealed class HostileShadowAuthorityTests
             HostileShadowSpawnOrigin.Interval,
             owner,
             gameMinute
+        );
+    }
+
+    private static HostileShadowSpawnCommand WarpFast(
+        string requestId,
+        string owner,
+        string locationId,
+        long gameMinute,
+        int cap
+    )
+    {
+        return new HostileShadowSpawnCommand(
+            requestId,
+            HostileShadowSpawnOrigin.WarpFastCompensation,
+            owner,
+            locationId,
+            128d,
+            256d,
+            gameMinute,
+            RuntimeProfile(),
+            "hostile-shadow.spawn.fast-spawn",
+            currentLocationCap: cap
         );
     }
 

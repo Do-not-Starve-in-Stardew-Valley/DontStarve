@@ -62,6 +62,39 @@ public sealed class DarknessAttackStateMachineTests
     }
 
     [Fact]
+    public void Entry_prompt_gate_allows_only_one_entry_prompt_per_continuous_darkness()
+    {
+        var gate = new DarknessAttackEntryPromptGate();
+
+        Assert.Equal(
+            DarknessAttackPromptKind.EnteredDarkness,
+            gate.Filter(Observation(Owner, 1), DarknessAttackPromptKind.EnteredDarkness)
+        );
+        Assert.Equal(
+            DarknessAttackPromptKind.Warning,
+            gate.Filter(Observation(Owner, 2), DarknessAttackPromptKind.Warning)
+        );
+        Assert.Equal(
+            DarknessAttackPromptKind.None,
+            gate.Filter(Observation(Owner, 3), DarknessAttackPromptKind.EnteredDarkness)
+        );
+
+        var escapedObservation = Observation(Owner, 4) with
+        {
+            GameplaySettleable = false,
+            UnsettleableReason = "darkness.state.event-active",
+        };
+        Assert.Equal(
+            DarknessAttackPromptKind.EscapedDarkness,
+            gate.Filter(escapedObservation, DarknessAttackPromptKind.EscapedDarkness)
+        );
+        Assert.Equal(
+            DarknessAttackPromptKind.EnteredDarkness,
+            gate.Filter(Observation(Owner, 5), DarknessAttackPromptKind.EnteredDarkness)
+        );
+    }
+
+    [Fact]
     public void Warning_uses_metadata_lead_and_repeated_revisions_never_replay()
     {
         var fixture = new Fixture(5);
@@ -204,6 +237,41 @@ public sealed class DarknessAttackStateMachineTests
     }
 
     [Fact]
+    public void Death_cancels_darkness_without_showing_escape_prompt()
+    {
+        var fixture = new Fixture(5, 10);
+        Expire(fixture);
+
+        var cancelled = fixture.Machine.CompleteReceipt(
+            Observation(Owner, 3) with
+            {
+                GameplaySettleable = false,
+                LightLevel = EnvironmentLightLevel.Dim,
+                EvidenceStatus = EnvironmentLightEvidenceStatus.Fallback,
+                PitchBlackAuthorized = false,
+                LightReason = DarknessAttackContract.PlayerHasNoHealthReason,
+                UnsettleableReason = DarknessAttackContract.PlayerHasNoHealthReason,
+            },
+            new DarknessAttackReceipt(
+                Owner,
+                "request-1",
+                DarknessAttackReceiptDisposition.Applied,
+                "darkness.receipt.applied"
+            )
+        );
+
+        Assert.Equal(DarknessAttackMutationStatus.Applied, cancelled.Status);
+        Assert.Equal(DarknessAttackPromptKind.None, cancelled.Prompt);
+        Assert.Equal(DarknessWarningClaimAction.Release, cancelled.WarningClaimAction);
+        Assert.True(fixture.Machine.TryGetSnapshot(Owner, out var snapshot));
+        Assert.Equal(DarknessAttackOwnerState.Inactive, snapshot.State);
+        Assert.Equal(
+            DarknessAttackContract.PlayerHasNoHealthReason,
+            snapshot.CancelReason
+        );
+    }
+
+    [Fact]
     public void Menu_dialogue_or_pause_retains_progress_while_event_cancels()
     {
         var fixture = new Fixture(10);
@@ -311,7 +379,7 @@ public sealed class DarknessAttackStateMachineTests
     }
 
     [Fact]
-    public void Two_split_screen_warning_claims_share_one_physical_instance_until_last_release()
+    public void Two_split_screen_warning_claims_share_one_physical_instance_until_natural_end()
     {
         var output = new FakeProcessOutput();
         using var coordinator = new SanityProcessAudioCoordinator(output);
@@ -345,6 +413,11 @@ public sealed class DarknessAttackStateMachineTests
             SanityAudioClaimUpdateStatus.Removed,
             coordinator.RemoveDarknessWarningClaim("2", 1, SessionId, "request-b").Status
         );
+        // Both logical claims are gone, but the one-shot created for them is still allowed to
+        // finish. A hard lifecycle cleanup is a separate operation.
+        Assert.True(output.DarknessWarningPhysical);
+        Assert.Equal(0, output.DarknessWarningReleaseCount);
+        output.StopDarknessWarningPlayback();
         Assert.False(output.DarknessWarningPhysical);
         Assert.Equal(1, output.DarknessWarningReleaseCount);
     }
@@ -398,6 +471,31 @@ public sealed class DarknessAttackStateMachineTests
         Assert.Equal(SanityAudioPlaybackState.Stopped, instance.State);
         Assert.True(instance.Disposed);
         Assert.Equal(0, lane.PhysicalInstanceCount);
+    }
+
+    [Fact]
+    public void Darkness_warning_lane_pause_resume_keeps_the_same_instance_and_position()
+    {
+        var effect = new FakeEffect();
+        using var lane = new SanityAudioInstanceLane(
+            SanityAudioLaneKind.DarknessWarning,
+            new[] { effect },
+            continuous: false,
+            new FixedAudioRandom(),
+            new OwningThreadContext(),
+            diagnosticSink: null
+        );
+
+        Assert.True(lane.TriggerOneShot(0.75f));
+        var instance = Assert.Single(effect.Instances);
+
+        lane.Pause();
+        Assert.Equal(SanityAudioPlaybackState.Paused, instance.State);
+        lane.Resume();
+
+        Assert.Same(instance, Assert.Single(effect.Instances));
+        Assert.Equal(SanityAudioPlaybackState.Playing, instance.State);
+        Assert.Equal(1, instance.PlayCount);
     }
 
     [Fact]
@@ -591,9 +689,15 @@ public sealed class DarknessAttackStateMachineTests
         {
             if (active && !DarknessWarningPhysical)
                 DarknessWarningActivationCount++;
-            if (!active && DarknessWarningPhysical)
+            if (active)
+                DarknessWarningPhysical = true;
+        }
+
+        public void StopDarknessWarningPlayback()
+        {
+            if (DarknessWarningPhysical)
                 DarknessWarningReleaseCount++;
-            DarknessWarningPhysical = active;
+            DarknessWarningPhysical = false;
         }
 
         public void SetPaused(bool paused) { }

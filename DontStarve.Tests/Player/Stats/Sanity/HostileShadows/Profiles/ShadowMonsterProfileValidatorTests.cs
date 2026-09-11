@@ -315,7 +315,33 @@ public sealed class ShadowMonsterProfileValidatorTests
         Assert.Contains(dropResult.Issues, issue => issue.Code == "shadow-profile.drop-table-contract-invalid");
         Assert.False(rewardResult.Success);
         Assert.Contains(immunityResult.Issues, issue => issue.Code == "shadow-profile.immunity-tag-unknown");
-        Assert.Contains(immunityResult.Issues, issue => issue.Code == "shadow-profile.immunity-required-tag-missing");
+        Assert.DoesNotContain(immunityResult.Issues, issue => issue.Code == "shadow-profile.immunity-required-tag-missing");
+    }
+
+    [Fact]
+    public void Empty_immunity_tags_are_explicitly_valid_for_a_future_nonimmune_profile()
+    {
+        var documents = ShadowMonsterProfileTestFixture.MutateFirstMonster(
+            monster => monster["ImmunityTags"] = new JsonArray()
+        );
+
+        var result = ShadowMonsterProfileTestFixture.Validate(documents);
+
+        Assert.True(result.Success, string.Join("; ", result.Issues));
+        var catalog = Assert.IsType<ShadowMonsterProfileCatalog>(result.Catalog);
+        Assert.True(
+            catalog.TryGetProfile(
+                ShadowMonsterDifficultyProfileIds.Compatible,
+                out var difficulty
+            )
+        );
+        Assert.True(
+            difficulty!.TryGetMonster(
+                ShadowMonsterAssetBindingIds.CreeperFear,
+                out var monster
+            )
+        );
+        Assert.Empty(monster!.ImmunityTags);
     }
 
     [Fact]

@@ -44,6 +44,9 @@ internal sealed class SanityVisualMetadataCatalog
                 var actorOrigin = ToPoint(profile.ActorOriginSourcePx) ?? new SanityResourcePoint(0, 0);
                 var hurtBox = ToRectangle(profile.Collision?.HurtBoxSourcePx);
                 var attackBox = ToRectangle(profile.Collision?.AttackBoxSourcePx);
+                var pushBox = profile.Collision is null
+                    ? null
+                    : ToPushBox(profile.Collision.PushBox);
                 foreach (var state in profile.States ?? Array.Empty<AnimationStateDto>())
                 {
                     if (
@@ -71,7 +74,10 @@ internal sealed class SanityVisualMetadataCatalog
                         state.DrawScale,
                         profile.OwnerLocalOnly,
                         state.IsProvisional,
-                        profile.IsPlaceholder
+                        profile.IsPlaceholder,
+                        pushBox?.SourcePx,
+                        pushBox?.GroupId,
+                        pushBox?.PushForce
                     );
                     if (!templates.TryAdd(state.AnimationId, template))
                     {
@@ -236,6 +242,34 @@ internal sealed class SanityVisualMetadataCatalog
             );
     }
 
+    private static SanityHostilePushBoxDefinition ToPushBox(PushBoxDto? pushBox)
+    {
+        if (pushBox?.SourcePx is null)
+            throw new InvalidOperationException("Hostile PushBox metadata is missing.");
+
+        if (
+            !SanityHostilePushBoxDefinition.TryCreate(
+                pushBox.CoordinateSpace,
+                new SanityResourceRectangle(
+                    pushBox.SourcePx.X,
+                    pushBox.SourcePx.Y,
+                    pushBox.SourcePx.Width,
+                    pushBox.SourcePx.Height
+                ),
+                pushBox.GroupId,
+                pushBox.PushForce,
+                out var definition,
+                out _
+            )
+            || definition is null
+        )
+        {
+            throw new InvalidOperationException("Hostile PushBox metadata is invalid.");
+        }
+
+        return definition;
+    }
+
     private static readonly JsonSerializerOptions SerializerOptions =
         new()
         {
@@ -261,7 +295,10 @@ internal sealed class SanityVisualMetadataCatalog
             double drawScale,
             bool ownerLocalOnly,
             bool isProvisional,
-            bool isPlaceholder
+            bool isPlaceholder,
+            SanityResourceRectangle? pushBox = null,
+            string? pushBoxGroupId = null,
+            double? pushForce = null
         )
         {
             TextureSlotId = textureSlotId;
@@ -274,6 +311,9 @@ internal sealed class SanityVisualMetadataCatalog
             ActorOrigin = actorOrigin;
             HurtBox = hurtBox;
             AttackBox = attackBox;
+            PushBox = pushBox;
+            PushBoxGroupId = pushBoxGroupId;
+            PushForce = pushForce;
             Slice = slice;
             DrawScale = drawScale;
             OwnerLocalOnly = ownerLocalOnly;
@@ -300,6 +340,12 @@ internal sealed class SanityVisualMetadataCatalog
         internal SanityResourceRectangle? HurtBox { get; }
 
         internal SanityResourceRectangle? AttackBox { get; }
+
+        internal SanityResourceRectangle? PushBox { get; }
+
+        internal string? PushBoxGroupId { get; }
+
+        internal double? PushForce { get; }
 
         internal SanityResourceRectangle? Slice { get; }
 
@@ -328,7 +374,10 @@ internal sealed class SanityVisualMetadataCatalog
                 DrawScale,
                 OwnerLocalOnly,
                 IsProvisional,
-                IsPlaceholder
+                IsPlaceholder,
+                PushBox,
+                PushBoxGroupId,
+                PushForce
             );
         }
     }
@@ -419,6 +468,19 @@ internal sealed class SanityVisualMetadataCatalog
         public RectangleDto? HurtBoxSourcePx { get; set; }
 
         public RectangleDto? AttackBoxSourcePx { get; set; }
+
+        public PushBoxDto? PushBox { get; set; }
+    }
+
+    private sealed class PushBoxDto
+    {
+        public string CoordinateSpace { get; set; } = string.Empty;
+
+        public RectangleDto? SourcePx { get; set; }
+
+        public string GroupId { get; set; } = string.Empty;
+
+        public double PushForce { get; set; }
     }
 
     private sealed class PointDto

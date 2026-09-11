@@ -274,6 +274,17 @@
           "Width": 64,
           "Height": 64
         },
+        "PushBox": {
+          "CoordinateSpace": "ActorOriginRelativeSourcePx",
+          "SourcePx": {
+            "X": 4,
+            "Y": 48,
+            "Width": 56,
+            "Height": 48
+          },
+          "GroupId": "shadow-creature.v1",
+          "PushForce": 0.25
+        },
         "AttackActiveFrames": [
           3,
           4
@@ -483,6 +494,17 @@
           "Y": 16,
           "Width": 64,
           "Height": 64
+        },
+        "PushBox": {
+          "CoordinateSpace": "ActorOriginRelativeSourcePx",
+          "SourcePx": {
+            "X": 8,
+            "Y": 32,
+            "Width": 32,
+            "Height": 32
+          },
+          "GroupId": "shadow-creature.v1",
+          "PushForce": 0.5
         },
         "AttackActiveFrames": [
           3,

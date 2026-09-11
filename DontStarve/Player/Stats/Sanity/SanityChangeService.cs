@@ -715,10 +715,8 @@ internal sealed class SanityChangeService
         }
         if (
             !SanityPlayerKey.IsCanonical(request.PlayerKey)
-            || !long.TryParse(
+            || !SanityPlayerKey.TryParseCanonicalPlayerId(
                 request.PlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var requestedPlayerId
             )
             || requestedPlayerId != senderPlayerId
@@ -922,10 +920,8 @@ internal sealed class SanityRequestValidator
         if (!SanityPlayerKey.IsCanonical(request.PlayerKey))
             return Reject("request-player-key-is-not-canonical", false);
         if (
-            !long.TryParse(
+            !SanityPlayerKey.TryParseCanonicalPlayerId(
                 request.PlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var requestedPlayerId
             )
             || requestedPlayerId != senderPlayerId

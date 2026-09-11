@@ -59,9 +59,8 @@
     "889": 1,
     "DS_Watermelon": 5,
     "DS_Durian": -5,
-    "DS_Dragon Fruit": 0,
+    "DS_Dragon_Fruit": 0,
     "DS_Fig": 0,
-    "DS_Halved_Coconut": 0,
 
 //烤水果（待填写）
 
@@ -384,7 +383,6 @@
     "167": 5,
     "684": -5,
     "767": -10,
-    "434": 1,
     "803": -10,
 
 
@@ -544,7 +542,10 @@
     "DS_Sesame_Bean_Paste_Mooncake": 25,
     "DS_Shrimp_Seafood_Mooncake": 25,
     "DS_Snowy_Coconut_Mooncake": 25,
-    "DS_Snowy_Durian_Mooncake": 5
+    "DS_Snowy_Durian_Mooncake": 5,
+
+//种子
+    "Seeds": 0
 
 
 //无法分类

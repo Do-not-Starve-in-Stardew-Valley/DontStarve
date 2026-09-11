@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 
@@ -59,6 +60,9 @@ internal sealed record HostileShadowSettlementRequest(
     string KillCounterId
 )
 {
+    internal double ExplosionTileX { get; init; } = double.NaN;
+    internal double ExplosionTileY { get; init; } = double.NaN;
+
     internal HostileShadowSettlementKey Key => new(
         LifecycleReceipt.SessionId,
         LifecycleReceipt.EntityId,
@@ -133,8 +137,21 @@ internal static class HostileShadowSettlementSeed
         if (!key.IsValid)
             return 0;
 
+        return CreateFromCorrelation(key.SettlementId);
+    }
+
+    internal static int CreateDerived(HostileShadowSettlementKey key, string purpose)
+    {
+        if (!key.IsValid || string.IsNullOrWhiteSpace(purpose))
+            return 0;
+
+        return CreateFromCorrelation(string.Concat(key.SettlementId, ":", purpose));
+    }
+
+    private static int CreateFromCorrelation(string correlation)
+    {
         // FNV-1a is used only as a stable correlation seed, not for security.
-        var bytes = Encoding.UTF8.GetBytes(key.SettlementId);
+        var bytes = Encoding.UTF8.GetBytes(correlation);
         var hash = 2166136261u;
         foreach (var value in bytes)
         {
@@ -144,6 +161,183 @@ internal static class HostileShadowSettlementSeed
         var seed = (int)(hash & 0x7fffffff);
         return seed == 0 ? 1 : seed;
     }
+}
+
+internal static class HostileShadowSettlementItemSemanticIds
+{
+    internal const string VoidEssence = "stardew.item.void-essence";
+    internal const string Coffee = "stardew.item.coffee";
+    internal const string TripleShotEspresso = "stardew.item.triple-shot-espresso";
+}
+
+internal static class HostileShadowVanillaRingIds
+{
+    internal const string Warrior = "521";
+    internal const string Vampire = "522";
+    internal const string Savage = "523";
+    internal const string Burglar = "526";
+    internal const string Amethyst = "529";
+    internal const string Napalm = "811";
+    internal const string Lucky = "859";
+    internal const string HotJava = "860";
+    internal const string SoulSapper = "862";
+
+    internal static bool IsSettlementRelevant(string itemId)
+    {
+        return itemId
+            is Warrior
+                or Vampire
+                or Savage
+                or Burglar
+                or Napalm
+                or HotJava
+                or SoulSapper;
+    }
+}
+
+internal readonly record struct HostileShadowDropStack(
+    string ItemSemanticId,
+    int Quantity
+);
+
+/// <summary>
+/// Frozen host-side view of the killer's relevant equipment at death settlement time. The ring
+/// sequence is a comma-separated scalar because settlement request/receipt equality must not use
+/// reference equality for a mutable collection.
+/// </summary>
+internal readonly record struct HostileShadowRingSnapshot(
+    string MonsterSlayRingSequence,
+    bool HasBurglarRing,
+    bool HasMonsterBook,
+    int LuckLevel
+)
+{
+    internal static HostileShadowRingSnapshot Empty => new(string.Empty, false, false, 0);
+
+    internal IEnumerable<string> EnumerateRingIds()
+    {
+        if (string.IsNullOrEmpty(MonsterSlayRingSequence))
+            yield break;
+
+        foreach (
+            var itemId in MonsterSlayRingSequence.Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries
+            )
+        )
+        {
+            yield return itemId;
+        }
+    }
+}
+
+internal readonly record struct HostileShadowRingSnapshotRequest(
+    HostileShadowSettlementKey Key,
+    string PlayerKey,
+    string LocationId
+);
+
+internal enum HostileShadowRingSnapshotStatus
+{
+    NotEvaluated,
+    Valid,
+    Invalid,
+}
+
+internal readonly record struct HostileShadowRingSnapshotReceipt(
+    HostileShadowRingSnapshotStatus Status,
+    HostileShadowRingSnapshot Snapshot,
+    string Reason
+)
+{
+    internal bool IsValid => Status == HostileShadowRingSnapshotStatus.Valid;
+
+    internal static HostileShadowRingSnapshotReceipt NotEvaluated(string reason)
+    {
+        return new(
+            HostileShadowRingSnapshotStatus.NotEvaluated,
+            HostileShadowRingSnapshot.Empty,
+            reason
+        );
+    }
+
+    internal static HostileShadowRingSnapshotReceipt Valid(
+        HostileShadowRingSnapshot snapshot,
+        string reason
+    )
+    {
+        return new(HostileShadowRingSnapshotStatus.Valid, snapshot, reason);
+    }
+
+    internal static HostileShadowRingSnapshotReceipt Invalid(string reason)
+    {
+        return new(
+            HostileShadowRingSnapshotStatus.Invalid,
+            HostileShadowRingSnapshot.Empty,
+            reason
+        );
+    }
+}
+
+internal interface IHostileShadowRingSnapshotAuthority
+{
+    HostileShadowRingSnapshotReceipt Resolve(HostileShadowRingSnapshotRequest request);
+}
+
+internal readonly record struct HostileShadowKillEffectRequest(
+    HostileShadowSettlementKey Key,
+    string SettlementId,
+    string PlayerKey,
+    string LocationId,
+    double PositionX,
+    double PositionY,
+    double ExplosionTileX,
+    double ExplosionTileY,
+    int VampireHealth,
+    int SoulSapperEnergy,
+    int WarriorTriggerCount,
+    int SavageTriggerCount,
+    int NapalmExplosionCount
+);
+
+internal enum HostileShadowKillEffectStatus
+{
+    NotAttempted,
+    Applied,
+    Rejected,
+}
+
+internal readonly record struct HostileShadowKillEffectReceipt(
+    HostileShadowKillEffectStatus Status,
+    string PlayerKey,
+    int VampireHealth,
+    int SoulSapperEnergy,
+    int WarriorTriggerCount,
+    int SavageTriggerCount,
+    int NapalmExplosionCount,
+    string Reason
+)
+{
+    internal bool IsAccepted => Status == HostileShadowKillEffectStatus.Applied;
+
+    internal static HostileShadowKillEffectReceipt NotAttempted(string reason)
+    {
+        return new(
+            HostileShadowKillEffectStatus.NotAttempted,
+            string.Empty,
+            0,
+            0,
+            0,
+            0,
+            0,
+            reason
+        );
+    }
+}
+
+internal interface IHostileShadowKillEffectAuthority
+{
+    HostileShadowKillEffectReceipt Apply(HostileShadowKillEffectRequest request);
 }
 
 internal readonly record struct HostileShadowDropSpawnRequest(
@@ -157,7 +351,10 @@ internal readonly record struct HostileShadowDropSpawnRequest(
     string LocationId,
     double PositionX,
     double PositionY
-);
+)
+{
+    internal IReadOnlyList<HostileShadowDropStack>? DropStacks { get; init; } = null;
+}
 
 internal enum HostileShadowDropSpawnStatus
 {
@@ -336,7 +533,21 @@ internal sealed record HostileShadowSettlementReceipt(
     HostileShadowSanityRewardReceipt SanityReward,
     HostileShadowSettlementRetryDisposition RetryDisposition,
     string Reason
-);
+)
+{
+    internal IReadOnlyList<HostileShadowDropStack> PlannedDropStacks { get; init; } =
+        Array.Empty<HostileShadowDropStack>();
+
+    internal HostileShadowRingSnapshotReceipt RingSnapshot { get; init; } =
+        HostileShadowRingSnapshotReceipt.NotEvaluated(
+            "hostile-shadow.settlement-rings-not-evaluated"
+        );
+
+    internal HostileShadowKillEffectReceipt KillEffects { get; init; } =
+        HostileShadowKillEffectReceipt.NotAttempted(
+            "hostile-shadow.settlement-kill-effects-not-attempted"
+        );
+}
 
 internal enum HostileShadowSettlementStatus
 {

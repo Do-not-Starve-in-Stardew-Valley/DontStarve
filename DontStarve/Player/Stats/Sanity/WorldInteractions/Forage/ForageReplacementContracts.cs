@@ -516,7 +516,7 @@ internal static class ForageReplacementEligibilityGate
     )
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        if (facts.PickerMultiplayerId <= 0 || !facts.PickerMatchesRequest)
+        if (facts.PickerMultiplayerId == 0 || !facts.PickerMatchesRequest)
             return Rejected(ForageReplacementReasonIds.PickerInvalid);
         if (!facts.IsHostAuthoritative)
             return Rejected(ForageReplacementReasonIds.HostAuthorityRequired);

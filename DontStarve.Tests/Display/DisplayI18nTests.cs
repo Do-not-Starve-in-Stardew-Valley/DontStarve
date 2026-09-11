@@ -26,6 +26,33 @@ public sealed class DisplayI18nTests
         Assert.Contains("sanity-hud.value", englishKeys);
         Assert.Contains("sanity-tooltip", englishKeys);
         Assert.Contains("sanity-tooltip.equipment-per-minute", englishKeys);
+        Assert.Contains("sanity.shadow-monster.creeper-fear.name", englishKeys);
+        Assert.Contains("sanity.shadow-monster.terrorbeak.name", englishKeys);
+    }
+
+    [Theory]
+    [InlineData("default.json", "Creeper Fear", "Terrorbeak")]
+    [InlineData("zh.json", "爬行恐惧", "恐怖尖喙")]
+    public void ShadowMonsterNamesHaveLocalizedValues(
+        string localeFile,
+        string creeperFearName,
+        string terrorbeakName
+    )
+    {
+        using var locale = ReadLocale(localeFile);
+
+        Assert.Equal(
+            creeperFearName,
+            locale.RootElement
+                .GetProperty("sanity.shadow-monster.creeper-fear.name")
+                .GetString()
+        );
+        Assert.Equal(
+            terrorbeakName,
+            locale.RootElement
+                .GetProperty("sanity.shadow-monster.terrorbeak.name")
+                .GetString()
+        );
     }
 
     [Theory]
@@ -98,7 +125,7 @@ public sealed class DisplayI18nTests
     [Theory]
     [InlineData("default.json")]
     [InlineData("zh.json")]
-    public void ExtraMachineConfigCombatTemplatesExposeFormattedValues(string localeFile)
+    public void ExtendedBuffCombatTemplatesExposeFormattedValues(string localeFile)
     {
         using var locale = ReadLocale(localeFile);
         foreach (

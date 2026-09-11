@@ -547,8 +547,26 @@ public sealed class SanityPersistenceStoreTests
         Assert.Equal("123456789", SanityPlayerKey.FromUniqueMultiplayerId(123456789));
         Assert.True(SanityPlayerKey.IsCanonical("0"));
         Assert.True(SanityPlayerKey.IsCanonical("123456789"));
+        Assert.True(SanityPlayerKey.IsCanonical("-1"));
+        Assert.Equal(
+            "-1254730281908633139",
+            SanityPlayerKey.FromUniqueMultiplayerId(-1254730281908633139)
+        );
+        Assert.True(
+            SanityPlayerKey.TryParseCanonicalPlayerId(
+                "-1254730281908633139",
+                out var parsedNegativeId
+            )
+        );
+        Assert.Equal(-1254730281908633139, parsedNegativeId);
+        Assert.False(
+            SanityPlayerKey.TryParseCanonicalPlayerId(
+                "+1254730281908633139",
+                out _
+            )
+        );
         Assert.False(SanityPlayerKey.IsCanonical("001"));
-        Assert.False(SanityPlayerKey.IsCanonical("-1"));
+        Assert.False(SanityPlayerKey.IsCanonical("+1"));
         Assert.False(SanityPlayerKey.IsCanonical("1,000"));
     }
 

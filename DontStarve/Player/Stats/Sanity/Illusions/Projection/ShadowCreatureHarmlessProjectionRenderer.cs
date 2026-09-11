@@ -122,6 +122,29 @@ internal sealed class ShadowCreatureHarmlessProjectionRenderer
             layerDepth
         );
 
+        // Stage 05: the harmless sprite is drawn with `screenPixel` as the source-frame pivot.
+        // Translate the diagnostic rectangle from that frame's top-left; do not add the actor
+        // origin again, because this path is only correcting the visible overlay and does not
+        // change the world PushBox used by the solver.
+        if (
+            Debug.DebugCommands.AreBoxesVisible
+            && preview.PushBoxSourcePx is { } pushBox
+        )
+        {
+            var frameTopLeftX = screenPixel.X - (pivot.X * scale);
+            var frameTopLeftY = screenPixel.Y - (pivot.Y * scale);
+            DrawBoxOutline(
+                spriteBatch,
+                new Rectangle(
+                    (int)Math.Round(frameTopLeftX + pushBox.X * scale),
+                    (int)Math.Round(frameTopLeftY + pushBox.Y * scale),
+                    Math.Max(1, (int)Math.Round(pushBox.Width * scale)),
+                    Math.Max(1, (int)Math.Round(pushBox.Height * scale))
+                ),
+                new Color(255, 240, 70)
+            );
+        }
+
         if (!preview.IsPlaceholder && !preview.IsProvisional)
             return;
 
@@ -169,6 +192,30 @@ internal sealed class ShadowCreatureHarmlessProjectionRenderer
                 thickness,
                 bounds.Height
             ),
+            color
+        );
+    }
+
+    private static void DrawBoxOutline(
+        SpriteBatch spriteBatch,
+        Rectangle rect,
+        Color color
+    )
+    {
+        if (rect.Width <= 0 || rect.Height <= 0 || Game1.staminaRect is null)
+            return;
+        const int border = 5;
+        var fill = Game1.staminaRect;
+        spriteBatch.Draw(fill, new Rectangle(rect.X, rect.Y, rect.Width, border), color);
+        spriteBatch.Draw(
+            fill,
+            new Rectangle(rect.X, rect.Bottom - border, rect.Width, border),
+            color
+        );
+        spriteBatch.Draw(fill, new Rectangle(rect.X, rect.Y, border, rect.Height), color);
+        spriteBatch.Draw(
+            fill,
+            new Rectangle(rect.Right - border, rect.Y, border, rect.Height),
             color
         );
     }

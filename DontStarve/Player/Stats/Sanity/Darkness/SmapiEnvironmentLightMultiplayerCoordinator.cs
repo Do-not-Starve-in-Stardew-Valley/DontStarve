@@ -151,13 +151,11 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
             || !Context.IsWorldReady
             || !SanityPlayerKey.IsCanonical(key.PlayerKey)
             || !SanityProtocol.IsValidSessionId(key.SessionId)
-            || !long.TryParse(
+            || !SanityPlayerKey.TryParseCanonicalPlayerId(
                 key.PlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var targetPlayerId
             )
-            || targetPlayerId <= 0
+            || targetPlayerId == 0
             || targetPlayerId == Game1.player?.UniqueMultiplayerID
             || Game1.GetPlayer(targetPlayerId, onlyOnline: true) is null
         )
@@ -393,7 +391,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         var host = Game1.MasterPlayer;
         if (
             host is null
-            || host.UniqueMultiplayerID <= 0
+            || host.UniqueMultiplayerID == 0
             || host.UniqueMultiplayerID == owner.UniqueMultiplayerID
         )
         {
@@ -467,7 +465,7 @@ internal sealed class SmapiEnvironmentLightMultiplayerCoordinator
         if (
             !Context.IsWorldReady
             || lifecycle.AuthorityRole != SanityAuthorityRole.Host
-            || e.FromPlayerID <= 0
+            || e.FromPlayerID == 0
         )
         {
             return;

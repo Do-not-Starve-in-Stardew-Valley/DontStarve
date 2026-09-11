@@ -150,6 +150,145 @@ public sealed class HostileAttackMotionAndStateTests
         Assert.Equal(0, policy.TauntCalls);
     }
 
+    [Fact]
+    public void Target_switch_restarts_the_first_contact_taunt_flow()
+    {
+        var definition = HostileAttackTestFactory.Definition(intervalSeconds: 1d);
+        var policy = new TestTransitionPolicy(shouldTaunt: true, delaySeconds: 0d);
+        var machine = new HostileAttackStateMachine(definition, policy);
+
+        Assert.Equal(
+            HostileShadowStateIds.Taunt,
+            machine.Advance(
+                HostileAttackTestFactory.Input(inRange: false),
+                definition.SpawnDurationMilliseconds
+            ).StateId
+        );
+        Assert.Equal(
+            HostileShadowStateIds.Chase,
+            machine.Advance(
+                HostileAttackTestFactory.Input(inRange: false),
+                definition.TauntDurationMilliseconds
+            ).StateId
+        );
+
+        Assert.True(
+            machine.BeginTargetReacquisition(out var reason),
+            reason
+        );
+        Assert.Equal(HostileShadowStateIds.Idle, machine.StateId);
+        Assert.Equal(
+            HostileShadowStateIds.Taunt,
+            machine.Advance(
+                HostileAttackTestFactory.Input(
+                    inRange: false,
+                    targetPlayerKey: HostileAttackTestFactory.PlayerTwo
+                ),
+                0d
+            ).StateId
+        );
+        Assert.Equal(2, policy.TauntCalls);
+    }
+
+    [Fact]
+    public void Target_loss_during_chase_retaunts_when_the_target_returns()
+    {
+        var definition = HostileAttackTestFactory.Definition(intervalSeconds: 1d);
+        var policy = new TestTransitionPolicy(shouldTaunt: true, delaySeconds: 0d);
+        var machine = new HostileAttackStateMachine(definition, policy);
+
+        Assert.Equal(
+            HostileShadowStateIds.Idle,
+            machine.Advance(
+                HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+                definition.SpawnDurationMilliseconds
+            ).StateId
+        );
+        Assert.Equal(
+            HostileShadowStateIds.Taunt,
+            machine.Advance(
+                HostileAttackTestFactory.Input(inRange: false),
+                0d
+            ).StateId
+        );
+        Assert.Equal(
+            HostileShadowStateIds.Chase,
+            machine.Advance(
+                HostileAttackTestFactory.Input(inRange: false),
+                definition.TauntDurationMilliseconds
+            ).StateId
+        );
+
+        Assert.Equal(
+            HostileShadowStateIds.Idle,
+            machine.Advance(
+                HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+                0d
+            ).StateId
+        );
+        Assert.Equal(
+            HostileShadowStateIds.Taunt,
+            machine.Advance(
+                HostileAttackTestFactory.Input(
+                    inRange: false,
+                    targetPlayerKey: HostileAttackTestFactory.PlayerTwo
+                ),
+                0d
+            ).StateId
+        );
+        Assert.Equal(2, policy.TauntCalls);
+    }
+
+    [Fact]
+    public void Target_returning_before_attack_finishes_waits_for_the_new_taunt_flow()
+    {
+        var definition = HostileAttackTestFactory.Definition(intervalSeconds: 1d);
+        var policy = new TestTransitionPolicy(shouldTaunt: true, delaySeconds: 0d);
+        var machine = new HostileAttackStateMachine(definition, policy);
+
+        machine.Advance(
+            HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+            definition.SpawnDurationMilliseconds
+        );
+        machine.Advance(
+            HostileAttackTestFactory.Input(inRange: false),
+            0d
+        );
+        machine.Advance(
+            HostileAttackTestFactory.Input(inRange: false),
+            definition.TauntDurationMilliseconds
+        );
+        Assert.Equal(
+            HostileShadowStateIds.Attack,
+            machine.Advance(HostileAttackTestFactory.Input(), 0d).StateId
+        );
+
+        machine.Advance(
+            HostileAttackTestFactory.Input(hasTarget: false, inRange: false),
+            0d
+        );
+        var finished = machine.Advance(
+            HostileAttackTestFactory.Input(
+                inRange: false,
+                targetPlayerKey: HostileAttackTestFactory.PlayerTwo
+            ),
+            definition.AttackFrameDurationMilliseconds
+                * definition.AttackFrameCount
+        );
+        Assert.Equal(HostileShadowStateIds.Idle, finished.StateId);
+        Assert.Equal(
+            HostileShadowStateIds.Taunt,
+            machine.Advance(
+                HostileAttackTestFactory.Input(
+                    inRange: false,
+                    targetPlayerKey: HostileAttackTestFactory.PlayerTwo
+                ),
+                0d
+            ).StateId
+        );
+        Assert.Equal(2, policy.TauntCalls);
+    }
+
     [Theory]
     [InlineData(ShadowMonsterAssetBindingIds.CreeperFear)]
     [InlineData(ShadowMonsterAssetBindingIds.Terrorbeak)]

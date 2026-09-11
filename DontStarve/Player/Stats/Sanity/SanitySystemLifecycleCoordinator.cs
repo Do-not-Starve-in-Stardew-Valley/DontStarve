@@ -222,6 +222,15 @@ internal sealed class SanitySystemLifecycleCoordinator
         return service.TryGetShadowBudgetTotalCap(playerKey, out totalCap);
     }
 
+    /// <summary>Read-only current budget tier for cut-map refill authorization.</summary>
+    internal bool TryGetShadowBudgetState(
+        string playerKey,
+        out SanityShadowBudgetOwnerSnapshot? snapshot
+    )
+    {
+        return service.TryGetShadowBudgetState(playerKey, out snapshot);
+    }
+
     /// <summary>
     /// 先让 tier/budget/cleanup 链进入可用状态；ModEntry 随后才应用实际配置，
     /// 因而启动即 Disabled 也不会跳过注册或初始化。

@@ -15,7 +15,6 @@ internal class HealthRestoreBuff : FixedRestoreBuff
         "DS_BUFF_HEALTH_RESTORE",
     };
 
-    protected override string SaveKey => "DontStarve.Buff.HealthRestore";
     protected override IReadOnlyList<string> BuffIds => HEALTH_RESTORE_BUFF_IDS;
     protected override int AmountPerPulse => 2;
 

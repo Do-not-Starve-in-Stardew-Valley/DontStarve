@@ -1485,10 +1485,8 @@ internal sealed class SmapiSanityTwoAmSpecialDeathService : IDisposable
             mutation.Snapshot is { } remoteSnapshot
             && lifecycle.AuthorityRole == SanityAuthorityRole.Host
             && !IsCurrentLocalPlayer(remoteSnapshot.PlayerKey)
-            && long.TryParse(
+            && SanityPlayerKey.TryParseCanonicalPlayerId(
                 remoteSnapshot.PlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var remotePlayerId
             )
         )
@@ -1624,10 +1622,8 @@ internal sealed class SmapiSanityTwoAmSpecialDeathService : IDisposable
     )
     {
         if (
-            !long.TryParse(
+            !SanityPlayerKey.TryParseCanonicalPlayerId(
                 action.PlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var playerId
             )
         )
@@ -1757,10 +1753,8 @@ internal sealed class SmapiSanityTwoAmSpecialDeathService : IDisposable
     {
         if (IsCurrentLocalPlayer(playerKey))
             return Game1.player;
-        return long.TryParse(
+        return SanityPlayerKey.TryParseCanonicalPlayerId(
             playerKey,
-            NumberStyles.None,
-            CultureInfo.InvariantCulture,
             out var playerId
         )
             ? Game1.GetPlayer(playerId, true)

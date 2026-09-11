@@ -18,6 +18,9 @@ internal class HungerBar : INonTimeRelatedUIElement
 
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
+        if (!uiContext.ShowingHunger)
+            return;
+
         var player = Game1.player;
         var hunger = player.GetHunger();
         var maxHunger = player.GetMaxHunger();

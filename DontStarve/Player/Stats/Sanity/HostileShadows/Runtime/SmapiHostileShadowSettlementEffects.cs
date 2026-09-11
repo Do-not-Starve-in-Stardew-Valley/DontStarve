@@ -1,10 +1,13 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Objects;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 
@@ -15,9 +18,15 @@ namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 internal sealed class SmapiHostileShadowSettlementEffects
     : IHostileShadowDropSpawnAuthority,
         IHostileShadowLastHitterAuthority,
-        IHostileShadowSanityRewardAuthority
+        IHostileShadowSanityRewardAuthority,
+        IHostileShadowRingSnapshotAuthority,
+        IHostileShadowKillEffectAuthority
 {
     internal const string VoidEssenceQualifiedItemId = "(O)769";
+    internal const string CoffeeQualifiedItemId = "(O)395";
+    internal const string TripleShotEspressoQualifiedItemId = "(O)253";
+    internal const string WarriorBuffId = "20";
+    internal const string AdrenalineRushBuffId = "22";
 
     private readonly SanitySystemLifecycleCoordinator lifecycle;
 
@@ -34,23 +43,47 @@ internal sealed class SmapiHostileShadowSettlementEffects
     {
         if (!TryValidateHostSession(request.Key, out var reason))
             return HostileShadowDropSpawnReceipt.Rejected(reason);
-        if (
-            !string.Equals(
-                request.ItemSemanticId,
-                ShadowMonsterProfileContractIds.VoidEssenceSemanticItem,
-                StringComparison.Ordinal
-            )
-        )
+        var stacks = request.DropStacks;
+        if (stacks is null)
+        {
+            stacks = new[]
+            {
+                new HostileShadowDropStack(request.ItemSemanticId, request.Quantity),
+            };
+        }
+        if (stacks.Count == 0 || stacks.Count > 64)
         {
             return HostileShadowDropSpawnReceipt.Rejected(
-                "hostile-shadow.settlement-item-semantic-unsupported"
+                "hostile-shadow.settlement-drop-stacks-invalid"
             );
         }
-        if (request.Quantity <= 0 || request.Quantity > 999)
+        var items = new List<Item>(stacks.Count);
+        foreach (var stack in stacks)
         {
-            return HostileShadowDropSpawnReceipt.Rejected(
-                "hostile-shadow.settlement-item-quantity-invalid"
-            );
+            if (
+                stack.Quantity <= 0
+                || stack.Quantity > 999
+                || !TryGetQualifiedItemId(stack.ItemSemanticId, out var qualifiedItemId)
+            )
+            {
+                return HostileShadowDropSpawnReceipt.Rejected(
+                    "hostile-shadow.settlement-item-stack-invalid"
+                );
+            }
+            if (!ItemRegistry.Exists(qualifiedItemId))
+            {
+                return HostileShadowDropSpawnReceipt.Rejected(
+                    "hostile-shadow.settlement-item-unavailable"
+                );
+            }
+            var item = ItemRegistry.Create(qualifiedItemId, stack.Quantity, 0, true);
+            if (item is null)
+            {
+                return HostileShadowDropSpawnReceipt.Rejected(
+                    "hostile-shadow.settlement-item-create-returned-null"
+                );
+            }
+            items.Add(item);
         }
         var location = Game1.getLocationFromName(request.LocationId);
         if (
@@ -66,32 +99,16 @@ internal sealed class SmapiHostileShadowSettlementEffects
                 "hostile-shadow.settlement-drop-location-invalid"
             );
         }
-        if (!ItemRegistry.Exists(VoidEssenceQualifiedItemId))
-        {
-            return HostileShadowDropSpawnReceipt.Rejected(
-                "hostile-shadow.settlement-void-essence-unavailable"
-            );
-        }
-
-        var item = ItemRegistry.Create(
-            VoidEssenceQualifiedItemId,
-            request.Quantity,
-            0,
-            true
-        );
-        if (item is null)
-        {
-            return HostileShadowDropSpawnReceipt.Rejected(
-                "hostile-shadow.settlement-item-create-returned-null"
-            );
-        }
         var debrisCountBefore = location.debris.Count;
-        Game1.createItemDebris(
-            item,
-            new Vector2((float)request.PositionX, (float)request.PositionY),
-            2,
-            location
-        );
+        foreach (var item in items)
+        {
+            Game1.createItemDebris(
+                item,
+                new Vector2((float)request.PositionX, (float)request.PositionY),
+                2,
+                location
+            );
+        }
         if (location.debris.Count <= debrisCountBefore)
         {
             return HostileShadowDropSpawnReceipt.Rejected(
@@ -99,7 +116,10 @@ internal sealed class SmapiHostileShadowSettlementEffects
             );
         }
         return HostileShadowDropSpawnReceipt.Success(
-            "hostile-shadow.settlement-ground-drop-spawned"
+            string.Concat(
+                "hostile-shadow.settlement-ground-drop-spawned:",
+                items.Count
+            )
         );
     }
 
@@ -127,6 +147,177 @@ internal sealed class SmapiHostileShadowSettlementEffects
         return HostileShadowLastHitterReceipt.Valid(
             request.AttributedPlayerKey,
             "hostile-shadow.settlement-last-hitter-valid"
+        );
+    }
+
+    public HostileShadowRingSnapshotReceipt Resolve(
+        HostileShadowRingSnapshotRequest request
+    )
+    {
+        if (!TryValidateHostSession(request.Key, out var reason))
+            return HostileShadowRingSnapshotReceipt.Invalid(reason);
+        if (!TryGetOnlinePlayerInLocation(
+                request.PlayerKey,
+                request.LocationId,
+                out var player,
+                out reason
+            ))
+        {
+            return HostileShadowRingSnapshotReceipt.Invalid(reason);
+        }
+
+        var ringIds = new List<string>(8);
+        AppendSettlementRingIds(player!.leftRing.Value, ringIds);
+        AppendSettlementRingIds(player.rightRing.Value, ringIds);
+        var sequence = string.Join(",", ringIds);
+        var hasBurglar = ringIds.Contains(
+            HostileShadowVanillaRingIds.Burglar,
+            StringComparer.Ordinal
+        );
+        return HostileShadowRingSnapshotReceipt.Valid(
+            new HostileShadowRingSnapshot(
+                sequence,
+                hasBurglar,
+                player.stats.Get("Book_Void") != 0,
+                player.LuckLevel
+            ),
+            "hostile-shadow.settlement-ring-snapshot-captured"
+        );
+    }
+
+    public HostileShadowKillEffectReceipt Apply(
+        HostileShadowKillEffectRequest request
+    )
+    {
+        if (!TryValidateHostSession(request.Key, out var reason))
+            return RejectedKillEffects(request, reason);
+        if (
+            !SanityPlayerKey.IsCanonical(request.PlayerKey)
+            || request.VampireHealth < 0
+            || request.SoulSapperEnergy < 0
+            || request.WarriorTriggerCount < 0
+            || request.SavageTriggerCount < 0
+            || request.NapalmExplosionCount < 0
+            || !double.IsFinite(request.PositionX)
+            || !double.IsFinite(request.PositionY)
+            || !double.IsFinite(request.ExplosionTileX)
+            || !double.IsFinite(request.ExplosionTileY)
+        )
+        {
+            return RejectedKillEffects(
+                request,
+                "hostile-shadow.settlement-kill-effects-request-invalid"
+            );
+        }
+        if (!TryGetOnlinePlayerInLocation(
+                request.PlayerKey,
+                request.LocationId,
+                out var player,
+                out reason
+            ))
+        {
+            return RejectedKillEffects(request, reason);
+        }
+
+        player!.health = Math.Min(
+            player.maxHealth,
+            player.health + request.VampireHealth
+        );
+        player.Stamina = Math.Min(
+            player.MaxStamina,
+            player.Stamina + request.SoulSapperEnergy
+        );
+        for (var index = 0; index < request.WarriorTriggerCount; index++)
+        {
+            player.applyBuff(WarriorBuffId);
+            if (player.IsLocalPlayer)
+                Game1.playSound("warrior");
+        }
+        for (var index = 0; index < request.SavageTriggerCount; index++)
+            player.applyBuff(AdrenalineRushBuffId);
+
+        var location = player.currentLocation;
+        if (location is null)
+            return RejectedKillEffects(
+                request,
+                "hostile-shadow.settlement-kill-effects-location-missing"
+            );
+        for (var index = 0; index < request.NapalmExplosionCount; index++)
+        {
+            // This is the vanilla Ring.onMonsterSlay call. In Farm/SlimeHutch the call still
+            // happens; only destroyObjects is false, so nearby monsters can still be affected.
+            location.explode(
+                new Vector2(
+                    (float)request.ExplosionTileX,
+                    (float)request.ExplosionTileY
+                ),
+                2,
+                player,
+                damageFarmers: false,
+                damage_amount: -1,
+                destroyObjects: location is not Farm && location is not SlimeHutch
+            );
+        }
+        return new HostileShadowKillEffectReceipt(
+            HostileShadowKillEffectStatus.Applied,
+            request.PlayerKey,
+            request.VampireHealth,
+            request.SoulSapperEnergy,
+            request.WarriorTriggerCount,
+            request.SavageTriggerCount,
+            request.NapalmExplosionCount,
+            "hostile-shadow.settlement-kill-effects-applied"
+        );
+    }
+
+    private static void AppendSettlementRingIds(
+        Ring? ring,
+        List<string> result
+    )
+    {
+        if (ring is null)
+            return;
+        if (ring is CombinedRing combined)
+        {
+            foreach (var child in combined.combinedRings)
+                AppendSettlementRingIds(child, result);
+        }
+        if (HostileShadowVanillaRingIds.IsSettlementRelevant(ring.ItemId))
+            result.Add(ring.ItemId);
+    }
+
+    private static bool TryGetQualifiedItemId(
+        string semanticId,
+        out string qualifiedItemId
+    )
+    {
+        qualifiedItemId = semanticId switch
+        {
+            HostileShadowSettlementItemSemanticIds.VoidEssence => VoidEssenceQualifiedItemId,
+            HostileShadowSettlementItemSemanticIds.Coffee => CoffeeQualifiedItemId,
+            HostileShadowSettlementItemSemanticIds.TripleShotEspresso
+                => TripleShotEspressoQualifiedItemId,
+            _ => string.Empty,
+        };
+        return qualifiedItemId.Length > 0;
+    }
+
+    private static HostileShadowKillEffectReceipt RejectedKillEffects(
+        HostileShadowKillEffectRequest request,
+        string reason
+    )
+    {
+        return new HostileShadowKillEffectReceipt(
+            HostileShadowKillEffectStatus.Rejected,
+            request.PlayerKey,
+            0,
+            0,
+            0,
+            0,
+            0,
+            string.IsNullOrWhiteSpace(reason)
+                ? "hostile-shadow.settlement-kill-effects-rejected"
+                : reason
         );
     }
 

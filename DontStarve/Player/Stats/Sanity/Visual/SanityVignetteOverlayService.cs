@@ -182,7 +182,15 @@ internal sealed class SanityVignetteOverlayService : IDisposable
             disposed
             || !lifecycle.IsEnabled
             || !Context.IsWorldReady
-            || Game1.eventUp
+        )
+        {
+            return;
+        }
+
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
+        if (
+            minigameContext == SanityMinigameVisualContext.Other
+            || (Game1.eventUp && minigameContext != SanityMinigameVisualContext.Fishing)
         )
         {
             return;
@@ -197,6 +205,8 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         {
             return;
         }
+        if (state.MinigameContext != minigameContext)
+            return;
 
         var mode = SanityVignettePolicy.Resolve(
             lowSanityFilterEnabled && !state.EffectiveSanityOverrideActive,
@@ -260,6 +270,16 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         if (!double.IsFinite(ratio) || ratio < 0d || ratio > 1d)
             return false;
 
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
+        if (
+            minigameContext == SanityMinigameVisualContext.Other
+            || (Game1.eventUp && minigameContext != SanityMinigameVisualContext.Fishing)
+        )
+        {
+            ownersByScreen.Remove(screenId);
+            return true;
+        }
+
         var effectiveSanityOverrideActive = effectiveSanity.TryGetEffectiveRatio(
             new SanityEffectiveOverlayKey(playerKey, screenId, sessionId),
             out _,
@@ -289,7 +309,8 @@ internal sealed class SanityVignetteOverlayService : IDisposable
             playerKey,
             sessionId,
             ratio,
-            effectiveSanityOverrideActive
+            effectiveSanityOverrideActive,
+            minigameContext
         );
         return true;
     }
@@ -368,6 +389,7 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         string PlayerKey,
         string SessionId,
         double SanityRatio,
-        bool EffectiveSanityOverrideActive
+        bool EffectiveSanityOverrideActive,
+        SanityMinigameVisualContext MinigameContext
     );
 }

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Sanity.Visual;
 using DontStarve.Resource.Sanity;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
@@ -30,7 +31,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
     private readonly Dictionary<int, OwnerBinding> ownersByScreen = new();
     private readonly HashSet<SanityAudioClaimKey> initializedClaims = new();
     private readonly HashSet<SanityAudioClaimKey> dirtyClaims = new();
-    private readonly HashSet<int> localMenuScreens = new();
+    private readonly HashSet<int> localMinigameScreens = new();
     private readonly HashSet<int> processPausedScreens = new();
     private readonly HashSet<int> miniJukeboxScreens = new();
     private readonly HashSet<int> miniJukeboxUnknownScreens = new();
@@ -140,7 +141,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         ownersByScreen.Clear();
         initializedClaims.Clear();
         dirtyClaims.Clear();
-        localMenuScreens.Clear();
+        localMinigameScreens.Clear();
         processPausedScreens.Clear();
         miniJukeboxScreens.Clear();
         miniJukeboxUnknownScreens.Clear();
@@ -388,12 +389,12 @@ internal sealed class SanitySmapiAudioService : IDisposable
                 flags.DangerActive,
                 flags.MusicSuppressionRequested
             ),
-            playbackPaused: localMenuScreens.Contains(screenId)
+            playbackPaused: localMinigameScreens.Contains(screenId)
         );
         coordinator.SetClaimPlaybackPaused(
             snapshot.PlayerKey,
             screenId,
-            localMenuScreens.Contains(screenId)
+            localMinigameScreens.Contains(screenId)
         );
         ReconcileGameMusic();
     }
@@ -457,20 +458,31 @@ internal sealed class SanitySmapiAudioService : IDisposable
         if (!Context.HasScreenId(screenId))
             return;
 
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
         SetMembership(
-            localMenuScreens,
+            localMinigameScreens,
             screenId,
-            Game1.activeClickableMenu is not null
+            SanityMinigameVisualClassifier.ShouldPauseLocalAudio(
+                minigameContext
+            )
         );
-        // Game1.paused/dialogue are process-wide gates. A clickable menu is additionally tracked
-        // per screen so split-screen menu entry pauses only the warning owned by that screen.
+        // Game1.paused/dialogue are process-wide gates. A designated Other minigame is additionally
+        // tracked per screen so split-screen presentation changes remain local.
         SetDarknessWarningProcessPaused(Game1.paused || Game1.dialogueUp);
         if (ownersByScreen.TryGetValue(screenId, out var binding))
         {
+            // Minigame presentation can change while the Sanity revision stays constant (the
+            // single-player world clock is paused), so refresh the ordinary claim directly on
+            // every tick instead of waiting for another tier observation.
+            coordinator.SetClaimPlaybackPaused(
+                binding.PlayerKey,
+                screenId,
+                localMinigameScreens.Contains(screenId)
+            );
             coordinator.SetDarknessWarningClaimPlaybackPaused(
                 binding.PlayerKey,
                 screenId,
-                paused: localMenuScreens.Contains(screenId)
+                paused: localMinigameScreens.Contains(screenId)
                     || Game1.paused
                     || Game1.dialogueUp
             );
@@ -637,7 +649,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
                 RemoveScreenState(screenId);
         }
 
-        localMenuScreens.RemoveWhere(screenId => !Context.HasScreenId(screenId));
+        localMinigameScreens.RemoveWhere(screenId => !Context.HasScreenId(screenId));
         processPausedScreens.RemoveWhere(screenId => !Context.HasScreenId(screenId));
         miniJukeboxScreens.RemoveWhere(screenId => !Context.HasScreenId(screenId));
         miniJukeboxUnknownScreens.RemoveWhere(screenId => !Context.HasScreenId(screenId));
@@ -680,7 +692,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
             initializedClaims.Remove(key);
             dirtyClaims.Remove(key);
         }
-        localMenuScreens.Remove(screenId);
+        localMinigameScreens.Remove(screenId);
         processPausedScreens.Remove(screenId);
         miniJukeboxScreens.Remove(screenId);
         miniJukeboxUnknownScreens.Remove(screenId);
@@ -700,7 +712,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         ownersByScreen.Clear();
         initializedClaims.Clear();
         dirtyClaims.Clear();
-        localMenuScreens.Clear();
+        localMinigameScreens.Clear();
         processPausedScreens.Clear();
         miniJukeboxScreens.Clear();
         miniJukeboxUnknownScreens.Clear();
@@ -817,6 +829,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
 /// </summary>
 internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
 {
+    private const float LowSanityPoolVolumeMultiplier = 0.5f;
     private const string AmbienceCueSetId = "sanity.cue.ambience";
     private const string WhispersCueSetId = "sanity.cue.whispers";
     private const string DangerCueSetId = "sanity.cue.thresholds";
@@ -854,6 +867,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
     private bool disposed;
     private float ambientVolume = 1f;
     private float soundVolume = 1f;
+    private float lowSanitySoundVolume = 1f;
 
     internal SmapiSanityProcessAudioOutput(
         SanitySmapiResourceService resources,
@@ -926,7 +940,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
 
         darknessAttackLane ??= CreateLane(SanityAudioLaneKind.DarknessAttack);
         // There is one attack clip by contract. This lane is intentionally not touched by
-        // process pause, local menus, or window focus, so its current instance can finish.
+        // process pause, local minigames, or window focus, so its current instance can finish.
         darknessAttackLane?.TriggerOneShot(soundVolume, effectIndex: 0);
     }
 
@@ -947,10 +961,11 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
 
         if (!active)
         {
+            // A light transition only releases the countdown claim. Let an already-created
+            // warning instance finish; explicit lifecycle cleanup calls the hard-stop seam below.
             darknessWarningDesired = false;
             darknessWarningTriggered = false;
             darknessWarningClipId = string.Empty;
-            darknessWarningLane?.StopPlayback();
             return;
         }
 
@@ -960,6 +975,13 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             darknessWarningTriggered = false;
         }
         EnsureDarknessWarning();
+    }
+
+    public void StopDarknessWarningPlayback()
+    {
+        if (disposed)
+            return;
+        darknessWarningLane?.StopPlayback();
     }
 
     public void SetDarknessWarningPaused(bool value)
@@ -1274,7 +1296,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
                 lane == SanityAudioLaneKind.DarknessWarning
                 && !string.Equals(
                     definition.LifecyclePolicy,
-                    CancelableOneShotPlaybackMode,
+                    SanityAudioContract.DarknessWarningLifecyclePolicy,
                     StringComparison.Ordinal
                 )
             )
@@ -1365,7 +1387,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
                 (float)Game1.options.ambientVolumeLevel,
                 0f,
                 1f
-            );
+            ) * LowSanityPoolVolumeMultiplier;
         }
         catch (Exception exception)
         {
@@ -1395,26 +1417,35 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             );
         }
 
+        var nextLowSanitySound = nextSound * LowSanityPoolVolumeMultiplier;
+
         if (Math.Abs(nextAmbient - ambientVolume) >= 0.0001f)
         {
             ambientVolume = nextAmbient;
             ambienceLane?.SetVolume(ambientVolume);
         }
-        if (Math.Abs(nextSound - soundVolume) < 0.0001f)
-            return;
-
-        soundVolume = nextSound;
-        whispersLane?.SetVolume(soundVolume);
-        dangerLane?.SetVolume(soundVolume);
-        darknessWarningLane?.SetVolume(soundVolume);
-        darknessAttackLane?.SetVolume(soundVolume);
+        if (Math.Abs(nextSound - soundVolume) >= 0.0001f)
+        {
+            soundVolume = nextSound;
+            dangerLane?.SetVolume(soundVolume);
+            darknessWarningLane?.SetVolume(soundVolume);
+            darknessAttackLane?.SetVolume(soundVolume);
+        }
+        if (Math.Abs(nextLowSanitySound - lowSanitySoundVolume) >= 0.0001f)
+        {
+            lowSanitySoundVolume = nextLowSanitySound;
+            whispersLane?.SetVolume(lowSanitySoundVolume);
+        }
     }
 
     private float VolumeFor(SanityAudioLaneKind lane)
     {
-        return lane == SanityAudioLaneKind.Ambience
-            ? ambientVolume
-            : soundVolume;
+        return lane switch
+        {
+            SanityAudioLaneKind.Ambience => ambientVolume,
+            SanityAudioLaneKind.Whispers => lowSanitySoundVolume,
+            _ => soundVolume,
+        };
     }
 
     private void DisposeLanes()

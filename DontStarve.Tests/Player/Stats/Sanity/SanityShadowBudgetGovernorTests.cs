@@ -78,6 +78,152 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
+    public void Hostile_ten_percent_entry_waits_for_the_shared_real_time_countdown()
+    {
+        var governor = ReadyDefaultGovernor(OwnerA);
+        Enter(governor, OwnerA, SanityTierIds.Danger);
+
+        var fullAtFifteen = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 3,
+            elapsedMilliseconds: 16,
+            requestedSpecies: SanityShadowSpecies.CreeperFear
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PausedAtCap,
+            fullAtFifteen.Status
+        );
+
+        Enter(governor, OwnerA, SanityTierIds.Terrorbeak);
+        var enteredTen = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 1,
+            occupancy: 2,
+            elapsedMilliseconds: 16,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            enteredTen.Status
+        );
+        Assert.Equal("budget.timer-started", enteredTen.Reason);
+
+        var beforeDue = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 1,
+            occupancy: 2,
+            elapsedMilliseconds: 41_983,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            beforeDue.Status
+        );
+
+        var due = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 1,
+            occupancy: 2,
+            elapsedMilliseconds: 1,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            due.Status
+        );
+        Assert.Equal(
+            "budget.permit.real-time-interval-elapsed",
+            due.Reason
+        );
+    }
+
+    [Fact]
+    public void Returning_above_ten_percent_during_countdown_reselects_creeper_and_keeps_elapsed_time()
+    {
+        var governor = ReadyDefaultGovernor(OwnerA);
+        Enter(governor, OwnerA, SanityTierIds.Danger);
+
+        var startedAtFifteen = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 0,
+            requestedSpecies: SanityShadowSpecies.CreeperFear
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            startedAtFifteen.Status
+        );
+
+        Enter(governor, OwnerA, SanityTierIds.Terrorbeak);
+        var startedAtTen = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 0,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            startedAtTen.Status
+        );
+
+        var halfwayAtTen = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 20_000,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            halfwayAtTen.Status
+        );
+
+        Exit(governor, OwnerA, SanityTierIds.Terrorbeak);
+        var terrorbeakAfterReturn = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 0,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.SpeciesIneligible,
+            terrorbeakAfterReturn.Status
+        );
+
+        var creeperBeforeDue = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 21_999,
+            requestedSpecies: SanityShadowSpecies.CreeperFear
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.Waiting,
+            creeperBeforeDue.Status
+        );
+
+        var creeperDue = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 1,
+            requestedSpecies: SanityShadowSpecies.CreeperFear
+        );
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            creeperDue.Status
+        );
+        Assert.Equal(
+            SanityShadowEligibleSpecies.CreeperFear,
+            creeperDue.EligibleSpecies
+        );
+    }
+
+    [Fact]
     public void Typed_config_provider_reads_the_cached_intensity_resolver()
     {
         var registry = ConfigTestData.LoadShippedRegistry();
@@ -110,7 +256,7 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
-    public void Harmless_50_and_hostile_15_share_base_cap_while_10_uses_upgraded_cap()
+    public void Harmless_50_and_both_hostile_tiers_share_the_configured_total_cap()
     {
         var provider = new MutableIntensityProvider();
         var governor = EnabledGovernor(provider);
@@ -123,11 +269,11 @@ public sealed class SanityShadowBudgetGovernorTests
         var hostile10 = governor.Evaluate(OwnerA, 2, 0);
 
         Assert.Equal(SanityShadowPoolTier.Harmless50, harmless.PoolTier);
-        Assert.Equal(1, harmless.Cap);
+        Assert.Equal(3, harmless.Cap);
         Assert.Equal(SanityShadowPoolTier.Hostile15, hostile15.PoolTier);
-        Assert.Equal(1, hostile15.Cap);
+        Assert.Equal(3, hostile15.Cap);
         Assert.Equal(SanityShadowPoolTier.Hostile10, hostile10.PoolTier);
-        Assert.Equal(2, hostile10.Cap);
+        Assert.Equal(3, hostile10.Cap);
     }
 
     [Fact]
@@ -161,32 +307,123 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
-    public void Full_cap_pauses_budget_and_multiple_vacancies_immediately_grant_only_one()
+    public void Hostile_full_cap_keeps_the_natural_clock_and_vacancy_waits_for_it()
     {
         var governor = ReadyDefaultGovernor(OwnerA, includeTerrorbeak: true);
 
-        var full = governor.Evaluate(OwnerA, 0, 2);
-        var stillFull = governor.Evaluate(OwnerA, 1000, 2);
-        var vacancy = governor.Evaluate(OwnerA, 1001, 0);
-        var sameVacancy = governor.Evaluate(OwnerA, 1001, 0);
-        var beforeNext = governor.Evaluate(OwnerA, 1060, 0);
-        var next = governor.Evaluate(OwnerA, 1061, 0);
+        var full = governor.EvaluateHostileSpawn(
+            OwnerA,
+            0,
+            3,
+            SanityShadowSpecies.CreeperFear
+        );
+        var stillFull = governor.EvaluateHostileSpawn(
+            OwnerA,
+            10,
+            3,
+            SanityShadowSpecies.CreeperFear
+        );
+        var vacancy = governor.EvaluateHostileSpawn(
+            OwnerA,
+            11,
+            0,
+            SanityShadowSpecies.CreeperFear
+        );
+        var sameVacancy = governor.EvaluateHostileSpawn(
+            OwnerA,
+            11,
+            0,
+            SanityShadowSpecies.CreeperFear
+        );
+        var beforeNext = governor.EvaluateHostileSpawn(
+            OwnerA,
+            59,
+            0,
+            SanityShadowSpecies.CreeperFear
+        );
+        var next = governor.EvaluateHostileSpawn(
+            OwnerA,
+            60,
+            0,
+            SanityShadowSpecies.CreeperFear
+        );
 
         Assert.Equal(SanityShadowBudgetEvaluationStatus.PausedAtCap, full.Status);
-        Assert.Null(full.NextDueMinute);
+        Assert.Equal(60, full.NextDueMinute);
         Assert.Equal(
             SanityShadowBudgetEvaluationStatus.PausedAtCap,
             stillFull.Status
         );
         Assert.Equal(
-            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            SanityShadowBudgetEvaluationStatus.Waiting,
             vacancy.Status
         );
-        Assert.Equal("budget.permit.vacancy", vacancy.Reason);
-        Assert.Equal(1061, vacancy.NextDueMinute);
+        Assert.Equal("budget.waiting", vacancy.Reason);
+        Assert.Equal(60, vacancy.NextDueMinute);
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, sameVacancy.Status);
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, beforeNext.Status);
         Assert.Equal(SanityShadowBudgetEvaluationStatus.PermitGranted, next.Status);
+        Assert.Equal("budget.permit.interval-elapsed", next.Reason);
+    }
+
+    [Fact]
+    public void Hostile_full_cap_pauses_the_real_time_clock_until_a_vacancy()
+    {
+        var governor = ReadyDefaultGovernor(OwnerA, includeTerrorbeak: true);
+
+        var started = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 0,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        var progressedBeforeCap = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 10_000,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        var stillFull = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 3,
+            elapsedMilliseconds: 10_000,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        var vacancy = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 0,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        var beforeDue = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 31_999,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+        var due = governor.EvaluateRealTime(
+            OwnerA,
+            gameMinute: 0,
+            occupancy: 0,
+            elapsedMilliseconds: 1,
+            requestedSpecies: SanityShadowSpecies.Terrorbeak
+        );
+
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, started.Status);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, progressedBeforeCap.Status);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.PausedAtCap, stillFull.Status);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, vacancy.Status);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, beforeDue.Status);
+        Assert.Equal(
+            SanityShadowBudgetEvaluationStatus.PermitGranted,
+            due.Status
+        );
+        Assert.Equal("budget.permit.real-time-interval-elapsed", due.Reason);
     }
 
     [Fact]
@@ -229,28 +466,45 @@ public sealed class SanityShadowBudgetGovernorTests
         Enter(governor, OwnerA, SanityTierIds.ShadowCreatures);
         Enter(governor, OwnerA, SanityTierIds.Danger);
 
-        var initialFull = governor.Evaluate(OwnerA, 0, 4);
+        var initialFull = governor.EvaluateHostileSpawn(
+            OwnerA,
+            0,
+            9,
+            SanityShadowSpecies.CreeperFear
+        );
         provider.Value = SanityMonsterIntensityIds.Less;
-        var overCap = governor.Evaluate(OwnerA, 1, 4);
-        var atNewCap = governor.Evaluate(OwnerA, 2, 1);
-        var vacancy = governor.Evaluate(OwnerA, 3, 0);
+        var overCap = governor.EvaluateHostileSpawn(
+            OwnerA,
+            1,
+            9,
+            SanityShadowSpecies.CreeperFear
+        );
+        var atNewCap = governor.EvaluateHostileSpawn(
+            OwnerA,
+            2,
+            2,
+            SanityShadowSpecies.CreeperFear
+        );
+        var vacancy = governor.EvaluateHostileSpawn(
+            OwnerA,
+            3,
+            0,
+            SanityShadowSpecies.CreeperFear
+        );
 
         Assert.Equal(
             SanityShadowBudgetEvaluationStatus.PausedAtCap,
             initialFull.Status
         );
         Assert.Equal(SanityShadowBudgetEvaluationStatus.PausedAtCap, overCap.Status);
-        Assert.Equal(4, overCap.Occupancy);
-        Assert.Equal(1, overCap.Cap);
+        Assert.Equal(9, overCap.Occupancy);
+        Assert.Equal(2, overCap.Cap);
         Assert.Equal(
             SanityShadowBudgetEvaluationStatus.PausedAtCap,
             atNewCap.Status
         );
-        Assert.Equal(
-            SanityShadowBudgetEvaluationStatus.PermitGranted,
-            vacancy.Status
-        );
-        Assert.Equal(123, vacancy.NextDueMinute);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, vacancy.Status);
+        Assert.Equal(30, vacancy.NextDueMinute);
     }
 
     [Fact]
@@ -281,24 +535,25 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
-    public void Cap_increase_from_a_full_pool_grants_one_immediate_permit()
+    public void Harmless_cap_increase_from_a_full_pool_restarts_the_normal_timer()
     {
         var provider = new MutableIntensityProvider();
         var governor = ReadyGovernor(provider, OwnerA);
-        governor.Evaluate(OwnerA, 0, 1);
+        governor.Evaluate(OwnerA, 0, 3);
 
         provider.Value = SanityMonsterIntensityIds.More;
-        var expanded = governor.Evaluate(OwnerA, 10, 1);
-        var repeated = governor.Evaluate(OwnerA, 10, 1);
+        var expanded = governor.Evaluate(OwnerA, 10, 3);
+        var repeated = governor.Evaluate(OwnerA, 10, 3);
 
-        Assert.Equal(
-            SanityShadowBudgetEvaluationStatus.PermitGranted,
-            expanded.Status
-        );
-        Assert.Equal("budget.permit.vacancy", expanded.Reason);
-        Assert.Equal(2, expanded.Cap);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, expanded.Status);
+        Assert.Equal("budget.policy-timer-started", expanded.Reason);
+        Assert.Equal(5, expanded.Cap);
         Assert.Equal(70, expanded.NextDueMinute);
         Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, repeated.Status);
+
+        var due = governor.Evaluate(OwnerA, 70, 3);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.PermitGranted, due.Status);
+        Assert.Equal("budget.permit.interval-elapsed", due.Reason);
     }
 
     [Fact]
@@ -467,8 +722,8 @@ public sealed class SanityShadowBudgetGovernorTests
         service.ClearSession();
 
         Assert.Equal(SanityShadowPoolTier.Hostile10, initial.PoolTier);
-        Assert.Equal(2, initial.Cap);
-        Assert.Equal(3, refreshed.Cap);
+        Assert.Equal(3, initial.Cap);
+        Assert.Equal(5, refreshed.Cap);
         Assert.False(service.TryGetShadowBudgetState(OwnerA, out _));
     }
 

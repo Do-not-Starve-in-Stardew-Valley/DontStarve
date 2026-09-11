@@ -79,7 +79,7 @@ public sealed class TerrorbeakMovementAndAiTests
     }
 
     [Fact]
-    public void First_target_discovery_taunts_once_then_reacquire_goes_directly_to_chase()
+    public void Each_target_reacquisition_taunts_before_chasing_again()
     {
         var profile = RuntimeProfile();
         var definition = HostileAttackTestFactory.Definition(profile);
@@ -111,7 +111,14 @@ public sealed class TerrorbeakMovementAndAiTests
             machine.Advance(target, definition.TauntDurationMilliseconds).StateId
         );
         Assert.Equal(HostileShadowStateIds.Idle, machine.Advance(noTarget, 0d).StateId);
-        Assert.Equal(HostileShadowStateIds.Chase, machine.Advance(target, 0d).StateId);
+        Assert.Equal(HostileShadowStateIds.Taunt, machine.Advance(target, 0d).StateId);
+        Assert.Equal(0, random.CallCount);
+        Assert.Equal(
+            HostileShadowStateIds.Chase,
+            machine.Advance(target, definition.TauntDurationMilliseconds).StateId
+        );
+        Assert.Equal(HostileShadowStateIds.Idle, machine.Advance(noTarget, 0d).StateId);
+        Assert.Equal(HostileShadowStateIds.Taunt, machine.Advance(target, 0d).StateId);
         Assert.Equal(0, random.CallCount);
     }
 

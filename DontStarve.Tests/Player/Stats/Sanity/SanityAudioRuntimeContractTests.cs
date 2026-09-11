@@ -66,15 +66,18 @@ public sealed class SanityAudioRuntimeContractTests
     }
 
     [Fact]
-    public void Audio_pool_routes_ambient_and_sound_sliders_without_global_volume_mutation()
+    public void Audio_pool_scales_only_low_sanity_pools_without_global_volume_mutation()
     {
         var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
 
+        Assert.Contains("private const float LowSanityPoolVolumeMultiplier = 0.5f;", source, StringComparison.Ordinal);
         Assert.Contains("Game1.options.ambientVolumeLevel", source, StringComparison.Ordinal);
         Assert.Contains("Game1.options.soundVolumeLevel", source, StringComparison.Ordinal);
+        Assert.Contains("lowSanitySoundVolume = nextLowSanitySound", source, StringComparison.Ordinal);
         Assert.Contains("ambienceLane?.SetVolume(ambientVolume)", source, StringComparison.Ordinal);
-        Assert.Contains("whispersLane?.SetVolume(soundVolume)", source, StringComparison.Ordinal);
+        Assert.Contains("whispersLane?.SetVolume(lowSanitySoundVolume)", source, StringComparison.Ordinal);
         Assert.Contains("dangerLane?.SetVolume(soundVolume)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("dangerLane?.SetVolume(lowSanitySoundVolume)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SoundEffect.MasterVolume", source, StringComparison.Ordinal);
         Assert.DoesNotContain("changeMusicTrack", source, StringComparison.Ordinal);
         Assert.DoesNotContain("updateMusic", source, StringComparison.Ordinal);
@@ -110,15 +113,77 @@ public sealed class SanityAudioRuntimeContractTests
     }
 
     [Fact]
-    public void Process_audio_contract_keeps_default_warning_clip_pause_and_attack_seams_with_five_instance_budget()
+    public void Minigame_audio_pause_uses_the_fishing_whitelist_and_refreshes_without_a_sanity_revision()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+        var contextStart = source.IndexOf(
+            "var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();",
+            StringComparison.Ordinal
+        );
+        var warningStart = source.IndexOf(
+            "coordinator.SetDarknessWarningClaimPlaybackPaused",
+            contextStart,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(contextStart >= 0);
+        Assert.True(warningStart > contextStart);
+        var updateContext = source[contextStart..warningStart];
+        Assert.Contains(
+            "SanityMinigameVisualClassifier.ShouldPauseLocalAudio",
+            updateContext,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("coordinator.SetClaimPlaybackPaused", updateContext, StringComparison.Ordinal);
+        Assert.Contains("localMinigameScreens.Contains(screenId)", updateContext, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game1.activeClickableMenu is not null", updateContext, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Process_audio_contract_keeps_warning_pause_and_attack_seams_with_five_instance_budget()
     {
         var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
 
         Assert.Contains("public void SetDarknessWarningClip(string warningClipId)", source, StringComparison.Ordinal);
+        Assert.Contains("public void StopDarknessWarningPlayback()", source, StringComparison.Ordinal);
         Assert.Contains("public void SetDarknessWarningPaused(bool value)", source, StringComparison.Ordinal);
         Assert.Contains("public void TriggerDarknessAttack()", source, StringComparison.Ordinal);
         Assert.Contains("coordinator.SetDarknessWarningClaimPlaybackPaused", source, StringComparison.Ordinal);
         Assert.Contains("coordinator.TriggerDarknessAttack()", source, StringComparison.Ordinal);
+
+        var activeStart = source.IndexOf(
+            "public void SetDarknessWarningActive",
+            StringComparison.Ordinal
+        );
+        var hardStopStart = source.IndexOf(
+            "public void StopDarknessWarningPlayback",
+            activeStart,
+            StringComparison.Ordinal
+        );
+        Assert.True(activeStart >= 0);
+        Assert.True(hardStopStart > activeStart);
+        Assert.DoesNotContain(
+            "darknessWarningLane?.StopPlayback()",
+            source.Substring(activeStart, hardStopStart - activeStart),
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Darkness_warning_validates_against_its_full_lifecycle_contract()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+
+        Assert.Contains(
+            "SanityAudioContract.DarknessWarningLifecyclePolicy",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain(
+            "definition.LifecyclePolicy,\n                    CancelableOneShotPlaybackMode",
+            source,
+            StringComparison.Ordinal
+        );
     }
 
     private static string ReadSource(string folder, string fileName)

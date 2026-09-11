@@ -93,7 +93,7 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
         Assert.Contains("HostileShadowCombatImmunityPolicy.IsFrozenStun", monster);
         Assert.Contains("stunTime.Value = 0;", monster);
         Assert.Contains(
-            "HostileShadowStateIds.HitTeleport => HitResponseVisualStateId",
+            "HostileShadowStateIds.HitTeleport => ResolveHitTeleportVisualState(monster)",
             monster
         );
         Assert.Contains("CreeperFearCombatImmunityPolicy.TryCreate", runtime);
@@ -146,9 +146,22 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
         Assert.True(hit.PositionChanged);
         Assert.Null(started.Machine.CurrentInstance);
 
-        var completed = controller.Advance(
+        var arrival = controller.Advance(
             hit.PositionX,
             hit.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: true
+        );
+        Assert.Equal(HostileShadowStateIds.HitTeleport, arrival.StateId);
+        Assert.Equal(100d + 6d * 64d, arrival.PositionX, precision: 8);
+        Assert.Equal(200d, arrival.PositionY, precision: 8);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        var completed = controller.Advance(
+            arrival.PositionX,
+            arrival.PositionY,
             HostileShadowHitResponseController.TransitionDurationMilliseconds,
             hasTarget: true
         );
@@ -179,13 +192,22 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
             )
         );
 
-        var completed = controller.Advance(
+        var arrival = controller.Advance(
             hit.PositionX,
             hit.PositionY,
             HostileShadowHitResponseController.TransitionDurationMilliseconds,
             hasTarget: false
         );
 
+        Assert.Equal(HostileShadowStateIds.HitTeleport, arrival.StateId);
+        Assert.Equal(expectedPositionX, arrival.PositionX, precision: 8);
+        Assert.Equal(200d, arrival.PositionY, precision: 8);
+        var completed = controller.Advance(
+            arrival.PositionX,
+            arrival.PositionY,
+            HostileShadowHitResponseController.TransitionDurationMilliseconds,
+            hasTarget: false
+        );
         Assert.Equal(HostileShadowStateIds.Idle, completed.StateId);
         Assert.Equal(expectedPositionX, completed.PositionX, precision: 8);
         Assert.Equal(200d, completed.PositionY, precision: 8);
@@ -279,9 +301,16 @@ public sealed class TerrorbeakCombatAndHitTeleportTests
         Assert.Equal(150d, controller.ElapsedMilliseconds, precision: 8);
         var stillActive = controller.Advance(100d, 200d, 249d, hasTarget: true);
         Assert.Equal(HostileShadowStateIds.HitTeleport, stillActive.StateId);
-        var completed = controller.Advance(100d, 200d, 1d, hasTarget: true);
-        Assert.Equal(612d, completed.PositionX, precision: 8);
-        Assert.Equal(200d, completed.PositionY, precision: 8);
+        var arrival = controller.Advance(100d, 200d, 1d, hasTarget: true);
+        Assert.Equal(HostileShadowStateIds.HitTeleport, arrival.StateId);
+        Assert.Equal(612d, arrival.PositionX, precision: 8);
+        Assert.Equal(200d, arrival.PositionY, precision: 8);
+        Assert.Equal(
+            HostileShadowHitTeleportVisualPhaseIds.Spawn,
+            controller.HitTeleportVisualPhase
+        );
+        var completed = controller.Advance(612d, 200d, 400d, hasTarget: true);
+        Assert.Equal(HostileShadowStateIds.Chase, completed.StateId);
     }
 
     [Fact]

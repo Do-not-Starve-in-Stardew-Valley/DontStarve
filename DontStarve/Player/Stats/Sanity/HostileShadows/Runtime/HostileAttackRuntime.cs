@@ -120,6 +120,9 @@ internal sealed class HostileAttackRuntimeDefinition
         HostileAttackPoint hurtPivotSourcePx,
         HostileAttackRectangle hurtBoxSourcePx,
         double hurtDrawScale,
+        SanityHostilePushBoxDefinition pushBox,
+        HostileAttackPoint pushBoxPivotSourcePx,
+        double pushBoxDrawScale,
         HostileAttackPoint attackPivotSourcePx,
         HostileAttackRectangle attackBoxSourcePx,
         double attackDrawScale,
@@ -138,6 +141,9 @@ internal sealed class HostileAttackRuntimeDefinition
         HurtPivotSourcePx = hurtPivotSourcePx;
         HurtBoxSourcePx = hurtBoxSourcePx;
         HurtDrawScale = hurtDrawScale;
+        PushBox = pushBox;
+        PushBoxPivotSourcePx = pushBoxPivotSourcePx;
+        PushBoxDrawScale = pushBoxDrawScale;
         AttackPivotSourcePx = attackPivotSourcePx;
         AttackBoxSourcePx = attackBoxSourcePx;
         AttackDrawScale = attackDrawScale;
@@ -155,6 +161,12 @@ internal sealed class HostileAttackRuntimeDefinition
     internal HostileAttackPoint HurtPivotSourcePx { get; }
     internal HostileAttackRectangle HurtBoxSourcePx { get; }
     internal double HurtDrawScale { get; }
+    internal SanityHostilePushBoxDefinition PushBox { get; }
+    internal HostileAttackPoint PushBoxPivotSourcePx { get; }
+    internal double PushBoxDrawScale { get; }
+    internal SanityResourceRectangle PushBoxSourcePx => PushBox.SourcePx;
+    internal string PushBoxGroupId => PushBox.GroupId;
+    internal double PushForce => PushBox.PushForce;
     internal HostileAttackPoint AttackPivotSourcePx { get; }
     internal HostileAttackRectangle AttackBoxSourcePx { get; }
     internal double AttackDrawScale { get; }
@@ -211,6 +223,7 @@ internal sealed class HostileAttackRuntimeDefinition
             || metadata.Attack.DrawScale <= 0d
             || metadata.Collision.HurtBoxSourcePx.Width <= 0
             || metadata.Collision.HurtBoxSourcePx.Height <= 0
+            || !metadata.Collision.PushBox.IsValid
             || metadata.Collision.AttackActiveFrames.Count == 0
             || !metadata.Collision.AttackActiveFrames.SequenceEqual(
                 metadata.Attack.HitFrames
@@ -272,6 +285,12 @@ internal sealed class HostileAttackRuntimeDefinition
                 metadata.Collision.HurtBoxSourcePx.Y,
                 metadata.Collision.HurtBoxSourcePx.Width,
                 metadata.Collision.HurtBoxSourcePx.Height
+            ),
+            metadata.Idle.DrawScale,
+            metadata.Collision.PushBox,
+            new HostileAttackPoint(
+                metadata.Idle.PivotSourcePx.X,
+                metadata.Idle.PivotSourcePx.Y
             ),
             metadata.Idle.DrawScale,
             new HostileAttackPoint(

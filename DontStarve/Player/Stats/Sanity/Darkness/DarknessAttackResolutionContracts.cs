@@ -122,7 +122,7 @@ internal static class DarknessAttackModePolicy
         {
             return new DarknessAttackModePolicyResult(
                 false,
-                "darkness.mode.player-has-no-health",
+                DarknessAttackContract.PlayerHasNoHealthReason,
                 0
             );
         }

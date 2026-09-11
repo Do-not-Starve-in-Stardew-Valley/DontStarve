@@ -580,7 +580,22 @@ public sealed class DarknessAttackResolutionTests
     public void DarknessAttackResolution_Runtime_keeps_default_and_nonlethal_operations_separate()
     {
         var resolutionSource = File.ReadAllText(RuntimeResolutionContractPath);
+        var hurtSoundBridgeSource = File.ReadAllText(RuntimeHurtSoundBridgeContractPath);
         var countdownSource = File.ReadAllText(RuntimeCountdownContractPath);
+        var hurtSoundPrefixStart = hurtSoundBridgeSource.IndexOf(
+            "internal static bool Prefix",
+            StringComparison.Ordinal
+        );
+        var hurtSoundScopeStart = hurtSoundBridgeSource.IndexOf(
+            "internal sealed class Scope",
+            hurtSoundPrefixStart,
+            StringComparison.Ordinal
+        );
+        Assert.True(hurtSoundPrefixStart >= 0);
+        Assert.True(hurtSoundScopeStart > hurtSoundPrefixStart);
+        var hurtSoundPrefixSource = hurtSoundBridgeSource[
+            hurtSoundPrefixStart..hurtSoundScopeStart
+        ];
         var damageAuthorityStart = resolutionSource.IndexOf(
             "internal sealed class SmapiDarknessAttackDamageAuthority",
             StringComparison.Ordinal
@@ -597,6 +612,26 @@ public sealed class DarknessAttackResolutionTests
         ];
 
         Assert.Contains("player.takeDamage", resolutionSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "DarknessVanillaHurtSoundBridge.Enter()",
+            resolutionSource,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "hurtSoundScope.VanillaHurtSoundObserved",
+            resolutionSource,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "if (!vanillaHurtSoundObserved && DarknessVanillaHurtSoundBridge.IsInstalled)",
+            resolutionSource,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("player.playNearbySoundAll(\"ow\")", resolutionSource, StringComparison.Ordinal);
+        Assert.Contains("vanillaHurtSoundObserved = true;", hurtSoundBridgeSource, StringComparison.Ordinal);
+        Assert.Contains("return true;", hurtSoundPrefixSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("return false;", hurtSoundPrefixSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("suppressionDepth", hurtSoundBridgeSource, StringComparison.Ordinal);
         Assert.Contains("ApplyDamageUpToFloor", damageAuthoritySource, StringComparison.Ordinal);
         Assert.DoesNotContain("ReduceToFloor", damageAuthoritySource, StringComparison.Ordinal);
         Assert.Contains("Random.Shared.Next(100)", resolutionSource, StringComparison.Ordinal);
@@ -702,6 +737,14 @@ public sealed class DarknessAttackResolutionTests
             "Contracts",
             "DarknessAttack",
             "SmapiDarknessAttackService.cs"
+        );
+
+    private static string RuntimeHurtSoundBridgeContractPath =>
+        Path.Combine(
+            AppContext.BaseDirectory,
+            "Contracts",
+            "DarknessAttack",
+            "DarknessVanillaHurtSoundBridge.cs"
         );
 
     private sealed record ResolutionFixture(

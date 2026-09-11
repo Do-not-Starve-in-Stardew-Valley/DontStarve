@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
@@ -73,10 +74,15 @@ internal static class SanityBehaviorRules
 
     internal static double GetDistancePercentage(double distanceTiles)
     {
-        if (!double.IsFinite(distanceTiles) || distanceTiles < 0)
+        if (
+            !double.IsFinite(distanceTiles)
+            || distanceTiles < 0
+            || distanceTiles >= NearbyRangeTiles
+        )
             return 0;
 
-        return Math.Max(0, 1 - distanceTiles / NearbyRangeTiles);
+        // 饥荒原版光环按水平距离平方反比衰减；范围边界仍沿用本 Mod 的 10 格规则。
+        return 1d / Math.Max(1d, distanceTiles * distanceTiles);
     }
 
     internal static double CalculateFriendlyNpcRecovery(
@@ -114,6 +120,37 @@ internal static class SanityBehaviorRules
             return 0;
 
         return configuredLoss * GetDistancePercentage(distanceTiles);
+    }
+
+    internal static bool ShouldApplyMonsterSanityLoss(
+        bool isHostileShadow,
+        string? assetBindingId,
+        bool isBindingHidden,
+        bool isDangerTierActive
+    )
+    {
+        if (isBindingHidden)
+            return false;
+
+        // Ordinary Stardew monsters keep the original always-eligible behavior. Unknown
+        // hostile-shadow bindings fail closed so a new entity cannot inherit a sanity value
+        // merely because its display name happens to match the data table.
+        if (!isHostileShadow)
+            return true;
+
+        if (!isDangerTierActive)
+            return false;
+
+        return string.Equals(
+                assetBindingId,
+                ShadowMonsterAssetBindingIds.CreeperFear,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                assetBindingId,
+                ShadowMonsterAssetBindingIds.Terrorbeak,
+                StringComparison.Ordinal
+            );
     }
 
     internal static double CalculateEquipmentDelta(

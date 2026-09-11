@@ -133,6 +133,9 @@ internal sealed class HostileAttackStateMachine
     private double cooldownRemainingMilliseconds;
     private double pendingDelayAfterTauntMilliseconds = -1d;
     private bool firstChaseDecisionMade;
+    private bool targetEngagementActive;
+    private bool targetReacquisitionPending;
+    private bool targetHandoffAfterHitTeleportPending;
 
     internal HostileAttackStateMachine(
         HostileAttackRuntimeDefinition definition,
@@ -147,10 +150,15 @@ internal sealed class HostileAttackStateMachine
         if (
             !string.Equals(initialStateId, HostileShadowStateIds.Spawn, StringComparison.Ordinal)
             && !string.Equals(initialStateId, HostileShadowStateIds.Taunt, StringComparison.Ordinal)
+            && !string.Equals(
+                initialStateId,
+                HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            )
         )
         {
             throw new ArgumentException(
-                "Only Spawn and Taunt are valid initial hostile-shadow states.",
+                "Only Spawn, Taunt, and HitTeleport are valid initial hostile-shadow states.",
                 nameof(initialStateId)
             );
         }
@@ -166,8 +174,145 @@ internal sealed class HostileAttackStateMachine
         );
     }
 
+    /// <summary>
+    /// Starts the ordinary target-reacquisition boundary. A target switch from normal targeting
+    /// must not keep a Chase state alive, otherwise the next target bypasses the species'
+    /// first-contact Taunt transition. An already active Taunt is left alone because that
+    /// presentation is already the requested warning.
+    /// </summary>
+    internal bool BeginTargetReacquisition(out string reason)
+    {
+        if (
+            string.Equals(stateId, HostileShadowStateIds.Attack, StringComparison.Ordinal)
+            || string.Equals(stateId, HostileShadowStateIds.HitTeleport, StringComparison.Ordinal)
+            || string.Equals(stateId, HostileShadowStateIds.Dying, StringComparison.Ordinal)
+            || string.Equals(stateId, HostileShadowStateIds.Despawn, StringComparison.Ordinal)
+        )
+        {
+            reason = "hostile-shadow.target-reacquisition-state-locked";
+            return false;
+        }
+
+        return RequestTargetReacquisition(out reason);
+    }
+
+    /// <summary>
+    /// Records an ordinary target reacquisition even while an attack or HitTeleport is locked.
+    /// The locked presentation is allowed to finish, then the next contact must pass through Idle
+    /// and the species' first-contact Taunt decision instead of resuming Chase directly.
+    /// </summary>
+    internal bool RequestTargetReacquisition(out string reason)
+    {
+        if (
+            string.Equals(stateId, HostileShadowStateIds.Dying, StringComparison.Ordinal)
+            || string.Equals(stateId, HostileShadowStateIds.Despawn, StringComparison.Ordinal)
+        )
+        {
+            reason = "hostile-shadow.target-reacquisition-state-locked";
+            return false;
+        }
+
+        // An active Taunt already is the warning window. Keep it running, but remember that the
+        // target changed so its completion can close this new contact without a direct Chase.
+        firstChaseDecisionMade = false;
+        targetEngagementActive = false;
+        targetReacquisitionPending = true;
+        targetHandoffAfterHitTeleportPending = false;
+        if (string.Equals(stateId, HostileShadowStateIds.Chase, StringComparison.Ordinal))
+        {
+            stateElapsedMilliseconds = 0d;
+            stateId = HostileShadowStateIds.Idle;
+        }
+
+        reason = "hostile-shadow.target-reacquisition-prepared";
+        return true;
+    }
+
+    /// <summary>
+    /// Records the special multiplayer hit handoff: a shadow which was chasing or attacking A
+    /// and is hit by B keeps the HitTeleport response, then resumes directly in Chase for B. This
+    /// is intentionally separate from ordinary target reacquisition, which must Taunt first.
+    /// </summary>
+    internal bool RequestTargetHandoffAfterHit(out string reason)
+    {
+        if (
+            string.Equals(stateId, HostileShadowStateIds.Dying, StringComparison.Ordinal)
+            || string.Equals(stateId, HostileShadowStateIds.Despawn, StringComparison.Ordinal)
+        )
+        {
+            reason = "hostile-shadow.target-handoff-state-locked";
+            return false;
+        }
+
+        targetReacquisitionPending = false;
+        targetHandoffAfterHitTeleportPending = true;
+        reason = "hostile-shadow.target-handoff-after-hit-prepared";
+        return true;
+    }
+
+    /// <summary>
+    /// Keeps target loss visible during external HitTeleport frames, where Advance is not the
+    /// owner of the state transition. A later reappearance is therefore still a new contact.
+    /// </summary>
+    internal void ObserveTargetPresence(bool hasTarget)
+    {
+        if (hasTarget)
+        {
+            targetEngagementActive = true;
+            return;
+        }
+
+        if (targetEngagementActive)
+        {
+            firstChaseDecisionMade = false;
+            targetEngagementActive = false;
+            targetReacquisitionPending = true;
+        }
+    }
+
     internal string StateId => stateId;
     internal HostileAttackInstance? CurrentInstance { get; private set; }
+
+    /// <summary>
+    /// Crowd correction moves the whole attack animation, including its frozen origin. Keeping
+    /// that translation inside the instance prevents the next attack tick from snapping back to
+    /// the pre-push origin.
+    /// </summary>
+    internal bool TryTranslateCurrentAttackOrigin(
+        double deltaX,
+        double deltaY,
+        out string reason
+    )
+    {
+        if (
+            !string.Equals(stateId, HostileShadowStateIds.Attack, StringComparison.Ordinal)
+            || CurrentInstance is null
+            || !CurrentInstance.TryTranslateOrigin(deltaX, deltaY)
+        )
+        {
+            reason = "hostile-shadow.attack-origin-translation-invalid";
+            return false;
+        }
+
+        reason = "hostile-shadow.attack-origin-translated";
+        return true;
+    }
+
+    internal bool TrySetCurrentAttackRevision(long revision, out string reason)
+    {
+        if (
+            !string.Equals(stateId, HostileShadowStateIds.Attack, StringComparison.Ordinal)
+            || CurrentInstance is null
+            || !CurrentInstance.TrySetRevision(revision)
+        )
+        {
+            reason = "hostile-shadow.attack-instance-revision-update-invalid";
+            return false;
+        }
+
+        reason = "hostile-shadow.attack-instance-revision-updated";
+        return true;
+    }
 
     /// <summary>
     /// Ends the current physical attack exactly once. The frozen origin is restored before the
@@ -209,6 +354,16 @@ internal sealed class HostileAttackStateMachine
         CurrentInstance = null;
         stateElapsedMilliseconds = 0d;
         pendingDelayAfterTauntMilliseconds = -1d;
+        if (
+            !string.Equals(
+                nextStateId,
+                HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            targetHandoffAfterHitTeleportPending = false;
+        }
         stateId = nextStateId;
         return new HostileAttackExternalTransitionDecision(
             true,
@@ -253,7 +408,28 @@ internal sealed class HostileAttackStateMachine
 
         stateElapsedMilliseconds = 0d;
         pendingDelayAfterTauntMilliseconds = -1d;
-        stateId = !forceIdle && hasTarget
+        var directTargetHandoff = targetHandoffAfterHitTeleportPending;
+        targetHandoffAfterHitTeleportPending = false;
+        if (directTargetHandoff)
+        {
+            if (!forceIdle && hasTarget)
+            {
+                // B stayed available through the response, so the completed HitTeleport is the
+                // boundary and the next state is Chase(B), without a first-contact Taunt.
+                targetReacquisitionPending = false;
+                firstChaseDecisionMade = true;
+                targetEngagementActive = true;
+            }
+            else
+            {
+                // If B disappeared during the response, preserve the normal later-reacquisition
+                // rule instead of claiming a direct Chase for a target that is not present.
+                targetReacquisitionPending = true;
+                firstChaseDecisionMade = false;
+                targetEngagementActive = false;
+            }
+        }
+        stateId = !forceIdle && hasTarget && !targetReacquisitionPending
             ? HostileShadowStateIds.Chase
             : HostileShadowStateIds.Idle;
         return new HostileAttackExternalTransitionDecision(
@@ -287,6 +463,8 @@ internal sealed class HostileAttackStateMachine
             0d,
             cooldownRemainingMilliseconds - elapsedMilliseconds
         );
+
+        ObserveTargetPresence(input.HasTarget);
 
         if (string.Equals(stateId, HostileShadowStateIds.Attack, StringComparison.Ordinal))
         {
@@ -329,14 +507,25 @@ internal sealed class HostileAttackStateMachine
                     cooldownRemainingMilliseconds = 0d;
                     pendingDelayAfterTauntMilliseconds =
                         postAttack.NextAttackDelaySeconds * 1000d;
+                    if (targetReacquisitionPending && input.HasTarget)
+                    {
+                        // This post-attack Taunt is the first-contact warning when the target
+                        // returned before the old attack finished.
+                        targetReacquisitionPending = false;
+                        firstChaseDecisionMade = true;
+                    }
                     stateId = HostileShadowStateIds.Taunt;
                 }
                 else
                 {
-                    cooldownRemainingMilliseconds =
-                        postAttack.NextAttackDelaySeconds * 1000d;
+                    cooldownRemainingMilliseconds = targetReacquisitionPending
+                        && input.HasTarget
+                        ? 0d
+                        : postAttack.NextAttackDelaySeconds * 1000d;
                     pendingDelayAfterTauntMilliseconds = -1d;
-                    stateId = input.HasTarget
+                    stateId = targetReacquisitionPending
+                        ? HostileShadowStateIds.Idle
+                        : input.HasTarget
                         ? HostileShadowStateIds.Chase
                         : HostileShadowStateIds.Idle;
                 }
@@ -416,6 +605,13 @@ internal sealed class HostileAttackStateMachine
             {
                 cooldownRemainingMilliseconds = pendingDelayAfterTauntMilliseconds;
                 pendingDelayAfterTauntMilliseconds = -1d;
+            }
+            if (targetReacquisitionPending && input.HasTarget)
+            {
+                // The active Taunt was allowed to finish without interruption, so it can satisfy
+                // the new contact when the target is present at completion.
+                targetReacquisitionPending = false;
+                firstChaseDecisionMade = true;
             }
             stateId = input.HasTarget
                 ? HostileShadowStateIds.Chase
@@ -521,6 +717,7 @@ internal sealed class HostileAttackStateMachine
         if (firstChaseDecisionMade)
             return false;
         firstChaseDecisionMade = true;
+        targetReacquisitionPending = false;
         return transitionPolicy.ShouldTauntBeforeFirstChase(context);
     }
 

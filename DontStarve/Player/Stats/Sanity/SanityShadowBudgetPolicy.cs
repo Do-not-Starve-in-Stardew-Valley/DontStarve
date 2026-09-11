@@ -125,26 +125,29 @@ internal sealed class SanityShadowBudgetPolicy
     };
 
     /// <summary>
-    /// 50% 无害池与 15% 敌对池共享这一列；10% tier 才切到
-    /// <see cref="TerrorbeakCap"/>。两列都只约束同一 owner 的两种影怪。
+    /// Historical config columns are retained for save/config compatibility. They describe the
+    /// two existing density values; runtime spawning uses their sum as one owner-wide cap rather
+    /// than allocating separate Creeper/Terrorbeak slots.
     /// </summary>
     internal int BaseCap { get; }
 
     internal int TerrorbeakCap { get; }
 
+    internal int TotalCap => BaseCap + TerrorbeakCap;
+
     internal int GetCap(SanityShadowPoolTier tier)
     {
-        return tier == SanityShadowPoolTier.Hostile10
-            ? TerrorbeakCap
-            : tier is SanityShadowPoolTier.Harmless50
-                or SanityShadowPoolTier.Hostile15
-                ? BaseCap
-                : 0;
+        return tier is SanityShadowPoolTier.Harmless50
+            or SanityShadowPoolTier.Hostile15
+            or SanityShadowPoolTier.Hostile10
+            ? TotalCap
+            : 0;
     }
 }
 
 /// <summary>
-/// SanityMonsterIntensity 的唯一密度表。60 游戏分钟是内部分钟，不是现实秒数。
+/// SanityMonsterIntensity 的唯一密度表。IntervalMinutes 仍是兼容旧预算协议的游戏分钟字段；
+/// 当前自然刷新由 RealIntervalMilliseconds 定义现实时间间隔。
 /// </summary>
 internal static class SanityShadowBudgetPolicyCatalog
 {

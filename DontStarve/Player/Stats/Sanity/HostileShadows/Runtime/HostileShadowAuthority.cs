@@ -282,9 +282,20 @@ internal sealed class HostileShadowAuthority
             );
         }
 
-        var occupancy = GetOwnerOccupancy(command.OwnerPlayerKey);
         var isDebugCommand = command.Origin == HostileShadowSpawnOrigin.DebugCommand;
+        var isWarpFastCompensation =
+            command.Origin == HostileShadowSpawnOrigin.WarpFastCompensation;
+        var isCurrentMapRefresh =
+            command.Origin == HostileShadowSpawnOrigin.Interval
+            || isWarpFastCompensation;
+        var occupancy = isCurrentMapRefresh
+            ? GetLockedOwnerOccupancyAtLocation(
+                command.OwnerPlayerKey,
+                command.LocationId
+            )
+            : GetOwnerOccupancy(command.OwnerPlayerKey);
         SanityShadowBudgetEvaluationResult evaluation;
+        var fastBudgetResolved = false;
         if (isDebugCommand)
         {
             evaluation = new SanityShadowBudgetEvaluationResult(
@@ -299,6 +310,32 @@ internal sealed class HostileShadowAuthority
                 command.GameMinute,
                 null
             );
+        }
+        else if (
+            isWarpFastCompensation
+            && budget is IHostileShadowFastSpawnBudgetAuthority fastSpawnBudget
+            && fastSpawnBudget.TryGetCurrentPoolAndTotalCap(
+                command.OwnerPlayerKey,
+                out var fastPoolTier,
+                out var fastTotalCap
+            )
+        )
+        {
+            // This source is created by a completed map transition. It must not call the ordinary
+            // Evaluate path, because that path owns the natural refresh timer and can report
+            // Waiting/SpeciesIneligible for a command-created source species.
+            evaluation = new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.PermitGranted,
+                "hostile-shadow.warp-fast-compensation-authorized",
+                command.OwnerPlayerKey,
+                fastPoolTier,
+                string.Empty,
+                occupancy,
+                fastTotalCap,
+                0,
+                null
+            );
+            fastBudgetResolved = true;
         }
         else
         {
@@ -326,6 +363,41 @@ internal sealed class HostileShadowAuthority
                     )
                 );
             }
+        }
+
+        if (isWarpFastCompensation && !fastBudgetResolved)
+        {
+            if (
+                command.CurrentLocationCap is not { } currentLocationCap
+                || currentLocationCap <= 0
+                || evaluation.Status
+                    is not SanityShadowBudgetEvaluationStatus.PermitGranted
+                        and not SanityShadowBudgetEvaluationStatus.Waiting
+                        and not SanityShadowBudgetEvaluationStatus.PausedAtCap
+                        and not SanityShadowBudgetEvaluationStatus.SpeciesIneligible
+            )
+            {
+                return Record(
+                    command,
+                    FromBudget(
+                        HostileShadowSpawnStatus.Unavailable,
+                        "hostile-shadow.warp-fast-compensation-cap-unavailable",
+                        evaluation
+                    )
+                );
+            }
+
+            evaluation = new SanityShadowBudgetEvaluationResult(
+                SanityShadowBudgetEvaluationStatus.PermitGranted,
+                "hostile-shadow.warp-fast-compensation-authorized",
+                command.OwnerPlayerKey,
+                evaluation.PoolTier,
+                evaluation.IntensityId,
+                occupancy,
+                currentLocationCap,
+                evaluation.IntervalMinutes,
+                evaluation.NextDueMinute
+            );
         }
 
         if (!isDebugCommand &&
@@ -356,7 +428,18 @@ internal sealed class HostileShadowAuthority
                 )
             );
         }
-        if (!isDebugCommand && (occupancy >= evaluation.Cap || evaluation.Cap <= 0))
+        var isProjectionConversion =
+            command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion;
+        if (
+            !isDebugCommand
+            && (
+                evaluation.Cap <= 0
+                // A conversion replaces an already-visible harmless projection. The owner cap
+                // is a natural-refresh budget, while overflow (including command-created
+                // projections) is handled by the shared 10-minute cleanup pass.
+                || (!isProjectionConversion && occupancy >= evaluation.Cap)
+            )
+        )
         {
             var status = evaluation.Status == SanityShadowBudgetEvaluationStatus.Unavailable
                 ? HostileShadowSpawnStatus.Unavailable
@@ -366,7 +449,7 @@ internal sealed class HostileShadowAuthority
             return Record(command, FromBudget(status, evaluation.Reason, evaluation));
         }
 
-        if (command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion)
+        if (isProjectionConversion)
         {
             // DIAG-20260812: 转化不再受 epoch 一次性限制——每个 Danger 档期场上存量/新刷
             // 的每只无害投影都应能 1:1 转化为危险影怪，重复提交由协调器 evidence 去重。
@@ -384,6 +467,7 @@ internal sealed class HostileShadowAuthority
             if (
                 evaluation.Status is not SanityShadowBudgetEvaluationStatus.PermitGranted
                     and not SanityShadowBudgetEvaluationStatus.Waiting
+                    and not SanityShadowBudgetEvaluationStatus.PausedAtCap
             )
             {
                 return Record(
@@ -392,7 +476,11 @@ internal sealed class HostileShadowAuthority
                 );
             }
         }
-        else if (!isDebugCommand && evaluation.Status != SanityShadowBudgetEvaluationStatus.PermitGranted)
+        else if (
+            !isDebugCommand
+            && !isWarpFastCompensation
+            && evaluation.Status != SanityShadowBudgetEvaluationStatus.PermitGranted
+        )
         {
             return Record(
                 command,
@@ -455,6 +543,7 @@ internal sealed class HostileShadowAuthority
             StateId = command.Origin == HostileShadowSpawnOrigin.OwnerProjectionConversion
                 ? HostileShadowStateIds.Taunt
                 : HostileShadowStateIds.Spawn,
+            HitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None,
             TargetPlayerKey = string.Empty,
             PositionX = command.PositionX,
             PositionY = command.PositionY,
@@ -517,6 +606,10 @@ internal sealed class HostileShadowAuthority
             || update.Health < 0
             || update.Health > current.MaxHealth
             || !HostileShadowStateIds.IsKnown(update.StateId)
+            || !HostileShadowProtocol.IsValidHitTeleportVisualPhase(
+                update.StateId,
+                update.HitTeleportVisualPhase
+            )
             || !HostileShadowStateIds.IsHealthValid(update.StateId, update.Health)
             || !IsValidAttackUpdate(update)
         )
@@ -527,6 +620,11 @@ internal sealed class HostileShadowAuthority
         if (
             string.Equals(current.LocationId, update.LocationId, StringComparison.Ordinal)
             && string.Equals(current.StateId, update.StateId, StringComparison.Ordinal)
+            && string.Equals(
+                current.HitTeleportVisualPhase,
+                update.HitTeleportVisualPhase,
+                StringComparison.Ordinal
+            )
             && string.Equals(
                 current.TargetPlayerKey,
                 update.TargetPlayerKey,
@@ -581,6 +679,7 @@ internal sealed class HostileShadowAuthority
 
         current.LocationId = update.LocationId;
         current.StateId = update.StateId;
+        current.HitTeleportVisualPhase = update.HitTeleportVisualPhase;
         current.TargetPlayerKey = update.TargetPlayerKey;
         current.PositionX = update.PositionX;
         current.PositionY = update.PositionY;
@@ -789,6 +888,70 @@ internal sealed class HostileShadowAuthority
         return entityIdsByOwner.TryGetValue(ownerPlayerKey, out var ids)
             ? ids.Count
             : 0;
+    }
+
+    internal int GetOwnerOccupancyAtLocation(
+        string ownerPlayerKey,
+        string locationId
+    )
+    {
+        if (
+            !entityIdsByOwner.TryGetValue(ownerPlayerKey, out var ids)
+            || string.IsNullOrWhiteSpace(locationId)
+        )
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var entityId in ids)
+        {
+            if (
+                entities.TryGetValue(entityId, out var state)
+                && string.Equals(state.LocationId, locationId, StringComparison.Ordinal)
+            )
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int GetLockedOwnerOccupancyAtLocation(
+        string ownerPlayerKey,
+        string locationId
+    )
+    {
+        if (
+            !entityIdsByOwner.TryGetValue(ownerPlayerKey, out var ids)
+            || string.IsNullOrWhiteSpace(locationId)
+        )
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var entityId in ids)
+        {
+            if (
+                entities.TryGetValue(entityId, out var state)
+                && string.Equals(state.LocationId, locationId, StringComparison.Ordinal)
+                && string.Equals(
+                    state.TargetPlayerKey,
+                    ownerPlayerKey,
+                    StringComparison.Ordinal
+                )
+                && !string.Equals(
+                    state.StateId,
+                    HostileShadowStateIds.Despawn,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     internal bool TryGetConversionEpochRevision(

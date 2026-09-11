@@ -38,6 +38,14 @@ public sealed class SanityVisualRuntimeStaticTests
         var draw = runtime[drawStart..drawEnd];
 
         Assert.Contains("DrawDangerBorder", hud, StringComparison.Ordinal);
+        Assert.Contains(
+            "SanityMinigameVisualRuntimeClassifier.ResolveCurrent()",
+            hud,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("SanityMinigameVisualContext.Fishing", hud, StringComparison.Ordinal);
+        Assert.Contains("SanityMinigameVisualContext.Other", hud, StringComparison.Ordinal);
+        Assert.Contains("snapshot.MinigameContext != minigameContext", hud, StringComparison.Ordinal);
         Assert.Contains("worldEffect!", draw, StringComparison.Ordinal);
         Assert.Contains("Game1.spriteBatch.Draw", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("LoadVisualSlot", hud, StringComparison.Ordinal);
@@ -66,11 +74,125 @@ public sealed class SanityVisualRuntimeStaticTests
     }
 
     [Fact]
+    public void World_composition_final_activation_rechecks_live_minigame_and_cleans_stale_state()
+    {
+        var runtime = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityWorldCompositionRuntimeAdapter.cs"
+            )
+        );
+        var activationStart = runtime.IndexOf(
+            "private bool HasActiveWorldComposition",
+            StringComparison.Ordinal
+        );
+        var activationEnd = runtime.IndexOf(
+            "private bool TryDrawSingle",
+            activationStart,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(activationStart >= 0);
+        Assert.True(activationEnd > activationStart);
+        var activation = runtime[activationStart..activationEnd];
+        Assert.Contains("parametersByScreen.TryGetValue", activation, StringComparison.Ordinal);
+        Assert.Contains("parameters.IsActive", activation, StringComparison.Ordinal);
+        Assert.Contains(
+            "SanityMinigameVisualRuntimeClassifier.ResolveCurrent()",
+            activation,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "SanityMinigameVisualRuntimeClassifier.IsWorldCompositionAllowed",
+            activation,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("parametersByScreen.Remove(screenId)", activation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Runtime_classifier_keeps_fishing_whitelist_exactly_bounded()
+    {
+        var classifier = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityMinigameVisualRuntimeClassifier.cs"
+            )
+        );
+        var exhibitionStart = classifier.IndexOf(
+            "var isExhibitionFishing",
+            StringComparison.Ordinal
+        );
+        var exhibitionEnd = classifier.IndexOf(
+            "var isIceFishing",
+            exhibitionStart,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(exhibitionStart >= 0);
+        Assert.True(exhibitionEnd > exhibitionStart);
+        var exhibition = classifier[exhibitionStart..exhibitionEnd];
+        Assert.Contains("var currentMinigame = Game1.currentMinigame", classifier, StringComparison.Ordinal);
+        Assert.Contains("currentMinigame is FishingGame", exhibition, StringComparison.Ordinal);
+        Assert.Contains("ExhibitionFishingFestivalId = \"fall16\"", classifier, StringComparison.Ordinal);
+        Assert.Contains("currentEvent.isSpecificFestival(ExhibitionFishingFestivalId)", exhibition, StringComparison.Ordinal);
+        Assert.Contains("var activeMenu = Game1.activeClickableMenu", classifier, StringComparison.Ordinal);
+        Assert.Contains("activeMenu is BobberBar", classifier, StringComparison.Ordinal);
+        Assert.Contains("IceFishingSequenceId = \"iceFishing\"", classifier, StringComparison.Ordinal);
+        Assert.Contains("internal static bool IsWorldCompositionAllowed", classifier, StringComparison.Ordinal);
+        Assert.Contains(
+            "return context is SanityMinigameVisualContext.None",
+            classifier,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "or SanityMinigameVisualContext.Fishing",
+            classifier,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "internal static bool ShouldPauseLocalAudio",
+            ReadWorkspaceSource(
+                Path.Combine(
+                    "DontStarve",
+                    "Player",
+                    "Stats",
+                    "Sanity",
+                    "Visual",
+                    "SanityMinigameVisualClassifier.cs"
+                )
+            ),
+            StringComparison.Ordinal
+        );
+        Assert.Equal(
+            1,
+            classifier.Split("isSpecificFestival(", StringSplitOptions.None).Length - 1
+        );
+        Assert.DoesNotContain("isSpecificFestival(\"spring", classifier, StringComparison.Ordinal);
+        Assert.DoesNotContain("isSpecificFestival(\"summer", classifier, StringComparison.Ordinal);
+        Assert.DoesNotContain("isSpecificFestival(\"winter", classifier, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Adapter_borrows_existing_loader_slot_and_never_disposes_texture()
     {
         var source = ReadVisual();
 
-        Assert.Contains("resources.LoadVisualSlot(DangerBorderProfileId, 0)", source, StringComparison.Ordinal);
+        Assert.Contains("DangerBorderSlotId", source, StringComparison.Ordinal);
+        Assert.Contains("resources.LoadVisualSlot(DangerBorderSlotId, 0)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "resources.LoadVisualSlot(DangerBorderProfileId, 0)",
+            source,
+            StringComparison.Ordinal
+        );
         Assert.Contains("XnaSanityTextureResource", source, StringComparison.Ordinal);
         Assert.Contains("preview.IsPlaceholder", source, StringComparison.Ordinal);
         Assert.DoesNotContain("texture.Dispose", source, StringComparison.Ordinal);
@@ -157,6 +279,20 @@ public sealed class SanityVisualRuntimeStaticTests
 
     private static string ReadRuntime(string fileName)
     {
+        if (string.Equals(fileName, "SanityWorldCompositionRuntimeAdapter.cs", StringComparison.Ordinal))
+        {
+            return ReadWorkspaceSource(
+                Path.Combine(
+                    "DontStarve",
+                    "Player",
+                    "Stats",
+                    "Sanity",
+                    "Visual",
+                    fileName
+                )
+            );
+        }
+
         return ReadContract("VisualRuntime", fileName);
     }
 
@@ -164,6 +300,24 @@ public sealed class SanityVisualRuntimeStaticTests
     {
         return File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "Contracts", folder, fileName)
+        );
+    }
+
+    private static string ReadWorkspaceSource(string relativePath)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "DontStarveInSDV.sln")))
+            {
+                return File.ReadAllText(Path.Combine(directory.FullName, relativePath));
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "The repository root could not be located for the static source contract."
         );
     }
 }

@@ -13,7 +13,7 @@ public sealed class SanityVisualControllerTests
     {
         AssertCapability(SanityVisualCapabilityCatalog.LowSaturation, SanityVisualCapabilityStatus.AvailableProduction, "available-owner-local-world-composition");
         AssertCapability(SanityVisualCapabilityCatalog.ViewShake, SanityVisualCapabilityStatus.AvailableProduction, "available-owner-local-transform");
-        AssertCapability(SanityVisualCapabilityCatalog.DangerBorder, SanityVisualCapabilityStatus.AvailableProduction, "available-owner-local-hud-nine-slice");
+        AssertCapability(SanityVisualCapabilityCatalog.DangerBorder, SanityVisualCapabilityStatus.Disabled, "disabled-development-placeholder");
         AssertCapability(SanityVisualCapabilityCatalog.Grayscale, SanityVisualCapabilityStatus.AvailableProduction, "available-owner-local-world-composition");
         AssertCapability(SanityVisualCapabilityCatalog.IdlePresentation, SanityVisualCapabilityStatus.AvailableProduction, "available-owner-local-non-passout-token");
     }
@@ -25,15 +25,14 @@ public sealed class SanityVisualControllerTests
         AssertTier(SanityTierIds.Eyes, 0.60d, 0.60d);
         AssertTier(SanityTierIds.Danger, 0.15d, 0.175d);
         AssertTier(SanityTierIds.Terrorbeak, 0.10d, 0.10d);
-        Assert.Equal(0.8f, SanityVisualController.DangerBorderOpacity);
     }
 
     [Theory]
     [InlineData(SanityTierIds.DarkHand, (int)SanityVisualLayerMask.LowSaturation)]
     [InlineData(SanityTierIds.Eyes, (int)SanityVisualLayerMask.ViewShake)]
-    [InlineData(SanityTierIds.Danger, (int)SanityVisualLayerMask.DangerBorder)]
+    [InlineData(SanityTierIds.Danger, (int)SanityVisualLayerMask.None)]
     [InlineData(SanityTierIds.Terrorbeak, (int)SanityVisualLayerMask.Grayscale)]
-    public void Frozen_tier_ids_map_to_the_four_requested_visual_layers(
+    public void Frozen_tier_ids_map_to_the_enabled_requested_visual_layers(
         string tierId,
         int expectedValue
     )
@@ -71,14 +70,18 @@ public sealed class SanityVisualControllerTests
         );
 
         Assert.True(controller.TryGetSnapshot(key, out var snapshot));
-        Assert.Equal(SanityVisualLayerMask.All, snapshot.RequestedLayers);
-        Assert.Equal(SanityVisualLayerMask.All, snapshot.RenderableLayers);
+        Assert.Equal(
+            SanityVisualLayerMask.LowSaturation
+                | SanityVisualLayerMask.ViewShake
+                | SanityVisualLayerMask.Grayscale,
+            snapshot.RequestedLayers
+        );
+        Assert.Equal(snapshot.RequestedLayers, snapshot.RenderableLayers);
         Assert.Equal(
             new[]
             {
                 SanityVisualLayerMask.LowSaturation,
                 SanityVisualLayerMask.ViewShake,
-                SanityVisualLayerMask.DangerBorder,
                 SanityVisualLayerMask.Grayscale,
             },
             SanityVisualCapabilityCatalog.LayerOrder
@@ -176,7 +179,7 @@ public sealed class SanityVisualControllerTests
         Assert.Equal(SanityVisualMutationStatus.Applied, controller.UpdateEffectiveSanityOverride(key, false).Status);
         Assert.True(controller.TryGetSnapshot(key, out var restored));
         Assert.Equal(9, restored.Revision);
-        Assert.Equal(SanityVisualLayerMask.DangerBorder, restored.RenderableLayers);
+        Assert.Equal(SanityVisualLayerMask.None, restored.RenderableLayers);
         Assert.Equal("idle.effective-sanity-override-ended", restored.Idle.Reason);
     }
 
@@ -190,11 +193,59 @@ public sealed class SanityVisualControllerTests
         Assert.Equal(SanityVisualMutationStatus.Applied, controller.Observe(initial).Status);
         Assert.Equal(SanityVisualMutationStatus.IgnoredDuplicate, controller.Observe(initial).Status);
         Assert.Equal(SanityVisualMutationStatus.IgnoredStale, controller.Observe(Observation(key, 3, Array.Empty<string>())).Status);
-        Assert.Equal(SanityVisualMutationStatus.Invalid, controller.Observe(Observation(key, 4, Array.Empty<string>())).Status);
+        Assert.Equal(SanityVisualMutationStatus.Invalid, controller.Observe(Observation(key, 4, new[] { SanityTierIds.Terrorbeak })).Status);
         Assert.Equal(SanityVisualMutationStatus.Applied, controller.Observe(Observation(key, 5, Array.Empty<string>())).Status);
         Assert.True(controller.TryGetSnapshot(key, out var snapshot));
         Assert.Equal(5, snapshot.Revision);
         Assert.Equal(SanityVisualLayerMask.None, snapshot.RequestedLayers);
+    }
+
+    [Fact]
+    public void Same_revision_minigame_context_transition_updates_snapshot_without_conflict()
+    {
+        var controller = new SanityVisualController();
+        var key = Key("1", 0);
+
+        Assert.Equal(
+            SanityVisualMutationStatus.Applied,
+            controller.Observe(
+                Observation(
+                    key,
+                    4,
+                    new[] { SanityTierIds.Danger },
+                    minigameContext: SanityMinigameVisualContext.None
+                )
+            ).Status
+        );
+
+        var blocked = controller.Observe(
+            Observation(
+                key,
+                4,
+                new[] { SanityTierIds.Danger },
+                minigameContext: SanityMinigameVisualContext.Other
+            )
+        );
+
+        Assert.Equal(SanityVisualMutationStatus.Applied, blocked.Status);
+        Assert.Equal("visual.presentation-applied", blocked.Reason);
+        Assert.True(controller.TryGetSnapshot(key, out var otherSnapshot));
+        Assert.Equal(SanityMinigameVisualContext.Other, otherSnapshot.MinigameContext);
+        Assert.Equal(SanityVisualLayerMask.None, otherSnapshot.RenderableLayers);
+
+        var restored = controller.Observe(
+            Observation(
+                key,
+                4,
+                new[] { SanityTierIds.Danger },
+                minigameContext: SanityMinigameVisualContext.Fishing
+            )
+        );
+
+        Assert.Equal(SanityVisualMutationStatus.Applied, restored.Status);
+        Assert.True(controller.TryGetSnapshot(key, out var fishingSnapshot));
+        Assert.Equal(SanityMinigameVisualContext.Fishing, fishingSnapshot.MinigameContext);
+        Assert.Equal(SanityVisualLayerMask.None, fishingSnapshot.RenderableLayers);
     }
 
     [Fact]
@@ -317,7 +368,8 @@ public sealed class SanityVisualControllerTests
         bool effectiveSanityOverrideActive = false,
         int width = 1920,
         int height = 1080,
-        double current = 10d
+        double current = 10d,
+        SanityMinigameVisualContext minigameContext = SanityMinigameVisualContext.None
     )
     {
         return new SanityVisualObservation(
@@ -328,7 +380,8 @@ public sealed class SanityVisualControllerTests
             tiers,
             effectiveSanityOverrideActive,
             width,
-            height
+            height,
+            minigameContext
         );
     }
 

@@ -12,12 +12,14 @@ internal readonly struct UIRenderContext
     public RenderingHudEventArgs EventArgs { get; }
     public Vector2 ViewportSize { get; }
     public bool ShowingHealth { get; }
+    public bool ShowingHunger { get; }
     public bool ShowingSanity { get; }
     public HudDisplayLayout HudLayout { get; }
 
     public UIRenderContext(
         IModHelper helper,
         RenderingHudEventArgs e,
+        bool showingHunger,
         bool showingSanity
     )
     {
@@ -26,6 +28,7 @@ internal readonly struct UIRenderContext
         // 所有 HUD 定位使用 uiViewport，避免窗口缩放或 UI 缩放时与世界 viewport 混淆。
         ViewportSize = new Vector2(Game1.uiViewport.Width, Game1.uiViewport.Height);
         ShowingHealth = Game1.showingHealth;
+        ShowingHunger = showingHunger;
         ShowingSanity = showingSanity;
 
         var player = Game1.player;
@@ -33,6 +36,7 @@ internal readonly struct UIRenderContext
             (int)ViewportSize.X,
             (int)ViewportSize.Y,
             ShowingHealth,
+            ShowingHunger,
             ShowingSanity,
             player.maxHealth,
             player.MaxStamina,

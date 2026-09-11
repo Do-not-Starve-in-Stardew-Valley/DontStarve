@@ -6,6 +6,8 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 using HungerEatFood = DontStarve.Player.Stats.Hunger.HungerBehaviors.EatFood;
+using DontStarve.Player.Stats.Hunger;
+using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Resource;
 using HarmonyLib;
@@ -17,6 +19,7 @@ using StardewValley;
 using StardewValley.Buffs;
 using StardewValley.Menus;
 using SanityEatFood = DontStarve.Player.Stats.Sanity.SanityBehaviors.EatFood;
+using SObject = StardewValley.Object;
 
 namespace DontStarve.Display.UIElements;
 
@@ -24,13 +27,21 @@ namespace DontStarve.Display.UIElements;
 /// Adds read-only Hunger, Sanity and supported Buff data at the final Stardew 1.6.15 tooltip
 /// overload. The transpiler extends the vanilla measurement and inserts survival rows after
 /// vanilla Energy/Health rows, so item types whose drawTooltip ignores overrideText are covered.
+/// A second narrow transpiler changes only the vanilla Tooltip's direct Edibility reads, allowing
+/// target seeds to enter the original Energy/Health branch without mutating their NetInt field.
 /// </summary>
 internal sealed class SmapiVanillaSanityTooltipService : IDisposable
 {
     internal const string ExpectedGameVersion = "1.6.15";
     internal const string ExpectedTargetSignature =
         "IClickableMenu.drawHoverText(SpriteBatch,StringBuilder,SpriteFont,...,Item hoveredItem,...)";
+    internal const string ExpectedVanillaTooltipTargetSignature =
+        "IClickableMenu.drawToolTip(SpriteBatch,String,String,Item,...)";
+    internal const string ModItemDisplayUniqueId = "Joegosama.ModItemdisplay";
 
+    private const string ModItemDisplayTooltipPatcherTypeName =
+        "ModItemDisplay.Rendering.TooltipHarmonyPatcher";
+    private const string ModItemDisplayTooltipPrefixMethodName = "DrawHoverText_Prefix";
     private const int VanillaTooltipTextWidthPadding = 92;
     private const int VanillaTooltipRowIconScale = SanityTooltipLayoutContract.VanillaTooltipIconScale;
     private const int WidthLocalIndex = 1;
@@ -52,16 +63,23 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
     private readonly IModHelper helper;
     private readonly IMonitor monitor;
     private readonly string patchOwnerId;
+    private readonly string modItemDisplayPatchOwnerId;
     private readonly ISanitySystemState sanitySystemState;
-    private readonly bool externalExtraMachineConfigLoaded;
+    private readonly bool extraMachineConfigCompatibilityActive;
     private readonly FoodBuffTooltipFormatter formatter;
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private readonly HashSet<int> loggedTooltipDiagnostics = new();
 
     private Harmony? harmony;
+    private Harmony? modItemDisplayHarmony;
     private MethodInfo? targetMethod;
+    private MethodInfo? vanillaTooltipTargetMethod;
+    private MethodInfo? modItemDisplayPrefixMethod;
     private MethodInfo? combatLegacyTargetMethod;
     private bool patchInstalled;
+    private bool seedTooltipCompatibilityPatchInstalled;
+    private bool modItemDisplayDetected;
+    private bool modItemDisplayCompatibilityPatchInstalled;
     private bool hoverDiagnosticPrefixInstalled;
     private bool combatLegacyPatchInstalled;
     private bool disposed;
@@ -81,19 +99,24 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             sanitySystemState ?? throw new ArgumentNullException(nameof(sanitySystemState));
 
         this.patchOwnerId = string.Concat(modId, ".Sanity4.VanillaTooltip");
-        this.externalExtraMachineConfigLoaded = helper.ModRegistry.IsLoaded(
-            FoodBuffTooltipFormatter.ExtraMachineConfigUniqueId
+        this.modItemDisplayPatchOwnerId = string.Concat(
+            this.patchOwnerId,
+            ".ModItemDisplay"
+        );
+        this.extraMachineConfigCompatibilityActive = helper.ModRegistry.IsLoaded(
+            FoodBuffTooltipFormatter.ExtraMachineConfigCompatibilityId
         );
         this.formatter = new FoodBuffTooltipFormatter(
             helper,
-            this.externalExtraMachineConfigLoaded
+            this.extraMachineConfigCompatibilityActive
         );
 
         this.InstallPatch();
+        helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
         AppDomain.CurrentDomain.ProcessExit += this.OnProcessExit;
         monitor.Log(
-            $"Sanity vanilla tooltip capability: game-version={Game1.version}, target={ExpectedTargetSignature}, patch-owner={this.patchOwnerId}, patch-installed={this.patchInstalled}, hover-diagnostic-prefix={this.hoverDiagnosticPrefixInstalled}, combat-legacy-patch={this.combatLegacyPatchInstalled}, external-extra-machine-config={this.externalExtraMachineConfigLoaded}.",
+            $"Sanity vanilla tooltip capability: game-version={Game1.version}, target={ExpectedTargetSignature}, vanilla-tooltip-target={ExpectedVanillaTooltipTargetSignature}, patch-owner={this.patchOwnerId}, patch-installed={this.patchInstalled}, seed-tooltip-compatibility-patch={this.seedTooltipCompatibilityPatchInstalled}, hover-diagnostic-prefix={this.hoverDiagnosticPrefixInstalled}, combat-legacy-patch={this.combatLegacyPatchInstalled}, extra-machine-config-compatibility={this.extraMachineConfigCompatibilityActive}, mod-item-display-detected={this.modItemDisplayDetected}, mod-item-display-compatibility-patch={this.modItemDisplayCompatibilityPatchInstalled}.",
             this.patchInstalled ? LogLevel.Debug : LogLevel.Warn
         );
         monitor.Log(
@@ -152,13 +175,53 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
                 );
             }
         }
+        if (this.harmony is not null && this.vanillaTooltipTargetMethod is not null)
+        {
+            try
+            {
+                this.harmony.Unpatch(
+                    this.vanillaTooltipTargetMethod,
+                    HarmonyPatchType.Transpiler,
+                    this.patchOwnerId
+                );
+            }
+            catch (Exception exception)
+            {
+                this.LogFailureOnce(
+                    "seed-tooltip-patch-uninstall",
+                    $"Seed vanilla Tooltip compatibility cleanup failed ({exception.GetType().Name}: {exception.Message})."
+                );
+            }
+        }
 
         this.patchInstalled = false;
+        this.seedTooltipCompatibilityPatchInstalled = false;
+        this.modItemDisplayCompatibilityPatchInstalled = false;
         this.hoverDiagnosticPrefixInstalled = false;
         this.combatLegacyPatchInstalled = false;
+        this.helper.Events.GameLoop.GameLaunched -= this.OnGameLaunched;
         this.helper.Events.GameLoop.ReturnedToTitle -= this.OnReturnedToTitle;
         this.formatter.Dispose();
         AppDomain.CurrentDomain.ProcessExit -= this.OnProcessExit;
+
+        if (this.modItemDisplayHarmony is not null && this.modItemDisplayPrefixMethod is not null)
+        {
+            try
+            {
+                this.modItemDisplayHarmony.Unpatch(
+                    this.modItemDisplayPrefixMethod,
+                    HarmonyPatchType.Transpiler,
+                    this.modItemDisplayPatchOwnerId
+                );
+            }
+            catch (Exception exception)
+            {
+                this.LogFailureOnce(
+                    "mod-item-display-patch-uninstall",
+                    $"Mod Item Display tooltip compatibility cleanup failed ({exception.GetType().Name}: {exception.Message})."
+                );
+            }
+        }
     }
 
     private static int ApplyAdditionalWidth(
@@ -277,9 +340,9 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         }
     }
 
-    // This keeps the seven multiplier rows in the existing vanilla Buff section and order used
-    // by ExtraMachineConfig. Survival rows were already drawn before the vanilla separator.
-    private static void DrawExtraMachineConfigRows(
+    // Keep the extended Buff rows in the existing vanilla Buff section and order. Survival rows
+    // were already drawn before the vanilla separator.
+    private static void DrawExtendedBuffRows(
         SpriteBatch spriteBatch,
         SpriteFont font,
         float alpha,
@@ -304,7 +367,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         }
     }
 
-    private static void DrawExtraMachineConfigRowsFallback(
+    private static void DrawExtendedBuffRowsFallback(
         SpriteBatch spriteBatch,
         SpriteFont font,
         float alpha,
@@ -322,12 +385,13 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             return;
         }
 
-        DrawExtraMachineConfigRows(spriteBatch, font, alpha, layout, x, ref y);
+        DrawExtendedBuffRows(spriteBatch, font, alpha, layout, x, ref y);
     }
 
     private static SanityTooltipRowLayout GetTooltipRowLayout(
         Item? hoveredItem,
-        string[]? vanillaBuffIcons
+        string[]? vanillaBuffIcons,
+        bool includeExtendedBuffRows
     )
     {
         if (activeInstance is not { disposed: false, patchInstalled: true } service)
@@ -335,7 +399,11 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
 
         try
         {
-            var layout = service.CreateTooltipRowLayout(hoveredItem, vanillaBuffIcons);
+            var layout = service.CreateTooltipRowLayout(
+                hoveredItem,
+                vanillaBuffIcons,
+                includeExtendedBuffRows
+            );
             service.LogTooltipItemDiagnostic(hoveredItem, layout, vanillaBuffIcons);
             return layout;
         }
@@ -365,17 +433,20 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
 
     private SanityTooltipRowLayout CreateTooltipRowLayout(
         Item? hoveredItem,
-        string[]? vanillaBuffIcons
+        string[]? vanillaBuffIcons,
+        bool includeExtendedBuffRows
     )
     {
         return new SanityTooltipRowLayout(
             this.formatter.GetRows(
                 hoveredItem,
+                HungerExtensions.IsEnabled,
                 this.sanitySystemState.IsEnabled,
                 vanillaBuffIcons,
                 // Icons already identify the survival statistic in the vanilla tooltip. Keep
                 // these rows compact without changing the descriptive i18n used elsewhere.
-                textMode: FoodBuffTooltipTextMode.CompactVanillaTooltip
+                textMode: FoodBuffTooltipTextMode.CompactVanillaTooltip,
+                includeExtendedBuffRows: includeExtendedBuffRows
             )
         );
     }
@@ -474,6 +545,18 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
     {
         this.formatter.ClearCache();
         this.loggedTooltipDiagnostics.Clear();
+    }
+
+    private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
+    {
+        // Mod Item Display applies its own Harmony prefix during Entry, which may happen after
+        // this service was constructed. GameLaunched is the first point where every mod assembly
+        // and its prefix target are guaranteed to be available.
+        this.InstallModItemDisplayCompatibilityPatch();
+        this.monitor.Log(
+            $"Sanity tooltip Mod Item Display compatibility: detected={this.modItemDisplayDetected}, patch-installed={this.modItemDisplayCompatibilityPatchInstalled}.",
+            LogLevel.Debug
+        );
     }
 
     // Tooltip drawing runs every frame. Each diagnostic stage is therefore deduplicated by the
@@ -765,6 +848,25 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             nameof(IClickableMenu.drawHoverText),
             signature
         );
+        this.vanillaTooltipTargetMethod = AccessTools.DeclaredMethod(
+            typeof(IClickableMenu),
+            nameof(IClickableMenu.drawToolTip),
+            new[]
+            {
+                typeof(SpriteBatch),
+                typeof(string),
+                typeof(string),
+                typeof(Item),
+                typeof(bool),
+                typeof(int),
+                typeof(int),
+                typeof(string),
+                typeof(int),
+                typeof(CraftingRecipe),
+                typeof(int),
+                typeof(IList<Item>),
+            }
+        );
         var transpilerMethod = AccessTools.DeclaredMethod(
             typeof(SmapiVanillaSanityTooltipService),
             nameof(TranspileFinalDrawHoverText)
@@ -773,13 +875,21 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             typeof(SmapiVanillaSanityTooltipService),
             nameof(DiagnoseFinalDrawHoverText)
         );
+        var vanillaTooltipTranspilerMethod = AccessTools.DeclaredMethod(
+            typeof(SmapiVanillaSanityTooltipService),
+            nameof(TranspileVanillaDrawToolTip)
+        );
         var parameters = this.targetMethod?.GetParameters();
         if (
             this.targetMethod is null
+            || this.vanillaTooltipTargetMethod is null
             || transpilerMethod is null
             || diagnosticPrefixMethod is null
+            || vanillaTooltipTranspilerMethod is null
             || !this.targetMethod.IsStatic
+            || !this.vanillaTooltipTargetMethod.IsStatic
             || this.targetMethod.ReturnType != typeof(void)
+            || this.vanillaTooltipTargetMethod.ReturnType != typeof(void)
             || parameters is null
             || parameters.Length != signature.Length
             || !string.Equals(parameters[1].Name, "text", StringComparison.Ordinal)
@@ -825,7 +935,22 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
                     priority = Priority.High,
                 }
             );
-            if (!IsOwnedTranspilerInstalled(this.targetMethod, this.patchOwnerId))
+            this.harmony.Patch(
+                this.vanillaTooltipTargetMethod,
+                transpiler: new HarmonyMethod(vanillaTooltipTranspilerMethod)
+                {
+                    // Keep the original Tooltip implementation in charge of the actual rows;
+                    // this only changes its direct backing-field eligibility reads.
+                    priority = Priority.High,
+                }
+            );
+            if (
+                !IsOwnedTranspilerInstalled(this.targetMethod, this.patchOwnerId)
+                || !IsOwnedTranspilerInstalled(
+                    this.vanillaTooltipTargetMethod,
+                    this.patchOwnerId
+                )
+            )
             {
                 this.harmony.Unpatch(
                     this.targetMethod,
@@ -837,12 +962,19 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
                     HarmonyPatchType.Prefix,
                     this.patchOwnerId
                 );
+                this.harmony.Unpatch(
+                    this.vanillaTooltipTargetMethod,
+                    HarmonyPatchType.Transpiler,
+                    this.patchOwnerId
+                );
                 this.LogFailureOnce(
                     "readback",
                     "Sanity vanilla tooltip is unavailable (reason=sanity.tooltip.patch-owner-readback-failed)."
                 );
                 return;
             }
+
+            this.seedTooltipCompatibilityPatchInstalled = true;
 
             this.hoverDiagnosticPrefixInstalled = IsOwnedPrefixInstalled(
                 this.targetMethod,
@@ -861,6 +993,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             this.InstallCombatLegacyPatch();
             activeInstance = this;
             this.patchInstalled = true;
+            this.InstallModItemDisplayCompatibilityPatch();
         }
         catch (Exception exception)
         {
@@ -894,9 +1027,160 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         }
     }
 
+    private void InstallModItemDisplayCompatibilityPatch()
+    {
+        if (
+            this.disposed
+            || !this.patchInstalled
+            || this.modItemDisplayCompatibilityPatchInstalled
+        )
+        {
+            return;
+        }
+
+        bool modItemDisplayLoaded;
+        try
+        {
+            modItemDisplayLoaded = this.helper.ModRegistry.IsLoaded(ModItemDisplayUniqueId);
+        }
+        catch (Exception exception)
+        {
+            this.LogFailureOnce(
+                "mod-item-display-detection",
+                $"Mod Item Display tooltip compatibility detection failed open ({exception.GetType().Name}: {exception.Message})."
+            );
+            return;
+        }
+
+        if (!modItemDisplayLoaded)
+            return;
+
+        this.modItemDisplayDetected = true;
+
+        try
+        {
+            var patcherType = AccessTools.TypeByName(ModItemDisplayTooltipPatcherTypeName);
+            var prefixMethod = patcherType is null
+                ? null
+                : AccessTools.DeclaredMethod(
+                    patcherType,
+                    ModItemDisplayTooltipPrefixMethodName
+                );
+            var transpilerMethod = AccessTools.DeclaredMethod(
+                typeof(SmapiVanillaSanityTooltipService),
+                nameof(TranspileModItemDisplayTooltip)
+            );
+            var parameters = prefixMethod?.GetParameters();
+            if (
+                prefixMethod is null
+                || transpilerMethod is null
+                || !prefixMethod.IsStatic
+                || prefixMethod.ReturnType != typeof(bool)
+                || parameters is null
+                || parameters.Length != 25
+                || !string.Equals(parameters[1].Name, "text", StringComparison.Ordinal)
+                || parameters[1].ParameterType != typeof(StringBuilder)
+                || !string.Equals(
+                    parameters[BuffIconsArgumentIndex].Name,
+                    "buffIconsToDisplay",
+                    StringComparison.Ordinal
+                )
+                || parameters[BuffIconsArgumentIndex].ParameterType != typeof(string[])
+                || !string.Equals(
+                    parameters[HoveredItemArgumentIndex].Name,
+                    "hoveredItem",
+                    StringComparison.Ordinal
+                )
+                || parameters[HoveredItemArgumentIndex].ParameterType != typeof(Item)
+            )
+            {
+                this.LogFailureOnce(
+                    "mod-item-display-signature",
+                    "Mod Item Display tooltip compatibility is unavailable (reason=mod-item-display-prefix-signature-drift)."
+                );
+                return;
+            }
+
+            if (!HasExpectedLocalLayout(prefixMethod))
+            {
+                this.LogFailureOnce(
+                    "mod-item-display-locals",
+                    "Mod Item Display tooltip compatibility is unavailable (reason=mod-item-display-prefix-local-layout-drift)."
+                );
+                return;
+            }
+
+            this.modItemDisplayPrefixMethod = prefixMethod;
+            this.modItemDisplayHarmony = new Harmony(this.modItemDisplayPatchOwnerId);
+            if (IsOwnedTranspilerInstalled(prefixMethod, this.modItemDisplayPatchOwnerId))
+            {
+                this.modItemDisplayCompatibilityPatchInstalled = true;
+                return;
+            }
+
+            this.modItemDisplayHarmony.Patch(
+                prefixMethod,
+                transpiler: new HarmonyMethod(transpilerMethod)
+                {
+                    // The compatibility transpiler expects the copied vanilla body before any
+                    // later Mod Item Display transpiler changes its local/branch layout.
+                    priority = Priority.High,
+                }
+            );
+            if (!IsOwnedTranspilerInstalled(prefixMethod, this.modItemDisplayPatchOwnerId))
+            {
+                this.modItemDisplayHarmony.Unpatch(
+                    prefixMethod,
+                    HarmonyPatchType.Transpiler,
+                    this.modItemDisplayPatchOwnerId
+                );
+                this.LogFailureOnce(
+                    "mod-item-display-readback",
+                    "Mod Item Display tooltip compatibility is unavailable (reason=mod-item-display-patch-owner-readback-failed)."
+                );
+                return;
+            }
+
+            this.modItemDisplayCompatibilityPatchInstalled = true;
+            this.monitor.Log(
+                $"Mod Item Display tooltip compatibility patch installed (target={ModItemDisplayTooltipPatcherTypeName}.{ModItemDisplayTooltipPrefixMethodName}, patch-owner={this.modItemDisplayPatchOwnerId}, extra-machine-config-compatibility={this.extraMachineConfigCompatibilityActive}).",
+                LogLevel.Debug
+            );
+        }
+        catch (Exception exception)
+        {
+            if (
+                this.modItemDisplayHarmony is not null
+                && this.modItemDisplayPrefixMethod is not null
+            )
+            {
+                try
+                {
+                    this.modItemDisplayHarmony.Unpatch(
+                        this.modItemDisplayPrefixMethod,
+                        HarmonyPatchType.Transpiler,
+                        this.modItemDisplayPatchOwnerId
+                    );
+                }
+                catch (Exception cleanupException)
+                {
+                    this.LogFailureOnce(
+                        "mod-item-display-install-cleanup",
+                        $"Mod Item Display tooltip compatibility partial patch cleanup failed ({cleanupException.GetType().Name}: {cleanupException.Message})."
+                    );
+                }
+            }
+
+            this.LogFailureOnce(
+                "mod-item-display-install",
+                $"Mod Item Display tooltip compatibility patch failed open ({exception.GetType().Name}: {exception.Message})."
+            );
+        }
+    }
+
     private void InstallCombatLegacyPatch()
     {
-        if (this.externalExtraMachineConfigLoaded || this.harmony is null)
+        if (this.extraMachineConfigCompatibilityActive || this.harmony is null)
             return;
 
         this.combatLegacyTargetMethod = AccessTools.Method(
@@ -969,6 +1253,53 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         ILGenerator generator
     )
     {
+        return TranspileTooltipBody(
+            instructions,
+            generator,
+            includeExtendedBuffRows: false
+        );
+    }
+
+    private static IEnumerable<CodeInstruction> TranspileVanillaDrawToolTip(
+        IEnumerable<CodeInstruction> instructions
+    )
+    {
+        var effectiveEdibilityMethod = AccessTools.DeclaredMethod(
+            typeof(SeedEdibilityRuntime),
+            nameof(SeedEdibilityRuntime.GetEffectiveTooltipEdibility)
+        );
+        if (effectiveEdibilityMethod is null)
+            throw new InvalidOperationException(
+                "Seed vanilla Tooltip effective Edibility helper is unavailable."
+            );
+
+        return ReplaceVanillaTooltipEdibilityReads(
+            instructions,
+            effectiveEdibilityMethod,
+            "Vanilla drawToolTip Edibility seam is unavailable."
+        );
+    }
+
+    private static IEnumerable<CodeInstruction> TranspileModItemDisplayTooltip(
+        IEnumerable<CodeInstruction> instructions,
+        ILGenerator generator
+    )
+    {
+        // Mod Item Display returns false from this copied vanilla body, so its target method never
+        // reaches the normal drawHoverText body. It therefore owns the external Buff rows here.
+        return TranspileTooltipBody(
+            instructions,
+            generator,
+            includeExtendedBuffRows: true
+        );
+    }
+
+    private static IEnumerable<CodeInstruction> TranspileTooltipBody(
+        IEnumerable<CodeInstruction> instructions,
+        ILGenerator generator,
+        bool includeExtendedBuffRows
+    )
+    {
         var layoutMethod = AccessTools.DeclaredMethod(
             typeof(SmapiVanillaSanityTooltipService),
             nameof(GetTooltipRowLayout)
@@ -985,27 +1316,41 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             typeof(SmapiVanillaSanityTooltipService),
             nameof(DrawAdditionalRows)
         );
-        var extraMachineConfigDrawMethod = AccessTools.DeclaredMethod(
+        var extendedBuffDrawMethod = AccessTools.DeclaredMethod(
             typeof(SmapiVanillaSanityTooltipService),
-            nameof(DrawExtraMachineConfigRows)
+            nameof(DrawExtendedBuffRows)
         );
-        var extraMachineConfigFallbackMethod = AccessTools.DeclaredMethod(
+        var extendedBuffFallbackMethod = AccessTools.DeclaredMethod(
             typeof(SmapiVanillaSanityTooltipService),
-            nameof(DrawExtraMachineConfigRowsFallback)
+            nameof(DrawExtendedBuffRowsFallback)
         );
         if (
             layoutMethod is null
             || heightMethod is null
             || widthMethod is null
             || drawMethod is null
-            || extraMachineConfigDrawMethod is null
-            || extraMachineConfigFallbackMethod is null
+            || extendedBuffDrawMethod is null
+            || extendedBuffFallbackMethod is null
         )
         {
             throw new InvalidOperationException("Sanity tooltip transpiler helpers are unavailable.");
         }
 
-        var matcher = new CodeMatcher(instructions);
+        var effectiveEdibilityMethod = AccessTools.DeclaredMethod(
+            typeof(SeedEdibilityRuntime),
+            nameof(SeedEdibilityRuntime.GetEffectiveTooltipEdibility)
+        );
+        if (effectiveEdibilityMethod is null)
+            throw new InvalidOperationException(
+                "Seed vanilla Tooltip effective Edibility helper is unavailable."
+            );
+
+        var normalizedInstructions = ReplaceVanillaTooltipEdibilityReads(
+            instructions,
+            effectiveEdibilityMethod,
+            "Vanilla drawHoverText Edibility seam is unavailable."
+        );
+        var matcher = new CodeMatcher(normalizedInstructions);
         var layoutLocal = generator.DeclareLocal(typeof(SanityTooltipRowLayout));
 
         // Build one final layout at the common target of the vanilla height guard. The exact same
@@ -1019,7 +1364,12 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             .ThrowIfNotMatch("Vanilla tooltip height measurement seam is unavailable.");
         InsertAtBranchTarget(
             matcher,
-            BuildLayoutAndHeightAdjustmentInstructions(layoutMethod, heightMethod, layoutLocal),
+            BuildLayoutAndHeightAdjustmentInstructions(
+                layoutMethod,
+                heightMethod,
+                layoutLocal,
+                includeExtendedBuffRows
+            ),
             "Vanilla tooltip height measurement target is unavailable."
         );
 
@@ -1062,8 +1412,8 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             drawingInstructions[0].labels.AddRange(incomingLabels);
         matcher.InsertAndAdvance(drawingInstructions);
 
-        // Clone ExtraMachineConfig's duration guard: the seven multiplier rows belong in the
-        // existing vanilla Buff section immediately before its duration line.
+        // Insert the extended Buff rows at the existing vanilla Buff section immediately before
+        // its duration line.
         var durationGuardMatch = new[]
         {
             new CodeMatch(OpCodes.Ldloc_S),
@@ -1089,7 +1439,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         matcher
             .InsertAndAdvance(durationGuard)
             .InsertAndAdvance(
-                BuildExtraMachineConfigDrawingInstructions(extraMachineConfigDrawMethod, layoutLocal)
+                BuildExtendedBuffDrawingInstructions(extendedBuffDrawMethod, layoutLocal)
             );
 
         // Some producers provide a short array or leave the duration slot empty. In that case the
@@ -1117,8 +1467,8 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
             throw new InvalidOperationException("Vanilla tooltip Buff-loop tail local seam is unavailable.");
         }
         matcher.InsertAndAdvance(
-            BuildExtraMachineConfigFallbackInstructions(
-                extraMachineConfigFallbackMethod,
+            BuildExtendedBuffFallbackInstructions(
+                extendedBuffFallbackMethod,
                 layoutLocal
             )
         );
@@ -1126,16 +1476,75 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         return matcher.InstructionEnumeration();
     }
 
+    private static IReadOnlyList<CodeInstruction> ReplaceVanillaTooltipEdibilityReads(
+        IEnumerable<CodeInstruction> instructions,
+        MethodInfo effectiveEdibilityMethod,
+        string failureMessage
+    )
+    {
+        var edibilityField = AccessTools.Field(typeof(SObject), "edibility");
+        if (edibilityField is null)
+            throw new InvalidOperationException(failureMessage);
+
+        var codes = new List<CodeInstruction>(instructions);
+        var replacementCount = 0;
+        for (var index = 0; index < codes.Count - 1; index++)
+        {
+            if (
+                codes[index].opcode != OpCodes.Ldfld
+                || !Equals(codes[index].operand, edibilityField)
+                || !IsIntValueGetter(codes[index + 1])
+            )
+            {
+                continue;
+            }
+
+            var replacement = new CodeInstruction(OpCodes.Call, effectiveEdibilityMethod);
+            replacement.labels.AddRange(codes[index].labels);
+            replacement.labels.AddRange(codes[index + 1].labels);
+            replacement.blocks.AddRange(codes[index].blocks);
+            replacement.blocks.AddRange(codes[index + 1].blocks);
+            codes[index] = replacement;
+            codes.RemoveAt(index + 1);
+            replacementCount++;
+            index--;
+        }
+
+        if (replacementCount != 2)
+            throw new InvalidOperationException(
+                $"{failureMessage} (expected=2, actual={replacementCount})."
+            );
+
+        return codes;
+    }
+
+    private static bool IsIntValueGetter(CodeInstruction instruction)
+    {
+        return (
+                instruction.opcode == OpCodes.Call
+                || instruction.opcode == OpCodes.Callvirt
+            )
+            && instruction.operand is MethodInfo method
+            && string.Equals(method.Name, "get_Value", StringComparison.Ordinal)
+            && method.ReturnType == typeof(int);
+    }
+
     private static IEnumerable<CodeInstruction> BuildLayoutAndHeightAdjustmentInstructions(
         MethodInfo layoutMethod,
         MethodInfo heightMethod,
-        LocalBuilder layoutLocal
+        LocalBuilder layoutLocal,
+        bool includeExtendedBuffRows
     )
     {
         return new[]
         {
             LoadArgumentValue(HoveredItemArgumentIndex),
             LoadArgumentValue(BuffIconsArgumentIndex),
+            new CodeInstruction(
+                includeExtendedBuffRows
+                    ? OpCodes.Ldc_I4_1
+                    : OpCodes.Ldc_I4_0
+            ),
             new CodeInstruction(OpCodes.Call, layoutMethod),
             StoreLocalValue(layoutLocal),
             LoadLocalValue(HeightLocalIndex),
@@ -1214,7 +1623,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         };
     }
 
-    private static IEnumerable<CodeInstruction> BuildExtraMachineConfigDrawingInstructions(
+    private static IEnumerable<CodeInstruction> BuildExtendedBuffDrawingInstructions(
         MethodInfo drawMethod,
         LocalBuilder layoutLocal
     )
@@ -1231,7 +1640,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         };
     }
 
-    private static IEnumerable<CodeInstruction> BuildExtraMachineConfigFallbackInstructions(
+    private static IEnumerable<CodeInstruction> BuildExtendedBuffFallbackInstructions(
         MethodInfo drawMethod,
         LocalBuilder layoutLocal
     )

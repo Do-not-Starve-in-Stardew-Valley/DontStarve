@@ -75,7 +75,10 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     // （防玩家把无害影怪清光；不占预算 60 分钟 timer）。
     // DIAG-20260810: 带到期时间（累计真实毫秒），由 ConsumePendingCompensations 按到期过滤。
     private const double CompensationDelayMilliseconds = 7000d;
-    private readonly Dictionary<string, double> pendingCompensationDueBySpecies =
+    private readonly Dictionary<
+        string,
+        Dictionary<string, Queue<double>>
+    > pendingCompensationDueByOwner =
         new(StringComparer.Ordinal);
     private double accumulatedElapsedMilliseconds;
 
@@ -97,6 +100,58 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     }
 
     internal ShadowCreatureHarmlessProjectionIndex Index => index;
+
+    internal bool HasActivePushBoxInstances => index.HasActivePushBoxInstances;
+
+    internal void BeginPushBoxIntentCapture(HarmlessProjectionOwnerContext owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        index.BeginPushBoxIntentCapture(owner);
+    }
+
+    internal void CapturePushBoxIntents(HarmlessProjectionOwnerContext owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        index.CapturePushBoxIntents(owner);
+    }
+
+    internal int CopyPushBoxIntents(
+        HarmlessProjectionOwnerContext owner,
+        List<ShadowCreaturePushBoxIntent> destination
+    )
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return index.CopyPushBoxIntents(owner, destination);
+    }
+
+    internal int CopyPushBoxIntents(List<ShadowCreaturePushBoxIntent> destination)
+    {
+        return index.CopyPushBoxIntents(destination);
+    }
+
+    internal bool TryApplyPushBoxResult(
+        string correlationId,
+        long revision,
+        double finalPositionX,
+        double finalPositionY,
+        out string reason
+    )
+    {
+        if (
+            !index.TryGet(correlationId, out var instance)
+            || instance is null
+        )
+        {
+            reason = "shadow-projection.push-box-correlation-not-found";
+            return false;
+        }
+        return instance.TryApplyHostPushBoxResult(
+            revision,
+            finalPositionX,
+            finalPositionY,
+            out reason
+        );
+    }
 
     internal int ConversionEvidenceCount => evidenceByCorrelation.Count;
 
@@ -377,7 +432,18 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
             {
                 AdvanceSpawnAnimations(owner, elapsedMilliseconds);
                 if (phase.DangerTierActive)
+                {
+                    // 超限清理标记的绑定投影仍需在 Danger 档推进约 1 秒淡出；
+                    // 普通绑定投影不会进入 FadingOut，因此不会改变其既有保护/行为路径。
+                    bindingCleanup = UpdateLocalInstances(
+                        owner,
+                        ownerStandingWorldPixel,
+                        elapsedMilliseconds,
+                        advanceMovement: false,
+                        bindingOnly: true
+                    );
                     RecordDangerEntry(owner.PlayerKey, gameMinute);
+                }
                 else
                 {
                     bindingCleanup = UpdateLocalInstances(
@@ -756,6 +822,20 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         return removed;
     }
 
+    internal int CountForOwnerAtLocation(
+        string playerKey,
+        string locationNameOrUniqueName
+    )
+    {
+        return index.CountForOwnerAtLocation(playerKey, locationNameOrUniqueName);
+    }
+
+    internal IReadOnlyList<ShadowCreatureHarmlessProjectionInstance>
+        SnapshotOwnerInstances(string playerKey)
+    {
+        return index.SnapshotOwnerInstances(playerKey);
+    }
+
     internal int CleanupAll(
         HarmlessProjectionCleanupReason reason,
         bool clearOwnerPhases,
@@ -763,6 +843,8 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     )
     {
         var removed = index.CleanupAll(reason);
+        // Compensation is world-local; do not carry a due entry into the next day/session.
+        pendingCompensationDueByOwner.Clear();
         if (clearOwnerPhases)
             phasesByOwner.Clear();
         if (clearConversionEvidence)
@@ -793,28 +875,69 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     /// DIAG-20260809: 取走并清空到期的驱赶补偿（host 在 UpdateOwner 后调用补刷）。
     /// DIAG-20260810: 延迟 7 秒到期才返回；远离 20 格消失（Far）也计入补偿。
     /// </summary>
-    internal IReadOnlyList<string> ConsumePendingCompensations()
+    internal IReadOnlyList<string> ConsumePendingCompensations(
+        string playerKey,
+        int maximumCount = int.MaxValue
+    )
     {
-        if (pendingCompensationDueBySpecies.Count == 0)
-            return Array.Empty<string>();
-        var snapshot = new List<string>();
-        foreach (var pair in pendingCompensationDueBySpecies)
+        if (
+            !SanityPlayerKey.IsCanonical(playerKey)
+            || !pendingCompensationDueByOwner.TryGetValue(playerKey, out var bySpecies)
+            || bySpecies.Count == 0
+            || maximumCount <= 0
+        )
         {
-            if (pair.Value <= accumulatedElapsedMilliseconds)
-                snapshot.Add(pair.Key);
+            return Array.Empty<string>();
         }
-        foreach (var speciesId in snapshot)
-            pendingCompensationDueBySpecies.Remove(speciesId);
+        var snapshot = new List<string>();
+        foreach (var pair in bySpecies)
+        {
+            while (
+                snapshot.Count < maximumCount
+                && pair.Value.Count > 0
+                && pair.Value.Peek() <= accumulatedElapsedMilliseconds
+            )
+            {
+                pair.Value.Dequeue();
+                snapshot.Add(pair.Key);
+            }
+            if (snapshot.Count >= maximumCount)
+                break;
+        }
+        var emptySpecies = new List<string>();
+        foreach (var pair in bySpecies)
+        {
+            if (pair.Value.Count == 0)
+                emptySpecies.Add(pair.Key);
+        }
+        foreach (var speciesId in emptySpecies)
+            bySpecies.Remove(speciesId);
+        if (bySpecies.Count == 0)
+            pendingCompensationDueByOwner.Remove(playerKey);
         return snapshot.AsReadOnly();
     }
 
     /// <summary>DIAG-20260811: 外部登记补偿（切图清投影时调用）——物种在补偿延迟后到期补刷。</summary>
-    internal void RecordCompensation(string speciesId)
+    internal void RecordCompensation(string playerKey, string speciesId)
     {
-        if (string.IsNullOrWhiteSpace(speciesId))
+        if (
+            !SanityPlayerKey.IsCanonical(playerKey)
+            || string.IsNullOrWhiteSpace(speciesId)
+        )
+        {
             return;
-        pendingCompensationDueBySpecies[speciesId] =
-            accumulatedElapsedMilliseconds + CompensationDelayMilliseconds;
+        }
+        if (!pendingCompensationDueByOwner.TryGetValue(playerKey, out var bySpecies))
+        {
+            bySpecies = new Dictionary<string, Queue<double>>(StringComparer.Ordinal);
+            pendingCompensationDueByOwner.Add(playerKey, bySpecies);
+        }
+        if (!bySpecies.TryGetValue(speciesId, out var dueTimes))
+        {
+            dueTimes = new Queue<double>();
+            bySpecies.Add(speciesId, dueTimes);
+        }
+        dueTimes.Enqueue(accumulatedElapsedMilliseconds + CompensationDelayMilliseconds);
     }
 
     private ShadowCreatureProjectionTransitionResult RecordDangerEntry(
@@ -986,8 +1109,7 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
                         .ShadowCreatureProjectionFadeOutKind.Far
             )
             {
-                pendingCompensationDueBySpecies[instance.SpeciesId] =
-                    accumulatedElapsedMilliseconds + CompensationDelayMilliseconds;
+                RecordCompensation(instance.Owner.PlayerKey, instance.SpeciesId);
             }
         }
 

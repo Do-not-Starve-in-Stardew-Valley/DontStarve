@@ -699,7 +699,7 @@ internal sealed class SmapiDarkHandLeaseCoordinatorService
 
     public void HandleOwnerContextInvalidated(long playerId)
     {
-        if (disposed || playerId <= 0)
+        if (disposed || playerId == 0)
             return;
 
         var ownerPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(playerId);

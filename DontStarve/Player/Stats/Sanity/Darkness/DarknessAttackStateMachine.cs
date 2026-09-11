@@ -463,10 +463,20 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         state.CancelReason = string.IsNullOrWhiteSpace(reason)
             ? "darkness.state.cancelled"
             : reason;
+        // Death ends the darkness lifecycle, but it is not an escape from darkness. Suppress the
+        // escape presentation for the explicit no-health cancellation while preserving it for
+        // ordinary light restoration, warps, events, and other explainable exits.
+        var prompt = string.Equals(
+            state.CancelReason,
+            DarknessAttackContract.PlayerHasNoHealthReason,
+            StringComparison.Ordinal
+        )
+            ? DarknessAttackPromptKind.None
+            : DarknessAttackPromptKind.EscapedDarkness;
         return new DarknessAttackUpdateResult(
             DarknessAttackMutationStatus.Applied,
             state.CancelReason,
-            DarknessAttackPromptKind.EscapedDarkness,
+            prompt,
             release,
             warningRequestId,
             null

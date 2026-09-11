@@ -30,7 +30,8 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
         IReadOnlyList<string> allVisualSlotIds,
         SanityResourcePoint expectedPivotSourcePx,
         double expectedDrawScale,
-        double wanderSpeedPixelsPerSecond
+        double wanderSpeedPixelsPerSecond,
+        double hostileMovementSpeedPixelsPerSecond
     )
     {
         SpeciesId = RequireId(speciesId, nameof(speciesId));
@@ -57,6 +58,13 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
         )
         {
             throw new ArgumentOutOfRangeException(nameof(wanderSpeedPixelsPerSecond));
+        }
+        if (
+            hostileMovementSpeedPixelsPerSecond <= 0d
+            || !double.IsFinite(hostileMovementSpeedPixelsPerSecond)
+        )
+        {
+            throw new ArgumentOutOfRangeException(nameof(hostileMovementSpeedPixelsPerSecond));
         }
         FrameCount = frameCount;
         FrameDurationMilliseconds = frameDurationMilliseconds;
@@ -91,6 +99,7 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
         ExpectedPivotSourcePx = expectedPivotSourcePx;
         ExpectedDrawScale = expectedDrawScale;
         WanderSpeedPixelsPerSecond = wanderSpeedPixelsPerSecond;
+        HostileMovementSpeedPixelsPerSecond = hostileMovementSpeedPixelsPerSecond;
     }
 
     internal string SpeciesId { get; }
@@ -135,6 +144,9 @@ internal sealed class ShadowCreatureHarmlessProjectionPolicy
 
     /// <summary>该无害影怪在无目标游荡时的世界像素速度。</summary>
     internal double WanderSpeedPixelsPerSecond { get; }
+
+    /// <summary>该物种对应有害影怪追击时的世界像素速度；无害逃离复用此速度。</summary>
+    internal double HostileMovementSpeedPixelsPerSecond { get; }
 
     public int MinimumDistanceTiles => 4;
 
@@ -344,7 +356,8 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
                     },
                     new SanityResourcePoint(32, 48),
                     expectedDrawScale: 4d,
-                    wanderSpeedPixelsPerSecond: 75d
+                    wanderSpeedPixelsPerSecond: 75d,
+                    hostileMovementSpeedPixelsPerSecond: 150d
                 ),
                 new ShadowCreatureHarmlessProjectionPolicy(
                     TerrorbeakSpeciesId,
@@ -372,7 +385,8 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
                     },
                     new SanityResourcePoint(24, 48),
                     expectedDrawScale: 4d,
-                    wanderSpeedPixelsPerSecond: 180d
+                    wanderSpeedPixelsPerSecond: 180d,
+                    hostileMovementSpeedPixelsPerSecond: 360d
                 ),
             }
         );
@@ -386,12 +400,11 @@ internal static class ShadowCreatureHarmlessProjectionCatalog
     internal const double PlayerFleeTriggerPixels = 2d * 64d;   // 玩家距影怪中心点 2 格触发驱赶
     internal const double FleeDistancePixels = 5d * 64d;        // 逃离距离 5 格
     internal const double PlayerFarFadePixels = 20d * 64d;      // 玩家远离 20 格强制淡出
-    internal const int FleeFadeOutMilliseconds = 2000;           // 驱赶淡出 2 秒（与逃离 5 格 @160px/s 匹配，边逃边淡）
+    internal const int FleeFadeOutMilliseconds = 2000;           // 驱赶淡出 2 秒（边逃边淡）
     internal const int FarFadeOutMilliseconds = 1000;           // 远离淡出 1 秒
     internal const int HighSanFadeOutMilliseconds = 1000;       // 高理智淡出 1 秒
     internal const int WanderRestMillisecondsMin = 3000;        // 游荡到达目标后的休息下限（与危险版 3-5 秒一致）
     internal const int WanderRestMillisecondsMax = 5000;        // 游荡到达目标后的休息上限
-    internal const double FleeSpeedPixelsPerSecond = 160d;      // 驱赶逃离速度（游荡 2 倍）
 
     internal static bool IsPermitConsumer(string? speciesId)
     {
@@ -489,6 +502,14 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
     // 决定是否触发驱赶补偿（Flee/Far 补偿，HighSan 不补偿）。
     private ShadowCreatureProjectionFadeOutKind fadeOutKind =
         ShadowCreatureProjectionFadeOutKind.None;
+    // Stage 05: capture normal movement before the host solves crowd collision. Host results may
+    // only replace the position for the matching local revision.
+    private HarmlessProjectionWorldPoint pushBoxTickStartWorldPixel;
+    private HarmlessProjectionWorldPoint pushBoxNormalTargetWorldPixel;
+    private long pushBoxRevision;
+    private long lastAppliedPushBoxRevision;
+    private bool pushBoxTickStarted;
+    private bool pushBoxIntentCaptured;
 
     internal enum ShadowCreatureProjectionBehaviorState
     {
@@ -551,6 +572,8 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
         worldPixel = spawnWorldPixel;
         wanderAnchorPixel = spawnWorldPixel;
         wanderTargetPixel = spawnWorldPixel;
+        pushBoxTickStartWorldPixel = spawnWorldPixel;
+        pushBoxNormalTargetWorldPixel = spawnWorldPixel;
     }
 
     internal string CorrelationId { get; }
@@ -624,6 +647,9 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
     /// <summary>是否为绑定投影（危险实体隐藏态外观）。</summary>
     internal bool IsBindingProjection => isBindingProjection;
 
+    /// <summary>Monotonic owner-local revision for the most recently captured PushBox intent.</summary>
+    internal long PushBoxRevision => pushBoxRevision;
+
     /// <summary>淡出原因（驱赶补偿判定用）。</summary>
     internal ShadowCreatureProjectionFadeOutKind FadeOutKind => fadeOutKind;
 
@@ -641,6 +667,113 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
         fadeOutKind = ShadowCreatureProjectionFadeOutKind.None;
         // DIAG-20260811: 绑定投影直接以静息形态出现（无生成过渡动画）。
         animationState = ShadowCreatureProjectionAnimationState.Idle;
+    }
+
+    /// <summary>Begins the bounded two-phase capture for the next projection host update.</summary>
+    internal void BeginPushBoxIntentCapture()
+    {
+        if (IsCleanedUp)
+            return;
+
+        pushBoxTickStarted = true;
+        pushBoxIntentCaptured = false;
+        pushBoxTickStartWorldPixel = worldPixel;
+        pushBoxNormalTargetWorldPixel = worldPixel;
+    }
+
+    /// <summary>
+    /// Completes one intent after normal behavior has advanced. A freshly spawned instance may
+    /// produce a stationary first intent; that still gives the host one shared participant.
+    /// </summary>
+    internal bool CapturePushBoxIntent()
+    {
+        if (IsCleanedUp || !worldPixel.IsFinite)
+            return false;
+        if (!pushBoxTickStarted)
+        {
+            pushBoxTickStarted = true;
+            pushBoxTickStartWorldPixel = worldPixel;
+        }
+        if (pushBoxRevision == long.MaxValue)
+            return false;
+
+        pushBoxRevision++;
+        pushBoxNormalTargetWorldPixel = worldPixel;
+        pushBoxIntentCaptured = true;
+        return true;
+    }
+
+    internal bool TryGetPushBoxIntent(out ShadowCreaturePushBoxIntent intent)
+    {
+        intent = default;
+        if (
+            IsCleanedUp
+            || IsBindingProjection
+            || !pushBoxIntentCaptured
+            || !pushBoxTickStartWorldPixel.IsFinite
+            || !pushBoxNormalTargetWorldPixel.IsFinite
+        )
+        {
+            return false;
+        }
+
+        intent = new ShadowCreaturePushBoxIntent(
+            CorrelationId,
+            Owner.PlayerKey,
+            SpeciesId,
+            Owner.LocationNameOrUniqueName,
+            pushBoxRevision,
+            pushBoxTickStartWorldPixel.X,
+            pushBoxTickStartWorldPixel.Y,
+            pushBoxNormalTargetWorldPixel.X,
+            pushBoxNormalTargetWorldPixel.Y
+        );
+        return intent.IsFinite;
+    }
+
+    /// <summary>
+    /// Applies only a host-authored final position for a captured revision. A result may arrive
+    /// after one or more local captures because SMAPI delivery is asynchronous; the last-applied
+    /// revision prevents an older result from rewinding an already acknowledged correction.
+    /// </summary>
+    internal bool TryApplyHostPushBoxResult(
+        long revision,
+        double finalPositionX,
+        double finalPositionY,
+        out string reason
+    )
+    {
+        if (IsCleanedUp || IsBindingProjection)
+        {
+            reason = "shadow-projection.push-box-instance-not-applicable";
+            return false;
+        }
+        if (
+            revision <= 0
+            || !double.IsFinite(finalPositionX)
+            || !double.IsFinite(finalPositionY)
+        )
+        {
+            reason = "shadow-projection.push-box-result-invalid";
+            return false;
+        }
+        if (revision < lastAppliedPushBoxRevision)
+        {
+            reason = "shadow-projection.push-box-result-stale";
+            return false;
+        }
+        if (revision > pushBoxRevision)
+        {
+            reason = "shadow-projection.push-box-result-future";
+            return false;
+        }
+
+        worldPixel = new HarmlessProjectionWorldPoint(finalPositionX, finalPositionY);
+        pushBoxTickStartWorldPixel = worldPixel;
+        pushBoxNormalTargetWorldPixel = worldPixel;
+        lastAppliedPushBoxRevision = revision;
+        reason = "shadow-projection.push-box-result-applied";
+        return true;
     }
 
     /// <summary>高理智/远离触发淡出（不移动，透明度 1 秒内降到 0）。</summary>
@@ -736,7 +869,7 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
             var previousY = worldPixel.Y;
             MoveToward(
                 fleeTargetPixel,
-                ShadowCreatureHarmlessProjectionCatalog.FleeSpeedPixelsPerSecond,
+                Policy.HostileMovementSpeedPixelsPerSecond,
                 elapsedMilliseconds
             );
             SetAnimationState(ShadowCreatureProjectionAnimationState.Moving);
@@ -806,7 +939,7 @@ internal sealed class ShadowCreatureHarmlessProjectionInstance
             case ShadowCreatureProjectionBehaviorState.Fleeing:
                 MoveToward(
                     fleeTargetPixel,
-                    ShadowCreatureHarmlessProjectionCatalog.FleeSpeedPixelsPerSecond,
+                    Policy.HostileMovementSpeedPixelsPerSecond,
                     elapsedMilliseconds
                 );
                 // 逃离：四方向行走动画（全速推进，朝向逃离方向）。

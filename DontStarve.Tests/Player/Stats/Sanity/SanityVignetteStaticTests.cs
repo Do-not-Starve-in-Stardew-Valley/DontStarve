@@ -81,6 +81,14 @@ public sealed class SanityVignetteStaticTests
         Assert.True(drawStart >= 0 && drawEnd > drawStart);
         var draw = overlay[drawStart..drawEnd];
         Assert.Contains("renderer.IsLoaded", draw, StringComparison.Ordinal);
+        Assert.Contains(
+            "SanityMinigameVisualRuntimeClassifier.ResolveCurrent()",
+            draw,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("SanityMinigameVisualContext.Fishing", draw, StringComparison.Ordinal);
+        Assert.Contains("SanityMinigameVisualContext.Other", draw, StringComparison.Ordinal);
+        Assert.Contains("state.MinigameContext != minigameContext", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("TryLoadRenderer", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("Game1.activeClickableMenu", draw, StringComparison.Ordinal);
     }

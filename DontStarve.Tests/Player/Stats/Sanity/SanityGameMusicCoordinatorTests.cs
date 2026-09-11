@@ -20,7 +20,7 @@ public sealed class SanityGameMusicCoordinatorTests
         Assert.True(capability.MiniJukeboxIsAlwaysExempt);
         Assert.False(capability.IslandIsBlanketExempt);
         Assert.False(capability.ControlsIndependentAudio);
-        Assert.True(capability.OwnsDawnDuskLifecycle);
+        Assert.False(capability.OwnsDawnDuskLifecycle);
         Assert.False(capability.RestoresInterruptedTrack);
         Assert.Equal("original-reselect-current-state", capability.ReleasePolicy);
     }
@@ -286,21 +286,24 @@ public sealed class SanityGameMusicCoordinatorTests
         Assert.DoesNotContain("UnpatchAll", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Game1.changeMusicTrack(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("musicVolumeLevel", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MusicManager.", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Dawn_and_dusk_join_suppression_without_resuming_crossed_cues()
+    public void Dawn_and_dusk_use_boss_override_without_resuming_crossed_cues()
     {
         var manager = ReadSource("AudioVisualFact", "MusicManager.cs");
         var dawn = ReadSource("AudioVisualFact", "DawnMusicService.cs");
         var dusk = ReadSource("AudioVisualFact", "DuskMusicService.cs");
 
-        Assert.Contains("SetSanityMusicSuppressed", manager, StringComparison.Ordinal);
-        Assert.Contains("DawnMusicService.SetSuppressed", manager, StringComparison.Ordinal);
-        Assert.Contains("DuskMusicService.SetSuppressed", manager, StringComparison.Ordinal);
+        Assert.Contains("SetBossMusicOverrideActive", manager, StringComparison.Ordinal);
+        Assert.Contains("DawnMusicService.SetBossMusicOverrideActive", manager, StringComparison.Ordinal);
+        Assert.Contains("DuskMusicService.SetBossMusicOverrideActive", manager, StringComparison.Ordinal);
         Assert.Contains("allowVanillaReselect: false", dawn, StringComparison.Ordinal);
-        Assert.Contains("if (_suppressed)", dawn, StringComparison.Ordinal);
-        Assert.Contains("if (_suppressed)", dusk, StringComparison.Ordinal);
+        Assert.Contains("if (_bossMusicOverrideActive)", dawn, StringComparison.Ordinal);
+        Assert.Contains("if (_bossMusicOverrideActive)", dusk, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetSanityMusicSuppressed", manager, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetSuppressed", manager, StringComparison.Ordinal);
         Assert.DoesNotContain("Resume()", dawn, StringComparison.Ordinal);
         Assert.DoesNotContain("Resume()", dusk, StringComparison.Ordinal);
     }

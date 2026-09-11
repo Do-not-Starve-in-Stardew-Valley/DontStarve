@@ -21,11 +21,13 @@ public sealed class HudDisplayRulesTests
     }
 
     [Theory]
-    [InlineData(false, true, 824, 884, 944)]
-    [InlineData(true, true, 768, 828, 888)]
-    [InlineData(false, false, 884, 884, 944)]
+    [InlineData(false, true, true, 824, 884, 944)]
+    [InlineData(true, true, true, 768, 828, 888)]
+    [InlineData(false, false, true, 884, 884, 944)]
+    [InlineData(false, true, false, 884, 884, 944)]
     public void LayoutUsesVisibleVanillaBarAsAnchorAndReflowsWhenSanityIsHidden(
         bool showingHealth,
+        bool showingHunger,
         bool showingSanity,
         int expectedHungerX,
         int expectedSanityX,
@@ -36,6 +38,7 @@ public sealed class HudDisplayRulesTests
             1000,
             800,
             showingHealth,
+            showingHunger,
             showingSanity,
             100,
             270,
@@ -50,6 +53,7 @@ public sealed class HudDisplayRulesTests
         Assert.Equal(560, layout.SanityBounds.Y);
         Assert.Equal(48, layout.HungerBounds.Width);
         Assert.Equal(224, layout.HungerBounds.Height);
+        Assert.Equal(showingHunger, layout.ShowingHunger);
         Assert.Equal(showingSanity, layout.ShowingSanity);
     }
 
@@ -59,6 +63,7 @@ public sealed class HudDisplayRulesTests
         var layout = HudDisplayRules.CreateLayout(
             1600,
             900,
+            true,
             true,
             true,
             205,

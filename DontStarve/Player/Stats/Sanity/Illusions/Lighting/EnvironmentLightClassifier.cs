@@ -186,7 +186,6 @@ internal sealed class EnvironmentLightClassifier
                     || candidate.RawRadius < 0f
                     || candidate.Origin == EnvironmentLightCandidateOrigin.Unknown
                     || candidate.LightContext == EnvironmentLightCandidateContext.Unknown
-                    || candidate.AttachedPlayerId < 0
                 )
                 {
                     return Fallback(

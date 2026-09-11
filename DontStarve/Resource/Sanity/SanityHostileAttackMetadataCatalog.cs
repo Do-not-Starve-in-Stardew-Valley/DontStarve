@@ -113,6 +113,7 @@ internal sealed class SanityHostileCollisionDefinition
         SanityResourcePoint actorOriginSourcePx,
         SanityResourceRectangle hurtBoxSourcePx,
         SanityResourceRectangle attackBoxSourcePx,
+        SanityHostilePushBoxDefinition pushBox,
         IReadOnlyList<int> attackActiveFrames
     )
     {
@@ -120,6 +121,7 @@ internal sealed class SanityHostileCollisionDefinition
         ActorOriginSourcePx = actorOriginSourcePx;
         HurtBoxSourcePx = hurtBoxSourcePx;
         AttackBoxSourcePx = attackBoxSourcePx;
+        PushBox = pushBox;
         AttackActiveFrames = Copy(attackActiveFrames);
     }
 
@@ -127,6 +129,7 @@ internal sealed class SanityHostileCollisionDefinition
     internal SanityResourcePoint ActorOriginSourcePx { get; }
     internal SanityResourceRectangle HurtBoxSourcePx { get; }
     internal SanityResourceRectangle AttackBoxSourcePx { get; }
+    internal SanityHostilePushBoxDefinition PushBox { get; }
     internal IReadOnlyList<int> AttackActiveFrames { get; }
 
     private static IReadOnlyList<int> Copy(IReadOnlyList<int> values)
@@ -238,6 +241,15 @@ internal sealed class SanityHostileAttackMetadataCatalog
                 var attackBox = ReadRectangle(
                     collisionElement.GetProperty("AttackBoxSourcePx")
                 );
+                var pushBox = ReadPushBox(
+                    collisionElement.GetProperty("PushBox"),
+                    out var pushBoxReason
+                );
+                if (pushBox is null)
+                {
+                    reason = pushBoxReason;
+                    return false;
+                }
                 var activeFrames = ReadIntArray(
                     collisionElement.GetProperty("AttackActiveFrames")
                 );
@@ -262,6 +274,7 @@ internal sealed class SanityHostileAttackMetadataCatalog
                     || hurtBox.Height <= 0
                     || attackBox.Width <= 0
                     || attackBox.Height <= 0
+                    || !pushBox.IsValid
                     || activeFrames.Count == 0
                     || !activeFrames.SequenceEqual(attack.HitFrames)
                     || activeFrames.Any(frame => frame < 1 || frame > attack.FrameCount)
@@ -292,6 +305,7 @@ internal sealed class SanityHostileAttackMetadataCatalog
                         actorOrigin,
                         hurtBox,
                         attackBox,
+                        pushBox,
                         activeFrames
                     ),
                     motion
@@ -488,6 +502,23 @@ internal sealed class SanityHostileAttackMetadataCatalog
             element.GetProperty("Width").GetInt32(),
             element.GetProperty("Height").GetInt32()
         );
+    }
+
+    private static SanityHostilePushBoxDefinition? ReadPushBox(
+        JsonElement element,
+        out string reason
+    )
+    {
+        return SanityHostilePushBoxDefinition.TryCreate(
+                RequiredString(element, "CoordinateSpace"),
+                ReadRectangle(element.GetProperty("SourcePx")),
+                RequiredString(element, "GroupId"),
+                element.GetProperty("PushForce").GetDouble(),
+                out var pushBox,
+                out reason
+            )
+            ? pushBox
+            : null;
     }
 
     private static IReadOnlyList<int> ReadIntArray(JsonElement element)

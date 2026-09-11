@@ -358,10 +358,8 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         // continue to resolve their existing Game1.player first.
         if (
             !Game1.IsMasterGame
-            || !long.TryParse(
+            || !SanityPlayerKey.TryParseCanonicalPlayerId(
                 playerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var multiplayerId
             )
         )
@@ -430,9 +428,18 @@ internal sealed class SmapiDefaultDarknessDamageExecutor
 
         var beforeHealth = player.health;
         var maximumHealth = player.maxHealth;
-        // Default mode deliberately enters the verified vanilla physical pipeline. A normal return
-        // is a settled attack even when CanBeDamaged/Yoba/iframes leave actual HP unchanged.
-        player.takeDamage(request.BaseDamage, overrideParry: false, damager: null!);
+        // Default mode deliberately enters the verified vanilla physical pipeline. Its void
+        // takeDamage API does not expose whether the vanilla "ow" branch ran. The bridge observes
+        // that request while allowing the original call through; only a missing request is
+        // supplemented after takeDamage returns.
+        var vanillaHurtSoundObserved = false;
+        using (var hurtSoundScope = DarknessVanillaHurtSoundBridge.Enter())
+        {
+            player.takeDamage(request.BaseDamage, overrideParry: false, damager: null!);
+            vanillaHurtSoundObserved = hurtSoundScope.VanillaHurtSoundObserved;
+        }
+        if (!vanillaHurtSoundObserved && DarknessVanillaHurtSoundBridge.IsInstalled)
+            player.playNearbySoundAll("ow");
         if (
             player.maxHealth != maximumHealth
             || player.health < 0
@@ -585,10 +592,8 @@ internal sealed class SmapiDarknessAttackDamageAuthority
         }
         if (
             !Game1.IsMasterGame
-            || !long.TryParse(
+            || !SanityPlayerKey.TryParseCanonicalPlayerId(
                 playerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var multiplayerId
             )
         )

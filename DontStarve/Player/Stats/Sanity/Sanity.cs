@@ -23,15 +23,7 @@ internal sealed class Sanity : IStat
 
     private readonly List<INonTimeRelatedBehavior> nonTimeRelatedBehaviors;
 
-    private readonly List<ITimeRelatedBehavior> timeRelatedBehaviors =
-        new()
-        {
-            new NearMonster(),
-            new Night(),
-            new Wearing(),
-            new NearNpc(),
-            new MineShaft(),
-        };
+    private readonly List<ITimeRelatedBehavior> timeRelatedBehaviors;
 
     private SanityPersistenceResult? persistenceSession;
     private SmapiSanityMultiplayerCoordinator multiplayer = null!;
@@ -63,6 +55,15 @@ internal sealed class Sanity : IStat
                 : new TypedConfigSanityMonsterIntensityProvider(configResolver)
         );
         lifecycle = new SanitySystemLifecycleCoordinator(changeService);
+        timeRelatedBehaviors =
+            new()
+            {
+                new NearMonster(lifecycle),
+                new Night(),
+                new Wearing(),
+                new NearNpc(),
+                new MineShaft(),
+            };
         nonTimeRelatedBehaviors =
             new()
             {

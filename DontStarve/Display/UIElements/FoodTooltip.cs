@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
@@ -43,7 +44,11 @@ internal class FoodTooltip : INonTimeRelatedUIElement
             return;
 
         var buffLines =
-            this.buffFormatter?.GetLines(activeItem, this.sanitySystemState.IsEnabled)
+            this.buffFormatter?.GetLines(
+                activeItem,
+                HungerExtensions.IsEnabled,
+                this.sanitySystemState.IsEnabled
+            )
             ?? Array.Empty<string>();
 
         if (buffLines.Count == 0)

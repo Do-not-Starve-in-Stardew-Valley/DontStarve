@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using DontStarve.Interface;
+using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using DontStarve.Resource.Sanity;
 using Microsoft.Xna.Framework;
@@ -61,10 +62,19 @@ internal sealed class SmapiHarmlessProjectionHost
         spawnGatesBySpecies = new(StringComparer.Ordinal);
     private readonly Dictionary<int, HarmlessProjectionOwnerContext> ownerContextByScreen =
         new();
+    private readonly IHostileShadowLocationOccupancyProvider?
+        hostileShadowOccupancyProvider;
     private readonly Dictionary<string, string> shadowSfxOwners =
         new(StringComparer.Ordinal);
     private readonly HashSet<string> shadowSfxSeen = new(StringComparer.Ordinal);
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
+    private readonly IShadowCreaturePushBoxIntentSink? pushBoxIntentSink;
+    private readonly List<ShadowCreaturePushBoxIntent> pushBoxIntentBuffer =
+        new(HostileShadowProtocol.MaximumPushBoxEntriesPerBatch);
+    private long nextPushBoxBatchNonce;
+    // Send one empty batch after the last non-empty batch so the host retires vanished projections
+    // immediately. Once acknowledged, idle ticks remain silent until a new participant appears.
+    private bool pushBoxHostMayHaveCachedParticipants;
     private bool disposed;
 
     internal SmapiHarmlessProjectionHost(
@@ -83,6 +93,9 @@ internal sealed class SmapiHarmlessProjectionHost
         this.resourceService = resourceService
             ?? throw new ArgumentNullException(nameof(resourceService));
         ArgumentNullException.ThrowIfNull(conversionIntentSink);
+        hostileShadowOccupancyProvider =
+            conversionIntentSink as IHostileShadowLocationOccupancyProvider;
+        pushBoxIntentSink = conversionIntentSink as IShadowCreaturePushBoxIntentSink;
         resourceProvider = resourceService;
         scheduler = new HarmlessProjectionScheduler(new HarmlessProjectionIndex());
         shadowCoordinator = new ShadowCreatureHarmlessProjectionCoordinator(
@@ -105,6 +118,72 @@ internal sealed class SmapiHarmlessProjectionHost
     }
 
     internal int ActiveCount => scheduler.Index.Count + shadowCoordinator.Index.Count;
+
+    internal bool HasActiveShadowPushBoxParticipants =>
+        shadowCoordinator.HasActivePushBoxInstances;
+
+    internal int CopyShadowPushBoxIntents(
+        List<ShadowCreaturePushBoxIntent> destination
+    )
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        return shadowCoordinator.CopyPushBoxIntents(destination);
+    }
+
+    internal bool TryApplyShadowPushBoxResult(
+        string ownerPlayerKey,
+        string locationId,
+        string correlationId,
+        string speciesId,
+        long revision,
+        double finalPositionX,
+        double finalPositionY,
+        out string reason
+    )
+    {
+        reason = "shadow-projection.push-box-owner-invalid";
+        if (!TryGetCurrentOwner(out _, out _, out var currentOwner))
+        {
+            return false;
+        }
+        if (
+            !SanityPlayerKey.IsCanonical(ownerPlayerKey)
+            || !string.Equals(
+                ownerPlayerKey,
+                currentOwner.PlayerKey,
+                StringComparison.Ordinal
+            )
+            || !string.Equals(
+                locationId,
+                currentOwner.LocationNameOrUniqueName,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return false;
+        }
+        if (!shadowCoordinator.Index.TryGet(correlationId, out var instance) || instance is null)
+        {
+            reason = "shadow-projection.push-box-correlation-not-found";
+            return false;
+        }
+        if (
+            !string.Equals(instance.Owner.PlayerKey, ownerPlayerKey, StringComparison.Ordinal)
+            || !string.Equals(instance.Owner.LocationNameOrUniqueName, locationId, StringComparison.Ordinal)
+            || !string.Equals(instance.SpeciesId, speciesId, StringComparison.Ordinal)
+        )
+        {
+            reason = "shadow-projection.push-box-owner-or-species-mismatch";
+            return false;
+        }
+        return shadowCoordinator.TryApplyPushBoxResult(
+            correlationId,
+            revision,
+            finalPositionX,
+            finalPositionY,
+            out reason
+        );
+    }
 
     /// <summary>
     /// This is the sole future registration seam. Keeping policy and renderer registration atomic
@@ -413,29 +492,26 @@ internal sealed class SmapiHarmlessProjectionHost
     }
 
     /// <summary>
-    /// DIAG-20260809: 驱赶补偿——被驱赶消失的影怪立即在玩家附近 4-16 格补刷一只，
+    /// DIAG-20260809: 驱赶补偿——被驱赶消失的影怪在 7 秒后于玩家附近 4-16 格补刷，
     /// 防止玩家反复驱赶导致场上无影怪（补偿不占预算 60 分钟 timer）。
     /// </summary>
-    private void TrySpawnCompensationProjection(
+    private bool TrySpawnCompensationProjection(
         HarmlessProjectionOwnerContext owner,
         HarmlessProjectionWorldPoint ownerStandingWorldPixel,
         string speciesId
     )
     {
         if (disposed || Game1.player is null || Game1.player.currentLocation is null)
-            return;
-        // DIAG-20260811: 影怪总数达到上限后驱赶不补偿（超限部分由宿主每 10 分钟
-        // 50% 消失处理，不再无限补刷）。投影侧计数近似（多人下危险实体占用未计入）。
+            return false;
+        // DIAG-20260811: 补偿使用当前地图的共享正常总上限。绑定危险实体与绑定投影
+        // 已由 hostile occupancy provider 折算为一只；切图遗留在旧地图的影怪不占新地图名额。
         if (
-            lifecycle.TryGetShadowBudgetTotalCap(
-                owner.PlayerKey,
-                out var totalCap
-            )
-            && totalCap > 0
-            && shadowCoordinator.Index.CountForOwner(owner.PlayerKey) >= totalCap
+            !lifecycle.TryGetShadowBudgetTotalCap(owner.PlayerKey, out var totalCap)
+            || totalCap <= 0
+            || CountSharedShadowOccupancyAtLocation(owner) >= totalCap
         )
         {
-            return;
+            return false;
         }
 
         for (var attempt = 0; attempt < 8; attempt++)
@@ -462,18 +538,51 @@ internal sealed class SmapiHarmlessProjectionHost
                 (float)worldY
             );
             if (string.Equals(reason, "spawn.debug-spawned", StringComparison.Ordinal))
-                return;
+                return true;
             LogFailureOnce(
                 string.Concat("shadow-compensation|", speciesId),
                 $"Shadow compensation spawn failed closed ({reason})."
             );
-            return;
+            return false;
         }
+        return false;
+    }
+
+    private int CountSharedShadowOccupancyAtLocation(
+        HarmlessProjectionOwnerContext owner
+    )
+    {
+        var harmless = shadowCoordinator.CountForOwnerAtLocation(
+            owner.PlayerKey,
+            owner.LocationNameOrUniqueName
+        );
+        var hostile = hostileShadowOccupancyProvider?.CountHostileShadowsForOwnerAtLocation(
+            owner.PlayerKey,
+            owner.LocationNameOrUniqueName
+        ) ?? 0;
+        return Math.Max(0, harmless + hostile);
+    }
+
+    private int GetAvailableCompensationCapacity(
+        HarmlessProjectionOwnerContext owner
+    )
+    {
+        if (
+            !lifecycle.TryGetShadowBudgetTotalCap(owner.PlayerKey, out var totalCap)
+            || totalCap <= 0
+        )
+        {
+            return 0;
+        }
+
+        return Math.Max(0, totalCap - CountSharedShadowOccupancyAtLocation(owner));
     }
 
     /// <summary>
     /// DIAG-20260809: 测试命令 ds_spawn clear 专用。清理所有影怪无害投影（无 TTL，
-    /// 只能靠此命令/切图/跨天清理）；保留档位相位与转换证据，便于继续测试。
+    /// 只能靠此命令/切图/跨天清理）；保留档位相位与转换证据，便于继续测试。预算层的
+    /// 无害入口会在下一次评估时清除旧的满池暂停标记并重新开始正常刷新，不产生补偿，
+    /// 也不永久抑制后续刷新。
     /// </summary>
     internal int DebugClearShadowProjections()
     {
@@ -639,7 +748,10 @@ internal sealed class SmapiHarmlessProjectionHost
     /// DIAG-20260810: 高理智场景——绑定投影生成后立即进入高理智淡出
     /// （危险影怪先脱战→隐藏→绑定投影，再走无害投影消失链条一起消失）。
     /// </summary>
-    internal bool BeginBindingFadeOut(string correlationId)
+    internal bool BeginBindingFadeOut(
+        string correlationId,
+        int durationMilliseconds = ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds
+    )
     {
         if (
             disposed
@@ -654,17 +766,136 @@ internal sealed class SmapiHarmlessProjectionHost
             return false;
         }
         instance.BeginFadeOut(
-            ShadowCreatureHarmlessProjectionCatalog.HighSanFadeOutMilliseconds,
+            durationMilliseconds,
             ShadowCreatureHarmlessProjectionInstance
                 .ShadowCreatureProjectionFadeOutKind.HighSan
         );
         return true;
     }
 
+    /// <summary>
+    /// 返回指定玩家名下的投影快照。超限判断由 hostile host 按每个投影自己的生成时间
+    /// 独立调度；绑定投影仍由绑定危险实体代表，不能在这里再次计数。
+    /// </summary>
+    internal IReadOnlyList<ShadowCreatureHarmlessProjectionInstance>
+        SnapshotShadowInstancesForOwner(string playerKey)
+    {
+        return shadowCoordinator.SnapshotOwnerInstances(playerKey);
+    }
+
+    internal bool IsShadowProjectionActive(string correlationId)
+    {
+        return shadowCoordinator.Index.TryGet(correlationId, out var instance)
+            && instance is not null
+            && !instance.IsCleanedUp;
+    }
+
+    /// <summary>
+    /// 对单个 Creeper/Terrorbeak 无害投影启动超限淡出。随机数和“本次是否到期”由
+    /// hostile host 决定，这里只负责复核对象并执行约 1 秒淡出。
+    /// </summary>
+    internal bool BeginOverCapShadowProjectionFade(
+        string playerKey,
+        string locationNameOrUniqueName,
+        string correlationId,
+        int durationMilliseconds
+    )
+    {
+        if (
+            disposed
+            || string.IsNullOrWhiteSpace(playerKey)
+            || string.IsNullOrWhiteSpace(locationNameOrUniqueName)
+            || !shadowCoordinator.Index.TryGet(correlationId, out var instance)
+            || instance is null
+            || instance.IsCleanedUp
+            || instance.IsBindingProjection
+            || !IsOverCapShadowSpecies(instance.SpeciesId)
+            || !string.Equals(
+                instance.Owner.PlayerKey,
+                playerKey,
+                StringComparison.Ordinal
+            )
+            || !string.Equals(
+                instance.Owner.LocationNameOrUniqueName,
+                locationNameOrUniqueName,
+                StringComparison.Ordinal
+            )
+            || instance.BehaviorState
+                == ShadowCreatureHarmlessProjectionInstance
+                    .ShadowCreatureProjectionBehaviorState.FadingOut
+        )
+        {
+            return false;
+        }
+
+        instance.BeginFadeOut(
+            durationMilliseconds,
+            ShadowCreatureHarmlessProjectionInstance
+                .ShadowCreatureProjectionFadeOutKind.HighSan
+        );
+        return true;
+    }
+
+    /// <summary>
+    /// 超限总数只包含当前地图上的 Creeper Fear/Terrorbeak 投影。绑定投影也先计入，
+    /// 再由 hostile host 的 boundPairs 从“实体 + 投影”中统一抵扣，保证绑定组合算一只。
+    /// </summary>
+    internal int CountOverCapShadowProjectionsForOwnerAtLocation(
+        string playerKey,
+        string locationNameOrUniqueName
+    )
+    {
+        if (disposed || string.IsNullOrWhiteSpace(locationNameOrUniqueName))
+            return 0;
+
+        var count = 0;
+        foreach (var instance in shadowCoordinator.SnapshotOwnerInstances(playerKey))
+        {
+            if (
+                !instance.IsCleanedUp
+                && IsOverCapShadowSpecies(instance.SpeciesId)
+                && string.Equals(
+                    instance.Owner.LocationNameOrUniqueName,
+                    locationNameOrUniqueName,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static bool IsOverCapShadowSpecies(string speciesId)
+    {
+        return string.Equals(
+                speciesId,
+                ShadowCreatureHarmlessProjectionCatalog.CreeperFearSpeciesId,
+                StringComparison.Ordinal
+            )
+            || string.Equals(
+                speciesId,
+                ShadowCreatureHarmlessProjectionCatalog.TerrorbeakSpeciesId,
+                StringComparison.Ordinal
+            );
+    }
+
     /// <summary>DIAG-20260810: 指定 owner 的在册无害投影数（统一上限池超限清理用）。</summary>
     internal int CountShadowProjectionsForOwner(string playerKey)
     {
         return shadowCoordinator.Index.CountForOwner(playerKey);
+    }
+
+    internal int CountShadowProjectionsForOwnerAtLocation(
+        string playerKey,
+        string locationNameOrUniqueName
+    )
+    {
+        return shadowCoordinator.CountForOwnerAtLocation(
+            playerKey,
+            locationNameOrUniqueName
+        );
     }
 
     /// <summary>
@@ -1228,25 +1459,17 @@ internal sealed class SmapiHarmlessProjectionHost
             // DIAG-20260811: 切图清影怪无害投影计入驱赶补偿（切图后新地图按同样物种
             // 补刷）；绑定投影除外（连带清除隐藏实体，不补偿）。绑定投影带“已有实体”
             // 标签，切图时实体随投影消失链条连带清除。
-            if (
-                shadowCoordinator.Index.TryGetContextInstances(
-                    owner,
-                    out var warpInstances
-                )
-                && warpInstances is not null
-            )
+            var warpInstances = shadowCoordinator.SnapshotOwnerInstances(owner.PlayerKey);
+            foreach (var instance in warpInstances)
             {
-                foreach (var instance in warpInstances)
+                if (
+                    instance.IsCleanedUp
+                    || instance.IsBindingProjection
+                )
                 {
-                    if (
-                        instance.IsCleanedUp
-                        || instance.IsBindingProjection
-                    )
-                    {
-                        continue;
-                    }
-                    shadowCoordinator.RecordCompensation(instance.SpeciesId);
+                    continue;
                 }
+                shadowCoordinator.RecordCompensation(owner.PlayerKey, instance.SpeciesId);
             }
             // DIAG-20260809: 切图只清投影表现、保留档位相位（与“切图不清 tier 状态机”裁定一致）；
             // 否则相位删除后没有事件能重建，非危险形态影怪切图后永久不刷。
@@ -1278,6 +1501,8 @@ internal sealed class SmapiHarmlessProjectionHost
             clearConversionEvidence: true
         );
         ownerContextByScreen.Clear();
+        nextPushBoxBatchNonce = 0;
+        pushBoxHostMayHaveCachedParticipants = false;
     }
 
     private void OnVisualResourcesInvalidating()
@@ -1379,6 +1604,7 @@ internal sealed class SmapiHarmlessProjectionHost
             standingPixel.X,
             standingPixel.Y
         );
+        shadowCoordinator.BeginPushBoxIntentCapture(currentOwner);
         var update = scheduler.UpdateOwner(
             currentOwner,
             standingWorldPixel,
@@ -1392,6 +1618,8 @@ internal sealed class SmapiHarmlessProjectionHost
             elapsedMilliseconds,
             this
         );
+        shadowCoordinator.CapturePushBoxIntents(currentOwner);
+        SubmitShadowPushBoxIntentBatch(currentOwner);
         if (shadowUpdate.Status == ShadowCreatureProjectionUpdateStatus.Unavailable)
         {
             LogFailureOnce(
@@ -1399,9 +1627,15 @@ internal sealed class SmapiHarmlessProjectionHost
                 $"Shadow harmless projection scheduler failed closed ({shadowUpdate.Reason})."
             );
         }
-        // DIAG-20260809: 驱赶补偿——被驱赶消失的影怪立即在玩家附近 4-16 格补刷一只，
+        // DIAG-20260809: 驱赶补偿——被驱赶消失的影怪在 7 秒后于玩家附近 4-16 格补刷，
         // 防止玩家反复驱赶无害影怪导致场上无影怪（补偿走独立通道，不占预算 timer）。
-        var compensations = shadowCoordinator.ConsumePendingCompensations();
+        var compensationCapacity = GetAvailableCompensationCapacity(currentOwner);
+        var compensations = compensationCapacity > 0
+            ? shadowCoordinator.ConsumePendingCompensations(
+                currentOwner.PlayerKey,
+                compensationCapacity
+            )
+            : Array.Empty<string>();
         foreach (var compensationSpeciesId in compensations)
         {
             TrySpawnCompensationProjection(
@@ -1453,6 +1687,37 @@ internal sealed class SmapiHarmlessProjectionHost
             shadowTierActive,
             dangerTierActive
         );
+    }
+
+    private void SubmitShadowPushBoxIntentBatch(
+        HarmlessProjectionOwnerContext owner
+    )
+    {
+        if (pushBoxIntentSink is null || nextPushBoxBatchNonce == long.MaxValue)
+            return;
+        pushBoxIntentBuffer.Clear();
+        shadowCoordinator.CopyPushBoxIntents(owner, pushBoxIntentBuffer);
+        if (pushBoxIntentBuffer.Count == 0 && !pushBoxHostMayHaveCachedParticipants)
+            return;
+
+        var batchNonce = ++nextPushBoxBatchNonce;
+        if (
+            !pushBoxIntentSink.SubmitShadowCreaturePushBoxIntent(
+                owner.PlayerKey,
+                owner.LocationNameOrUniqueName,
+                batchNonce,
+                pushBoxIntentBuffer,
+                out var reason
+            )
+        )
+        {
+            LogFailureOnce(
+                string.Concat("shadow-push-box|", reason),
+                $"Shadow harmless projection PushBox intent was rejected ({reason})."
+            );
+            return;
+        }
+        pushBoxHostMayHaveCachedParticipants = pushBoxIntentBuffer.Count > 0;
     }
 
     private void UpdateSpeciesBehaviors(
@@ -1796,6 +2061,8 @@ internal sealed class SmapiHarmlessProjectionHost
             return;
 
         ClearShadowCreatureSfxOwners();
+        nextPushBoxBatchNonce = 0;
+        pushBoxHostMayHaveCachedParticipants = false;
         scheduler.CleanupAll(HarmlessProjectionCleanupReason.DayEnding);
         shadowCoordinator.CleanupAll(
             HarmlessProjectionCleanupReason.DayEnding,

@@ -257,6 +257,18 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
             parametersByScreen.Remove(parameters.ScreenId);
             return;
         }
+        // Minigame context is volatile presentation state, not part of the Sanity revision. A
+        // same-revision controller receipt can therefore be stale while this adapter is updated;
+        // do not accept parameters while the live presentation is outside the explicit visual
+        // whitelist.
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
+        if (
+            !SanityMinigameVisualRuntimeClassifier.IsWorldCompositionAllowed(minigameContext)
+        )
+        {
+            parametersByScreen.Remove(parameters.ScreenId);
+            return;
+        }
         if (
             !parametersByScreen.ContainsKey(parameters.ScreenId)
             && parametersByScreen.Count >= MaximumScreenParameters
@@ -294,11 +306,27 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
 
     private bool HasActiveWorldComposition(int screenId)
     {
-        return !disposed
-            && enabled
-            && Capability.IsAvailable
-            && runtimeFailureReason is null
-            && parametersByScreen.TryGetValue(screenId, out var parameters)
+        if (
+            disposed
+            || !enabled
+            || !Capability.IsAvailable
+            || runtimeFailureReason is not null
+        )
+        {
+            return false;
+        }
+
+        // The cached composition can outlive a same-revision minigame transition (especially
+        // while a single-player minigame pauses world time). Re-read the volatile presentation
+        // state at the final activation boundary and evict stale parameters before returning.
+        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
+        if (!SanityMinigameVisualRuntimeClassifier.IsWorldCompositionAllowed(minigameContext))
+        {
+            parametersByScreen.Remove(screenId);
+            return false;
+        }
+
+        return parametersByScreen.TryGetValue(screenId, out var parameters)
             && parameters.IsActive;
     }
 

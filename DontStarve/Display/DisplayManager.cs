@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using DontStarve.Display.UIElements;
 using DontStarve.Interface;
+using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using StardewModdingAPI;
 using StardewValley;
@@ -42,6 +43,7 @@ internal static class DisplayManager
             var uiContext = new UIRenderContext(
                 helper,
                 e,
+                HungerExtensions.IsEnabled,
                 sanitySystemState.IsEnabled
             );
             foreach (var el in nonTimeRelatedUIElements)

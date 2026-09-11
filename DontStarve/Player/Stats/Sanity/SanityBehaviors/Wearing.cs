@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Objects;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
@@ -20,7 +21,8 @@ internal class Wearing : ITimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
-        // 装备表全部用 ItemId 匹配；新增装备优先扩 JSON，不要把单件装备写死到这里。
+        // 表内仍按 ItemId 配置；运行时先按 QualifiedItemId 前缀路由，再读取对应表。
+        // 新增装备优先扩 JSON，不要把单件装备写死到这里。
         hatSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/hat.json");
         bootsSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/boots.json");
         ringSanity = helper.ModContent.Load<Dictionary<string, double>>("Asset/Sanity/ring.json");
@@ -49,9 +51,10 @@ internal class Wearing : ITimeRelatedBehavior
             var id when id.StartsWith("(B)", System.StringComparison.Ordinal) =>
                 bootsSanity,
             // Stardew 1.6.15 Ring derives from Object and reports "(O)", not a private ring
-            // qualifier. The ring table still filters by exact ItemId, so ordinary objects do not
-            // gain equipment text.
-            var id when id.StartsWith("(O)", System.StringComparison.Ordinal) =>
+            // qualifier. Keep the runtime type check so an ordinary object cannot enter the ring
+            // table just because it shares an ItemId with a ring.
+            var id when item is Ring
+                && id.StartsWith("(O)", System.StringComparison.Ordinal) =>
                 ringSanity,
             var id when id.StartsWith("(TR)", System.StringComparison.Ordinal) =>
                 trinketSanity,

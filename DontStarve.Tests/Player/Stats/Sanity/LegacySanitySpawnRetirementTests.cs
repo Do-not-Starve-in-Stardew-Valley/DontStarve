@@ -55,7 +55,7 @@ public sealed class LegacySanitySpawnRetirementTests
                 StringComparison.Ordinal
             );
         }
-        Assert.Contains("new NearMonster()", source, StringComparison.Ordinal);
+        Assert.Contains("new NearMonster(lifecycle)", source, StringComparison.Ordinal);
         Assert.Contains("new MineShaft()", source, StringComparison.Ordinal);
         Assert.Contains("旧生成停用，新幻觉尚未实现", source, StringComparison.Ordinal);
     }

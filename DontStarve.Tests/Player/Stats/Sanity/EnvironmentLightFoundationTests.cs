@@ -241,6 +241,23 @@ public sealed class EnvironmentLightFoundationTests
     }
 
     [Fact]
+    public void Negative_attached_player_id_is_not_rejected_as_an_invalid_light_candidate()
+    {
+        var result = Classifier.Classify(
+            Snapshot(
+                baseColor: DimColor(),
+                nightVision: NightVision(active: false),
+                candidates: new[]
+                {
+                    Candidate("negative-owner-light", 100d, attachedPlayerId: -123)
+                }
+            )
+        );
+
+        Assert.NotEqual(EnvironmentLightReasonIds.CandidateInvalid, result.Reason);
+    }
+
+    [Fact]
     public void CacheUsesOwnerScreenLocationRevisionAndFifteenTickCadence()
     {
         var cache = new EnvironmentLightCache();
@@ -405,7 +422,8 @@ public sealed class EnvironmentLightFoundationTests
         float radius = 2f,
         EnvironmentLightCapabilityStatus status =
             EnvironmentLightCapabilityStatus.Available,
-        string reason = "environment-light.candidate-raw-evidence"
+        string reason = "environment-light.candidate-raw-evidence",
+        long attachedPlayerId = 0
     )
     {
         return new EnvironmentLightCandidateSnapshot(
@@ -419,7 +437,7 @@ public sealed class EnvironmentLightFoundationTests
             reason,
             EnvironmentLightCandidateOrigin.CurrentOnly,
             EnvironmentLightCandidateContext.None,
-            AttachedPlayerId: 0,
+            AttachedPlayerId: attachedPlayerId,
             EnvironmentLightCapabilityStatus.Available,
             IsDrawEligible: true,
             "environment-light.candidate-draw-eligible"

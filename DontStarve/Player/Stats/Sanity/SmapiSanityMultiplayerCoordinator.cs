@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -83,14 +84,6 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
         {
             return SanityRequestTruth.Rejected("request-player-context-does-not-match");
         }
-        if (
-            EatFood.FoodSanity is null
-            || !EatFood.FoodSanity.TryGetValue(request.InteractionId, out var delta)
-        )
-        {
-            return SanityRequestTruth.Rejected("food-interaction-is-not-in-host-data");
-        }
-
         // 客户端不提交 delta；主机既要用自己的 food.json 重算，也要看到相同 itemToEat。
         // 若 SMAPI/游戏同步时序不能提供这项事实则 fail closed，留给实机矩阵确认。
         if (
@@ -104,6 +97,17 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
         {
             return SanityRequestTruth.Rejected("food-context-is-not-observable-by-host");
         }
+
+        double delta;
+        if (StarfruitFoodRules.IsStarfruit(player.itemToEat.ItemId))
+        {
+            delta = StarfruitFoodRules.GetFillDelta(
+                player.GetSanity(),
+                player.GetMaxSanity()
+            );
+        }
+        else if (!EatFood.TryGetSanity(player.itemToEat, out delta))
+            return SanityRequestTruth.Rejected("food-interaction-is-not-in-host-data");
 
         return SanityRequestTruth.Accepted(delta);
     }

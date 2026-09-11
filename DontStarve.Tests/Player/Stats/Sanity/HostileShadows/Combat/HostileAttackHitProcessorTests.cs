@@ -52,6 +52,27 @@ public sealed class HostileAttackHitProcessorTests
         );
     }
 
+    [Fact]
+    public void Negative_player_id_is_recorded_and_replayed_by_the_attack_ledger()
+    {
+        var fixture = FixtureAtActiveFrame();
+        var pipeline = new FakeLethalPipeline(100);
+        const string negativePlayerKey = "-101";
+
+        Assert.True(
+            fixture.Process(negativePlayerKey, "negative-1", pipeline, out _)
+        );
+        Assert.Equal(80, pipeline.CurrentHealth);
+        Assert.True(fixture.Instance.HasSettledPlayer(-101));
+
+        fixture.AdvanceToFrame(4);
+        Assert.False(
+            fixture.Process(negativePlayerKey, "negative-2", pipeline, out var replay)
+        );
+        Assert.Equal("hostile-shadow.attack-hit-player-already-settled", replay.Result.Reason);
+        Assert.Equal(1, pipeline.Calls);
+    }
+
     [Theory]
     [InlineData(20, 100, 80)]
     [InlineData(50, 100, 50)]

@@ -15,6 +15,19 @@ using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 
+internal interface IHostileShadowProjectionPushBoxBridge
+{
+    bool HasActivePushBoxParticipants { get; }
+
+    void AppendPushBoxParticipants(
+        List<HostileShadowCrowdParticipant> participants
+    );
+
+    void ApplyPushBoxResolution(
+        HostileShadowCrowdCollisionResolution resolution
+    );
+}
+
 /// <summary>
 /// Owns the host's real GameLocation.characters instances and their bounded targeting loop. The
 /// location reference is frozen at spawn: owner warp never migrates or teleports the entity.
@@ -31,6 +44,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         private string targetPlayerKey = string.Empty;
 
         internal PhysicalEntry(
+            long entityId,
             HostileShadowMonster monster,
             GameLocation location,
             ShadowMonsterRuntimeProfile profile,
@@ -49,6 +63,16 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             AttackState = attackState;
             MovementPresentation = movementPresentation;
             HitResponse = hitResponse;
+            CrowdParticipant = new HostileShadowCrowdParticipant(
+                entityId.ToString("D19", CultureInfo.InvariantCulture),
+                location.NameOrUniqueName,
+                attackDefinition.PushBoxGroupId,
+                default,
+                default,
+                default,
+                default,
+                attackDefinition.PushForce
+            );
             AppliedMovementFacingId = movementPresentation is null
                 ? string.Empty
                 : HostileShadowFacingIds.Down;
@@ -67,9 +91,12 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         internal HostileAttackStateMachine AttackState { get; }
         internal HostileShadowMovementPresentationState? MovementPresentation { get; }
         internal HostileShadowHitResponseController HitResponse { get; }
+        internal HostileShadowCrowdParticipant CrowdParticipant { get; }
         // These values mirror the initial materialization writes. The 60 Hz loop compares raw
         // state first so numeric formatting and NetDictionary writes occur only on transitions.
         internal string AppliedStateId { get; set; } = HostileShadowStateIds.Spawn;
+        internal string AppliedHitTeleportVisualPhase { get; set; } =
+            HostileShadowHitTeleportVisualPhaseIds.None;
         internal string AppliedAttackInstanceId { get; set; } = string.Empty;
         internal long AppliedAttackInstanceRevision { get; set; }
         internal int AppliedAttackFrameNumber { get; set; }
@@ -120,6 +147,30 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         // 绑定投影位置=实体受击框中心，实体 Position=投影位置-偏移（恢复瞬间贴图不跳）。
         internal double BindingCenterOffsetX;
         internal double BindingCenterOffsetY;
+
+        // Stage 04 movement plan. These fields are reused for every host tick so the two-phase
+        // runtime does not allocate one plan or participant object per entity.
+        internal bool CrowdPlanActive;
+        internal bool CrowdPlanIsRetreating;
+        internal bool CrowdPlanIsBinding;
+        internal bool CrowdPlanIsBindingAlignment;
+        internal bool CrowdPlanUsesHitResponse;
+        internal bool CrowdPlanHasTarget;
+        internal bool CrowdPlanIsWandering;
+        internal bool CrowdPlanMovementPositionChanged;
+        internal bool CrowdPlanRemovalRequested;
+        internal HostileShadowKnockbackStep CrowdPlanKnockback;
+        internal double CrowdPlanCurrentPositionX;
+        internal double CrowdPlanCurrentPositionY;
+        internal double CrowdPlanNormalPositionX;
+        internal double CrowdPlanNormalPositionY;
+        internal double CrowdPlanFinalPositionX;
+        internal double CrowdPlanFinalPositionY;
+        internal double CrowdPlanTargetX;
+        internal double CrowdPlanTargetY;
+        internal string CrowdPlanCleanupReason { get; set; } = string.Empty;
+        internal HostileAttackStateDecision CrowdPlanAttackDecision;
+        internal HostileShadowHitResponseDecision CrowdPlanHitResponse;
     }
 
     private readonly IModHelper helper;
@@ -130,7 +181,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     private readonly SanitySmapiResourceService resourceService;
     private readonly HostileShadowMonsterRenderer renderer;
     private readonly SmapiHostileAttackCombatService attackCombat;
-    private readonly Func<HostileShadowMonster, int, Farmer?, int> incomingHitHandler;
+    private readonly Func<HostileShadowMonster, int, int, int, Farmer?, int>
+        incomingHitHandler;
     private readonly HostileShadowPeerVisibilityGate peerGate;
     private readonly HostileShadowSettlementService settlements;
     private readonly HostileShadowLocationPlayerIndex playerIndex = new();
@@ -147,6 +199,13 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     private readonly Random wanderRandom = new();
     private readonly HostileShadowLifecycleReceiptStore lifecycleReceipts = new();
     private readonly HostileShadowPhysicalEntityCapability serializationCapability;
+    private readonly HostileShadowCrowdCollisionResolver crowdCollisionResolver = new();
+    private readonly List<HostileShadowCrowdParticipant> crowdParticipants = new(
+        HostileShadowAuthority.MaximumEntities
+    );
+    private readonly Dictionary<string, HostileShadowCrowdCollisionResolutionEntry>
+        crowdResolutions = new(StringComparer.Ordinal);
+    private IHostileShadowProjectionPushBoxBridge? projectionPushBoxBridge;
     private bool disposed;
 
     internal SmapiHostileShadowWorldRuntime(
@@ -173,6 +232,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         );
         settlements = new HostileShadowSettlementService(
             new StableHostileShadowSettlementRandom(),
+            settlementEffects,
+            settlementEffects,
             settlementEffects,
             settlementEffects,
             settlementEffects
@@ -206,6 +267,30 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
     internal HostileShadowPhysicalEntityCapability CurrentCapability =>
         peerGate.CurrentCapability;
+
+    internal bool BindProjectionPushBoxBridge(
+        IHostileShadowProjectionPushBoxBridge bridge,
+        out string reason
+    )
+    {
+        ArgumentNullException.ThrowIfNull(bridge);
+        if (disposed || projectionPushBoxBridge is not null)
+        {
+            reason = disposed
+                ? "hostile-shadow.push-box-bridge-disposed"
+                : "hostile-shadow.push-box-bridge-already-bound";
+            return false;
+        }
+
+        projectionPushBoxBridge = bridge;
+        // ModEntry constructs this runtime before the projection host. Re-subscribing here makes
+        // the projection intent capture run before the shared world solve without changing any
+        // SMAPI event source or adding a second update loop.
+        helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
+        helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        reason = "hostile-shadow.push-box-bridge-bound";
+        return true;
+    }
 
     internal int Count => entries.Count;
 
@@ -367,7 +452,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         // 恐吓动画（渲染器按 Taunt 时序本地推进）；行为由 60Hz 循环 IsRetreating 分支接管。
         entry.Monster.modData[HostileShadowMonster.StateModDataKey] =
             HostileShadowStateIds.Taunt;
+        entry.Monster.modData[HostileShadowMonster.HitTeleportVisualPhaseModDataKey] =
+            HostileShadowHitTeleportVisualPhaseIds.None;
         entry.AppliedStateId = HostileShadowStateIds.Taunt;
+        entry.AppliedHitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
         monster = entry.Monster;
         reason = "hostile-shadow.retreat-started";
         return true;
@@ -471,6 +559,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
     /// <summary>DIAG-20260811: 指定地点内危险影怪物种分布（AssetBindingId → 数量），切图快速刷新用。</summary>
     internal Dictionary<string, int> CountEntitiesBySpeciesAtLocation(
+        string playerKey,
         string locationId
     )
     {
@@ -483,6 +572,18 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 !string.Equals(
                     pair.Value.Location.NameOrUniqueName,
                     locationId,
+                    StringComparison.Ordinal
+                )
+                || !authority.TryGetEntity(pair.Key, out var state)
+                || state is null
+                || !string.Equals(
+                    state.OwnerPlayerKey,
+                    playerKey,
+                    StringComparison.Ordinal
+                )
+                || string.Equals(
+                    state.StateId,
+                    HostileShadowStateIds.Despawn,
                     StringComparison.Ordinal
                 )
             )
@@ -503,6 +604,61 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             result[bindingId] = count + 1;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Refresh capacity is local to the current map and only counts this owner's hostile
+    /// entities which are currently locked to that owner. Off-map entities and entities which
+    /// have not acquired a target must not suppress the current-map refresh permit.
+    /// </summary>
+    internal int CountLockedEntitiesForOwnerAtLocation(
+        string playerKey,
+        string locationId
+    )
+    {
+        if (
+            string.IsNullOrWhiteSpace(playerKey)
+            || string.IsNullOrWhiteSpace(locationId)
+        )
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var pair in entries)
+        {
+            if (
+                !authority.TryGetEntity(pair.Key, out var state)
+                || state is null
+                || !string.Equals(
+                    state.OwnerPlayerKey,
+                    playerKey,
+                    StringComparison.Ordinal
+                )
+                || !string.Equals(
+                    state.TargetPlayerKey,
+                    playerKey,
+                    StringComparison.Ordinal
+                )
+                || !string.Equals(
+                    state.LocationId,
+                    locationId,
+                    StringComparison.Ordinal
+                )
+                || string.Equals(
+                    state.StateId,
+                    HostileShadowStateIds.Despawn,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>DIAG-20260811: 指定玩家在指定地点的危险影怪数量（上限按所在地图计算）。</summary>
@@ -555,6 +711,21 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         return false;
     }
 
+    internal bool TryGetEntitySpawnGameMinute(
+        long entityId,
+        out long spawnGameMinute
+    )
+    {
+        if (entries.TryGetValue(entityId, out var entry))
+        {
+            spawnGameMinute = entry.SpawnGameMinute;
+            return spawnGameMinute >= 0;
+        }
+
+        spawnGameMinute = 0;
+        return false;
+    }
+
     internal bool TryGetActiveAggroLockPlayerKey(
         long entityId,
         out string playerKey
@@ -569,10 +740,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             return false;
         }
 
-        if (!long.TryParse(
+        if (!SanityPlayerKey.TryParseCanonicalPlayerId(
                 entry.AggroLockPlayerKey,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
                 out var playerId
             ))
         {
@@ -594,6 +763,31 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
         playerKey = entry.AggroLockPlayerKey;
         return true;
+    }
+
+    /// <summary>
+    /// Reports the mod-owned targeting label for a player on the current location. Both the
+    /// ordinary target and the recent-attacker aggro lock count; hidden/bound presentation does not
+    /// erase a live label until the targeting runtime clears it.
+    /// </summary>
+    internal bool IsPlayerTargeted(string playerKey, GameLocation location)
+    {
+        if (!SanityPlayerKey.IsCanonical(playerKey) || location is null)
+            return false;
+
+        foreach (var entry in entries.Values)
+        {
+            if (!ReferenceEquals(entry.Location, location))
+                continue;
+            if (
+                string.Equals(entry.TargetPlayerKey, playerKey, StringComparison.Ordinal)
+                || string.Equals(entry.AggroLockPlayerKey, playerKey, StringComparison.Ordinal)
+            )
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>DIAG-20260809: 当前在册实体 id 列表（脱战 roll 用，稳定顺序）。</summary>
@@ -718,6 +912,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             // conversion. Preserve that initial presentation on the physical monster so a
             // conversion cannot replay the hostile Spawn animation.
             monster.modData[HostileShadowMonster.StateModDataKey] = state.StateId;
+            monster.modData[HostileShadowMonster.HitTeleportVisualPhaseModDataKey] =
+                state.HitTeleportVisualPhase;
             // DIAG-20260807: 记录配置档位的攻击力，供 LookupAnythingDisplayFake 在 Lookup
             // 构造 Subject 时临时写回 DamageToFarmer（显示用）；本体 DamageToFarmer 保持 0
             // 禁接触伤害。
@@ -776,16 +972,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             {
                 // 贴图缺失时保持占位 Sprite，不阻断物化。
             }
-            // DIAG-20260807: 按物种设置实例 Name（Lookup 显示/Data/Monsters 掉落查询用），
-            // 不再共用 "Hostile Shadow"——那是游戏中实际存在的怪物名，主策划之后会单独给它
-            // 加靠近掉 san 能力，影怪不能与之混名。
-            monster.Name = string.Equals(
-                profile.AssetBindingId,
-                ShadowMonsterAssetBindingIds.CreeperFear,
-                StringComparison.Ordinal
-            )
-                ? "Creeper Fear"
-                : "Terrorbeak";
+            // DIAG-20260807: 按 profile 的稳定显示名 i18n key 设置实例 Name。
+            // Character.Name 是 NetString，写入后会随实体同步；Lookup Anything 读取它时即可
+            // 显示当前语言，而不需要把本地化文本写入 gameplay profile。
+            monster.Name = helper.Translation.Get(profile.DisplayNameKey).ToString();
             // DIAG-20260807 修正：恢复 DamageToFarmer=profile.BaseDamage 与
             // resilience=profile.Defense（Lookup 显示用，跟随配置档位不写死）。
             // 接触伤害已禁用：原版触发点是 Monster.MovePosition → isCollidingPosition
@@ -812,6 +1002,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             }
             if (combatImmunity is not null)
                 monster.ApplyCombatImmunity(combatImmunity);
+            else
+                monster.ApplyDeclaredCombatImmunities(profile.ImmunityTags);
             location.characters.Add(monster);
             if (!location.characters.Contains(monster))
                 throw new InvalidOperationException("location-character-add-not-observed");
@@ -824,6 +1016,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             AddPhysical(
                 state.EntityId,
                 new PhysicalEntry(
+                    state.EntityId,
                     monster,
                     location,
                     profile,
@@ -838,7 +1031,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                             attackMetadata.Chase.FrameDurationMilliseconds
                         )
                         : null,
-                    new HostileShadowHitResponseController(attackState)
+                new HostileShadowHitResponseController(
+                    attackState,
+                    initialHitTeleportVisualPhase: state.HitTeleportVisualPhase
+                )
                 )
             );
             // DIAG-20260809: 游荡锚点初始 = 生成位置（脱战后更新为最后脱战位置）。
@@ -989,6 +1185,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     private int HandleIncomingHit(
         HostileShadowMonster monster,
         int damage,
+        int xTrajectory,
+        int yTrajectory,
         Farmer? attacker
     )
     {
@@ -1225,13 +1423,64 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         );
         if (!damageDecision.Valid)
             return 0;
+
+        // Stardew Monster.takeDamage divides the raw GameLocation trajectory by three before
+        // writing the velocity. Keep that input on the custom hit bridge; the host movement plan
+        // will consume the resulting velocity exactly once on the next world tick.
+        monster.ApplyIncomingHitTrajectory(xTrajectory, yTrajectory);
+
+        // The hit entity itself also changes aggro to the attacking player. When it was chasing
+        // or attacking another player, this is the special multiplayer handoff: keep the complete
+        // HitTeleport presentation, then resume directly in Chase for the attacker. It must not be
+        // confused with ordinary target reacquisition, whose next contact still Taunts first.
+        if (
+            !damageDecision.PendingDying
+            && !string.Equals(
+                entry.TargetPlayerKey,
+                attackerPlayerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            var hadExistingTarget = SanityPlayerKey.IsCanonical(entry.TargetPlayerKey);
+            var wasChasingOrAttacking =
+                string.Equals(
+                    entry.AttackState.StateId,
+                    HostileShadowStateIds.Chase,
+                    StringComparison.Ordinal
+                )
+                || string.Equals(
+                    entry.AttackState.StateId,
+                    HostileShadowStateIds.Attack,
+                    StringComparison.Ordinal
+                );
+            bool handoffPrepared;
+            string targetHandoffReason;
+            if (hadExistingTarget && wasChasingOrAttacking)
+            {
+                handoffPrepared = entry.AttackState.RequestTargetHandoffAfterHit(
+                    out targetHandoffReason
+                );
+            }
+            else
+            {
+                handoffPrepared = entry.AttackState.RequestTargetReacquisition(
+                    out targetHandoffReason
+                );
+            }
+            if (!handoffPrepared)
+            {
+                LogOnce(targetHandoffReason, LogLevel.Warn);
+            }
+            entry.TargetPlayerKey = attackerPlayerKey;
+        }
         // DIAG-20260809: 受击拉仇恨传播——被击中影怪附近 30 格（1920px）内、同地点、无索敌的
         // 其他影怪，仇恨转移到攻击者（AggroLockPlayerKey 锁定，不受检测半径限制）。
         PropagateAggroToNearby(entityId, entry, attackerPlayerKey);
-        // DIAG-20260806: 受击生效后给予与其他怪物一致的无敌帧（原版 takeDamage 设 1000ms）。
-        // 无敌期间原版伤害路径（isInvincible 检查）会拦下后续攻击，避免每帧多段伤害；
-        // 无敌由 HostileShadowMonster.update 递减，结束后可再次受击。
-        monster.invincibleCountdown = 1000;
+        // DIAG-20260902: 不在自定义受击桥里写固定无敌时间。原版
+        // GameLocation.damageMonster 会在 takeDamage 返回后按武器路径设置
+        // 450 / 2（普通武器）、450 / 3（普通匕首）或在匕首多段攻击时关闭本次计时。
+        // 影怪不调用 Monster.update，因此倒计时仍由 HostileShadowMonster.update 递减。
         var previousHealth = monster.Health;
         var proposedRevision = authority.Revision + 1;
 
@@ -1384,30 +1633,77 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             if ((dx * dx) + (dy * dy) > radiusSquared)
                 continue;
 
-            // 物理层锁定 + 权威同步（保留原状态字段，仅改 TargetPlayerKey）。
+            if (
+                !other.AttackState.BeginTargetReacquisition(
+                    out var reacquisitionReason
+                )
+            )
+            {
+                LogOnce(reacquisitionReason, LogLevel.Warn);
+                continue;
+            }
+
+            // 物理层锁定 + 权威同步。仇恨转移也必须经过 Idle -> Taunt -> Chase，不能只
+            // 替换 TargetPlayerKey 后继续沿用旧 Chase 状态。
             other.AggroLockPlayerKey = attackerPlayerKey;
             other.RecentAttackerPlayerKey = attackerPlayerKey;
             other.TargetPlayerKey = attackerPlayerKey;
+            ApplyMonsterState(other);
             if (authority.TryGetEntity(otherId, out var otherState) && otherState is not null)
             {
                 authority.TryUpdate(
                     new HostileShadowStateUpdate(
                         otherId,
                         otherState.LocationId,
-                        otherState.StateId,
+                        other.AttackState.StateId,
                         attackerPlayerKey,
                         otherState.PositionX,
                         otherState.PositionY,
                         otherState.Health,
                         "hostile-shadow.aggro-propagated",
-                        otherState.AttackInstanceId,
-                        otherState.AttackInstanceRevision,
-                        otherState.AttackFrameNumber
+                        other.AttackState.StateId == HostileShadowStateIds.Attack
+                            ? otherState.AttackInstanceId
+                            : string.Empty,
+                        other.AttackState.StateId == HostileShadowStateIds.Attack
+                            ? otherState.AttackInstanceRevision
+                            : 0,
+                        other.AttackState.StateId == HostileShadowStateIds.Attack
+                            ? otherState.AttackFrameNumber
+                            : 0
                     ),
                     out _
                 );
             }
         }
+    }
+
+    /// <summary>Returns a finite preferred position, or a finite fallback position.</summary>
+    private static bool TryResolveFinitePosition(
+        double preferredX,
+        double preferredY,
+        double fallbackX,
+        double fallbackY,
+        out double positionX,
+        out double positionY
+    )
+    {
+        if (double.IsFinite(preferredX) && double.IsFinite(preferredY))
+        {
+            positionX = preferredX;
+            positionY = preferredY;
+            return true;
+        }
+
+        if (double.IsFinite(fallbackX) && double.IsFinite(fallbackY))
+        {
+            positionX = fallbackX;
+            positionY = fallbackY;
+            return true;
+        }
+
+        positionX = double.NaN;
+        positionY = double.NaN;
+        return false;
     }
 
     /// <summary>
@@ -1418,15 +1714,30 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     private bool TryAdvanceWander(
         PhysicalEntry entry,
         double elapsedSeconds,
+        double currentPositionX,
+        double currentPositionY,
+        ref double normalPositionX,
+        ref double normalPositionY,
         ref bool movementPositionChanged
     )
     {
-        // 脱战：上 tick 有目标（刚脱战）→ 锚点更新为最后脱战位置。
-        if (entry.HadTargetLastTick)
+        // 锚点异常时只允许回退到影怪当前坐标；当前坐标也无效则保持 Idle，绝不使用玩家
+        // 坐标、地图中心或人为构造的 (0,0)。
+        if (
+            !TryResolveFinitePosition(
+                entry.WanderAnchorX,
+                entry.WanderAnchorY,
+                currentPositionX,
+                currentPositionY,
+                out var anchorX,
+                out var anchorY
+            )
+        )
         {
-            entry.WanderAnchorX = entry.Monster.Position.X;
-            entry.WanderAnchorY = entry.Monster.Position.Y;
+            return false;
         }
+        entry.WanderAnchorX = anchorX;
+        entry.WanderAnchorY = anchorY;
 
         if (!entry.HasWanderTarget)
         {
@@ -1438,16 +1749,16 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             var angle = wanderRandom.NextDouble() * Math.PI * 2d;
             var radiusPixels = wanderRandom.NextDouble() * (10d * Game1.tileSize);
             entry.WanderTargetX =
-                entry.WanderAnchorX + Math.Cos(angle) * radiusPixels;
+                anchorX + Math.Cos(angle) * radiusPixels;
             entry.WanderTargetY =
-                entry.WanderAnchorY + Math.Sin(angle) * radiusPixels;
+                anchorY + Math.Sin(angle) * radiusPixels;
             entry.HasWanderTarget = true;
         }
 
         // 半速移动（MovementSpeed × 0.5）；动画半速在帧推进处（elapsedMs × 0.5）。
         var movement = HostileShadowTargetingEngine.AdvancePosition(
-            entry.Monster.Position.X,
-            entry.Monster.Position.Y,
+            currentPositionX,
+            currentPositionY,
             entry.Monster.StandingPixel.X,
             entry.Monster.StandingPixel.Y,
             entry.WanderTargetX,
@@ -1459,12 +1770,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         if (!movement.Valid)
             return false;
         movementPositionChanged =
-            entry.Monster.Position.X != (float)movement.PositionX
-            || entry.Monster.Position.Y != (float)movement.PositionY;
-        entry.Monster.Position = new Vector2(
-            (float)movement.PositionX,
-            (float)movement.PositionY
-        );
+            currentPositionX != movement.PositionX
+            || currentPositionY != movement.PositionY;
+        normalPositionX = movement.PositionX;
+        normalPositionY = movement.PositionY;
         if (
             string.Equals(
                 movement.Reason,
@@ -1608,7 +1917,14 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             entry.Monster.Position.X,
             entry.Monster.Position.Y,
             entry.Profile
-        );
+        ) with
+        {
+            // Ring.onMonsterSlay uses Monster.Tile (the standing pixel from the actual hurt box),
+            // not the entity's raw top-left Position. Freeze that tile into the host settlement so
+            // a delayed death confirmation and a replay use the same Napalm center.
+            ExplosionTileX = entry.Monster.Tile.X,
+            ExplosionTileY = entry.Monster.Tile.Y,
+        };
         var result = settlements.Resolve(request);
         if (
             result.Status
@@ -1665,7 +1981,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     decision.PositionX,
                     decision.PositionY,
                     entry.Monster.Health,
-                    decision.Reason
+                    decision.Reason,
+                    hitTeleportVisualPhase: entry.HitResponse.HitTeleportVisualPhase
                 ),
                 out var reason
             )
@@ -1729,6 +2046,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         resourceService.WorldResourcesReleasing -= OnWorldResourcesReleasing;
         ClearSession();
+        projectionPushBoxBridge = null;
         peerGate.Dispose();
         HostileShadowMonsterHitBridge.Clear(incomingHitHandler);
         HostileShadowMonsterVisualBridge.Clear(renderer);
@@ -1738,7 +2056,13 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     {
         if (
             disposed
-            || entries.Count == 0
+            || (
+                entries.Count == 0
+                && (
+                    projectionPushBoxBridge is null
+                    || !projectionPushBoxBridge.HasActivePushBoxParticipants
+                )
+            )
             || !Context.IsWorldReady
             || !Game1.IsMasterGame
         )
@@ -1956,6 +2280,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 continue;
             }
 
+            var previousTargetPlayerKey = entry.TargetPlayerKey;
             if (string.IsNullOrEmpty(decision.TargetPlayerKey))
             {
                 if (!entry.NoTargetSinceGameMinute.HasValue)
@@ -2027,7 +2352,22 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 entry.RecentAttackerPlayerKey = string.Empty;
             }
             if (!attackLocked)
+            {
+                if (
+                    ShouldBeginTargetReacquisition(
+                        entry,
+                        previousTargetPlayerKey,
+                        decision.TargetPlayerKey
+                    )
+                    && !entry.AttackState.BeginTargetReacquisition(
+                        out var reacquisitionReason
+                    )
+                )
+                {
+                    LogOnce(reacquisitionReason, LogLevel.Warn);
+                }
                 entry.TargetPlayerKey = decision.TargetPlayerKey;
+            }
             else if (entry.AttackState.CurrentInstance is { } attack)
                 entry.TargetPlayerKey = attack.TargetPlayerKey;
 
@@ -2105,9 +2445,133 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         entry.NoTargetLastObservedGameMinute = currentGameMinute;
     }
 
+    private static bool ShouldBeginTargetReacquisition(
+        PhysicalEntry entry,
+        string previousTargetPlayerKey,
+        string nextTargetPlayerKey
+    )
+    {
+        var hadPreviousTarget = SanityPlayerKey.IsCanonical(previousTargetPlayerKey);
+        var hasNextTarget = SanityPlayerKey.IsCanonical(nextTargetPlayerKey);
+        if (
+            hadPreviousTarget
+            && !string.Equals(
+                previousTargetPlayerKey,
+                nextTargetPlayerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return true;
+        }
+
+        // An aggro event can write a new target before the fixed update observes the preceding
+        // target loss. If the state is still Chase, force the handoff through Idle so the incoming
+        // player receives the same first-contact Taunt.
+        return !hadPreviousTarget
+            && hasNextTarget
+            && string.Equals(
+                entry.AttackState.StateId,
+                HostileShadowStateIds.Chase,
+                StringComparison.Ordinal
+            );
+    }
+
+    private HostileShadowKnockbackStep PlanKnockbackStep(
+        PhysicalEntry entry
+    )
+    {
+        var velocityX = entry.Monster.xVelocity;
+        var velocityY = entry.Monster.yVelocity;
+        if (velocityX == 0f && velocityY == 0f)
+            return HostileShadowKnockbackStep.None;
+
+        if (entry.Monster.Slipperiness == -1)
+            return HostileShadowKnockbackStep.None;
+
+        var blocked = IsKnockbackBlocked(entry, velocityX, velocityY);
+        return HostileShadowKnockbackPolicy.Plan(
+            velocityX,
+            velocityY,
+            entry.Monster.Slipperiness,
+            blocked,
+            stunned: entry.Monster.stunTime.Value > 0
+        );
+    }
+
+    private static bool IsKnockbackBlocked(
+        PhysicalEntry entry,
+        float velocityX,
+        float velocityY
+    )
+    {
+        var boundingBox = entry.Monster.GetBoundingBox();
+        var startX = boundingBox.X;
+        var startY = boundingBox.Y;
+        var destinationX = startX + (int)velocityX;
+        var destinationY = startY - (int)velocityY;
+        var subdivisions = 1;
+        if (!entry.Monster.isGlider.Value)
+        {
+            if (
+                boundingBox.Width > 0
+                && Math.Abs((int)velocityX) > boundingBox.Width
+            )
+            {
+                subdivisions = Math.Max(
+                    subdivisions,
+                    (int)Math.Ceiling(
+                        Math.Abs((float)(int)velocityX) / boundingBox.Width
+                    )
+                );
+            }
+            if (
+                boundingBox.Height > 0
+                && Math.Abs((int)velocityY) > boundingBox.Height
+            )
+            {
+                subdivisions = Math.Max(
+                    subdivisions,
+                    (int)Math.Ceiling(
+                        Math.Abs((float)(int)velocityY) / boundingBox.Height
+                    )
+                );
+            }
+        }
+
+        for (var index = 1; index <= subdivisions; index++)
+        {
+            var candidate = boundingBox;
+            candidate.X = (int)(
+                startX
+                + ((destinationX - startX) * (double)index / subdivisions)
+            );
+            candidate.Y = (int)(
+                startY
+                + ((destinationY - startY) * (double)index / subdivisions)
+            );
+            if (
+                entry.Location.isCollidingPosition(
+                    candidate,
+                    Game1.viewport,
+                    isFarmer: false,
+                    damagesFarmer: entry.Monster.DamageToFarmer,
+                    glider: entry.Monster.isGlider.Value,
+                    character: entry.Monster
+                )
+            )
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void AdvanceCachedTargets(bool snapshotCadence)
     {
         var entityCount = CaptureEntityIterationOrder();
+        crowdParticipants.Clear();
+        crowdResolutions.Clear();
         for (var index = 0; index < entityCount; index++)
         {
             var entityId = entityIterationBuffer[index];
@@ -2120,56 +2584,42 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 RemovePhysical(entityId);
                 continue;
             }
+            ResetCrowdPlan(entry);
+            var currentPositionX = (double)entry.Monster.Position.X;
+            var currentPositionY = (double)entry.Monster.Position.Y;
+            var knockbackStep = PlanKnockbackStep(entry);
+            if (!knockbackStep.Valid)
+            {
+                LogOnce(
+                    "hostile-shadow.knockback-state-invalid",
+                    LogLevel.Error
+                );
+                entry.Monster.ClearKnockbackVelocity();
+                knockbackStep = HostileShadowKnockbackStep.None;
+            }
             if (entry.IsRetreating)
             {
                 // DIAG-20260810: 脱战恐吓——无敌/停止行为/保持恐吓动画，
                 // 由宿主在恐吓结束后调用 TryBeginBinding 进入绑定隐藏态。
-                SetModDataIfChanged(
-                    entry.Monster,
-                    HostileShadowMonster.StateModDataKey,
-                    HostileShadowStateIds.Taunt
+                entry.Monster.ClearKnockbackVelocity();
+                PrepareRetreatCrowdPlan(
+                    entry,
+                    currentPositionX,
+                    currentPositionY
                 );
-                entry.AppliedStateId = HostileShadowStateIds.Taunt;
-                ObserveShadowCreatureSfx(entityId, entry);
                 continue;
             }
             if (entry.IsBindingHidden)
             {
                 // DIAG-20260809: 绑定隐藏态——行为禁用（不索敌/不攻击/不游荡），
                 // 仅低频位置对齐（5-15 tick），对齐变化时发一次位置同步。
-                entry.BindingAlignCooldownTicks--;
-                if (entry.BindingAlignCooldownTicks <= 0)
-                {
-                    entry.BindingAlignCooldownTicks =
-                        5 + (int)(entityId % 11L);
-                    var anchor = new Vector2(
-                        (float)entry.BindingAnchorX,
-                        (float)entry.BindingAnchorY
-                    );
-                    if (entry.Monster.Position != anchor)
-                    {
-                        entry.Monster.Position = anchor;
-                        if (
-                            !authority.TryUpdate(
-                                new HostileShadowStateUpdate(
-                                    entityId,
-                                    state.LocationId,
-                                    HostileShadowStateIds.Idle,
-                                    string.Empty,
-                                    anchor.X,
-                                    anchor.Y,
-                                    entry.Monster.Health,
-                                    "hostile-shadow.binding-anchor-align"
-                                ),
-                                out var alignReason
-                            )
-                        )
-                        {
-                            LogOnce(alignReason, LogLevel.Warn);
-                        }
-                    }
-                }
-                ObserveShadowCreatureSfx(entityId, entry);
+                entry.Monster.ClearKnockbackVelocity();
+                PrepareBindingCrowdPlan(
+                    entry,
+                    entityId,
+                    currentPositionX,
+                    currentPositionY
+                );
                 continue;
             }
 
@@ -2184,9 +2634,51 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     target.LocationId,
                     entry.Location.NameOrUniqueName,
                     StringComparison.Ordinal
-                );
+            );
             var targetX = hasTarget ? target!.StandingX : 0d;
             var targetY = hasTarget ? target!.StandingY : 0d;
+
+            // 目标切换必须先于 Chase -> Idle 和游荡判断处理。否则丢目标这一 tick 会跳过
+            // TryAdvanceWander，下一 tick 又已把 HadTargetLastTick 写成 false，只能错误地继续
+            // 使用生成点。
+            var hadTargetLastTick = entry.HadTargetLastTick;
+            if (hasTarget)
+            {
+                // 重新索敌后，旧的游荡目的地立即失效；本轮沿既有索敌/恐吓/追击链推进。
+                entry.HasWanderTarget = false;
+            }
+            else if (hadTargetLastTick)
+            {
+                entry.HasWanderTarget = false;
+                if (
+                    TryResolveFinitePosition(
+                        currentPositionX,
+                        currentPositionY,
+                        state.PositionX,
+                        state.PositionY,
+                        out var anchorX,
+                        out var anchorY
+                    )
+                )
+                {
+                    entry.WanderAnchorX = anchorX;
+                    entry.WanderAnchorY = anchorY;
+                    entry.WanderRemainingMilliseconds =
+                        3000d + (wanderRandom.NextDouble() * 2000d);
+                }
+            }
+            entry.HadTargetLastTick = hasTarget;
+
+            if (
+                string.Equals(
+                    entry.AttackState.StateId,
+                    HostileShadowStateIds.Despawn,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                continue;
+            }
             if (
                 string.Equals(
                     entry.AttackState.StateId,
@@ -2205,55 +2697,29 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 )
             )
             {
-                var response = entry.HitResponse.Advance(
-                    entry.Monster.Position.X,
-                    entry.Monster.Position.Y,
-                    FixedUpdateSeconds * 1000d,
-                    hasTarget
+                entry.AttackState.ObserveTargetPresence(hasTarget);
+                PrepareHitResponseCrowdPlan(
+                    entry,
+                    currentPositionX,
+                    currentPositionY,
+                    hasTarget,
+                    knockbackStep
                 );
-                if (!response.Valid)
-                {
-                    LogOnce(response.Reason, LogLevel.Error);
-                    DeferHitResponseSynchronizationFailure(response.Reason);
-                    continue;
-                }
-                entry.Monster.Position = new Vector2(
-                    (float)response.PositionX,
-                    (float)response.PositionY
-                );
-                ApplyMonsterState(entry);
-                if (
-                    (response.StateChanged || response.PositionChanged)
-                    && !TrySynchronizeHitResponse(
-                        entityId,
-                        entry,
-                        state,
-                        response
-                    )
-                )
-                {
-                    DeferHitResponseSynchronizationFailure(response.Reason);
-                    continue;
-                }
-                if (response.RemovalRequested)
-                {
-                    authority.CleanupEntity(
-                        entityId,
-                        string.Equals(
-                            response.StateId,
-                            HostileShadowStateIds.Dying,
-                            StringComparison.Ordinal
-                        )
-                            ? HostileShadowCleanupReasonIds.DyingCompleted
-                            : response.Reason
-                        );
-                }
-                ObserveShadowCreatureSfx(entityId, entry);
                 continue;
             }
-            var movementPositionChanged = false;
+
+            // A knockback slice owns this tick's movement. The AI position and wander movement
+            // must not be added to it, or the same hit would move the entity twice.
+            var normalPositionX = currentPositionX + knockbackStep.OffsetX;
+            var normalPositionY = currentPositionY + knockbackStep.OffsetY;
+            var movementPositionChanged = knockbackStep.Active
+                && (
+                    knockbackStep.OffsetX != 0d
+                    || knockbackStep.OffsetY != 0d
+                );
             if (
                 hasTarget
+                && !knockbackStep.Active
                 && string.Equals(
                     entry.AttackState.StateId,
                     HostileShadowStateIds.Chase,
@@ -2275,12 +2741,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 if (movement.Valid)
                 {
                     movementPositionChanged =
-                        entry.Monster.Position.X != (float)movement.PositionX
-                        || entry.Monster.Position.Y != (float)movement.PositionY;
-                    entry.Monster.Position = new Vector2(
-                        (float)movement.PositionX,
-                        (float)movement.PositionY
-                    );
+                        currentPositionX != movement.PositionX
+                        || currentPositionY != movement.PositionY;
+                    normalPositionX = movement.PositionX;
+                    normalPositionY = movement.PositionY;
                 }
             }
 
@@ -2290,6 +2754,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             var isWanderingNow = false;
             if (
                 !hasTarget
+                && !knockbackStep.Active
                 && string.Equals(
                     entry.AttackState.StateId,
                     HostileShadowStateIds.Idle,
@@ -2300,11 +2765,13 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 isWanderingNow = TryAdvanceWander(
                     entry,
                     FixedUpdateSeconds,
+                    currentPositionX,
+                    currentPositionY,
+                    ref normalPositionX,
+                    ref normalPositionY,
                     ref movementPositionChanged
                 );
             }
-            // 脱战标记：供游荡锚点更新（上 tick 有目标 → 当前为最后脱战位置）。
-            entry.HadTargetLastTick = hasTarget;
             SetModDataIfChanged(
                 entry.Monster,
                 HostileShadowMonster.WanderActiveModDataKey,
@@ -2313,8 +2780,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
             var inAttackRange = hasTarget
                 && WithinRange(
-                    entry.Monster.StandingPixel.X,
-                    entry.Monster.StandingPixel.Y,
+                    entry.Monster.StandingPixel.X
+                        + (normalPositionX - currentPositionX),
+                    entry.Monster.StandingPixel.Y
+                        + (normalPositionY - currentPositionY),
                     targetX,
                     targetY,
                     entry.Profile.AttackRangePixels
@@ -2330,10 +2799,12 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 entry.TargetPlayerKey,
                 hasTarget,
                 inAttackRange,
-                entry.Monster.Position.X,
-                entry.Monster.Position.Y,
-                entry.Monster.StandingPixel.X,
-                entry.Monster.StandingPixel.Y,
+                normalPositionX,
+                normalPositionY,
+                entry.Monster.StandingPixel.X
+                    + (normalPositionX - currentPositionX),
+                entry.Monster.StandingPixel.Y
+                    + (normalPositionY - currentPositionY),
                 targetX,
                 targetY,
                 Game1.tileSize,
@@ -2348,100 +2819,30 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 LogOnce(decision.Reason, LogLevel.Warn);
                 continue;
             }
-
-            entry.Monster.Position = new Vector2(
-                (float)decision.PositionX,
-                (float)decision.PositionY
+            PrepareNormalCrowdPlan(
+                entry,
+                currentPositionX,
+                currentPositionY,
+                decision.PositionX,
+                decision.PositionY,
+                movementPositionChanged,
+                isWanderingNow,
+                hasTarget,
+                targetX,
+                targetY,
+                decision,
+                knockbackStep
             );
-            if (
-                entry.MovementPresentation is { } movementPresentation
-                && !movementPresentation.TryAdvance(
-                    (
-                        hasTarget
-                        && string.Equals(
-                            decision.StateId,
-                            HostileShadowStateIds.Chase,
-                            StringComparison.Ordinal
-                        )
-                    )
-                        || isWanderingNow,
-                    movementPositionChanged,
-                    entry.Monster.StandingPixel.X,
-                    entry.Monster.StandingPixel.Y,
-                    isWanderingNow ? entry.WanderTargetX : targetX,
-                    isWanderingNow ? entry.WanderTargetY : targetY,
-                    // DIAG-20260809: 游荡动画半速（elapsedMs × 0.5）。
-                    FixedUpdateSeconds * 1000d * (isWanderingNow ? 0.5d : 1d),
-                    out _
-                )
-            )
-            {
-                LogOnce(
-                    "hostile-shadow.movement-presentation-input-invalid",
-                    LogLevel.Error
-                );
-                authority.CleanupEntity(
-                    entityId,
-                    HostileShadowCleanupReasonIds.ResourceInvalidated
-                );
-                continue;
-            }
-            ApplyMonsterState(entry);
-            var mustSynchronize = decision.StateChanged
-                || decision.AttackFrameChanged
-                || (
-                    decision.PositionChanged
-                    && (
-                        snapshotCadence
-                        || string.Equals(
-                            decision.StateId,
-                            HostileShadowStateIds.Attack,
-                            StringComparison.Ordinal
-                        )
-                    )
-                );
-            if (mustSynchronize)
-            {
-                if (
-                    !authority.TryUpdate(
-                        new HostileShadowStateUpdate(
-                            entityId,
-                            state.LocationId,
-                            decision.StateId,
-                            entry.TargetPlayerKey,
-                            decision.PositionX,
-                            decision.PositionY,
-                            entry.Monster.Health,
-                            decision.Reason,
-                            decision.AttackInstanceId,
-                            decision.AttackInstanceRevision,
-                            decision.AttackFrameNumber
-                        ),
-                        out var updateReason
-                    )
-                )
-                {
-                    LogOnce(updateReason, LogLevel.Warn);
-                    continue;
-                }
-                authority.TryGetEntity(entityId, out state);
-            }
+        }
 
-            if (
-                state is not null
-                && entry.AttackState.CurrentInstance is { } instance
-                && entry.AttackDefinition.IsActiveFrame(instance.FrameNumber)
-            )
-            {
-                attackCombat.ProcessCurrentHits(
-                    entry.Monster,
-                    entry.Profile,
-                    entry.AttackDefinition,
-                    entry.AttackState,
-                    state
-                );
-            }
-            ObserveShadowCreatureSfx(entityId, entry);
+        projectionPushBoxBridge?.AppendPushBoxParticipants(crowdParticipants);
+
+        ResolveCrowdPlans();
+        for (var index = 0; index < entityCount; index++)
+        {
+            var entityId = entityIterationBuffer[index];
+            if (entries.TryGetValue(entityId, out var entry))
+                ApplyCrowdPlan(entityId, entry, snapshotCadence);
         }
     }
 
@@ -2495,7 +2896,14 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             entry.AttackState.StateId,
             instance?.InstanceId ?? string.Empty,
             instance?.Revision ?? 0,
-            instance?.FrameNumber ?? 0
+            instance?.FrameNumber ?? 0,
+            string.Equals(
+                entry.AttackState.StateId,
+                HostileShadowStateIds.HitTeleport,
+                StringComparison.Ordinal
+            )
+                ? entry.HitResponse.HitTeleportVisualPhase
+                : HostileShadowHitTeleportVisualPhaseIds.None
         );
         if (entry.MovementPresentation is { } presentation)
         {
@@ -2526,12 +2934,763 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         }
     }
 
+    private static void ResetCrowdPlan(PhysicalEntry entry)
+    {
+        entry.CrowdPlanActive = false;
+        entry.CrowdPlanIsRetreating = false;
+        entry.CrowdPlanIsBinding = false;
+        entry.CrowdPlanIsBindingAlignment = false;
+        entry.CrowdPlanUsesHitResponse = false;
+        entry.CrowdPlanHasTarget = false;
+        entry.CrowdPlanIsWandering = false;
+        entry.CrowdPlanMovementPositionChanged = false;
+        entry.CrowdPlanRemovalRequested = false;
+        entry.CrowdPlanKnockback = default;
+        entry.CrowdPlanCurrentPositionX = 0d;
+        entry.CrowdPlanCurrentPositionY = 0d;
+        entry.CrowdPlanNormalPositionX = 0d;
+        entry.CrowdPlanNormalPositionY = 0d;
+        entry.CrowdPlanFinalPositionX = 0d;
+        entry.CrowdPlanFinalPositionY = 0d;
+        entry.CrowdPlanTargetX = 0d;
+        entry.CrowdPlanTargetY = 0d;
+        entry.CrowdPlanCleanupReason = string.Empty;
+        entry.CrowdPlanAttackDecision = default;
+        entry.CrowdPlanHitResponse = default;
+    }
+
+    private void PrepareRetreatCrowdPlan(
+        PhysicalEntry entry,
+        double currentPositionX,
+        double currentPositionY
+    )
+    {
+        entry.CrowdPlanActive = true;
+        entry.CrowdPlanIsRetreating = true;
+        entry.CrowdPlanCurrentPositionX = currentPositionX;
+        entry.CrowdPlanCurrentPositionY = currentPositionY;
+        entry.CrowdPlanNormalPositionX = currentPositionX;
+        entry.CrowdPlanNormalPositionY = currentPositionY;
+        entry.CrowdPlanFinalPositionX = currentPositionX;
+        entry.CrowdPlanFinalPositionY = currentPositionY;
+        UpdateCrowdParticipant(
+            entry,
+            currentPositionX,
+            currentPositionY,
+            currentPositionX,
+            currentPositionY,
+            isBinding: false
+        );
+    }
+
+    private void PrepareBindingCrowdPlan(
+        PhysicalEntry entry,
+        long entityId,
+        double currentPositionX,
+        double currentPositionY
+    )
+    {
+        entry.BindingAlignCooldownTicks--;
+        var align = entry.BindingAlignCooldownTicks <= 0;
+        if (align)
+        {
+            entry.BindingAlignCooldownTicks =
+                5 + (int)(entityId % 11L);
+        }
+
+        var normalPositionX = currentPositionX;
+        var normalPositionY = currentPositionY;
+        if (
+            align
+            && double.IsFinite(entry.BindingAnchorX)
+            && double.IsFinite(entry.BindingAnchorY)
+        )
+        {
+            normalPositionX = entry.BindingAnchorX;
+            normalPositionY = entry.BindingAnchorY;
+        }
+        else
+        {
+            align = false;
+        }
+
+        entry.CrowdPlanActive = true;
+        entry.CrowdPlanIsBinding = true;
+        entry.CrowdPlanIsBindingAlignment = align;
+        entry.CrowdPlanCurrentPositionX = currentPositionX;
+        entry.CrowdPlanCurrentPositionY = currentPositionY;
+        entry.CrowdPlanNormalPositionX = normalPositionX;
+        entry.CrowdPlanNormalPositionY = normalPositionY;
+        entry.CrowdPlanFinalPositionX = normalPositionX;
+        entry.CrowdPlanFinalPositionY = normalPositionY;
+        UpdateCrowdParticipant(
+            entry,
+            currentPositionX,
+            currentPositionY,
+            normalPositionX,
+            normalPositionY,
+            isBinding: true
+        );
+    }
+
+    private void PrepareHitResponseCrowdPlan(
+        PhysicalEntry entry,
+        double currentPositionX,
+        double currentPositionY,
+        bool hasTarget,
+        HostileShadowKnockbackStep knockbackStep
+    )
+    {
+        var responseInputPositionX = currentPositionX + knockbackStep.OffsetX;
+        var responseInputPositionY = currentPositionY + knockbackStep.OffsetY;
+        var response = entry.HitResponse.Advance(
+            responseInputPositionX,
+            responseInputPositionY,
+            FixedUpdateSeconds * 1000d,
+            hasTarget
+        );
+        if (!response.Valid)
+        {
+            LogOnce(response.Reason, LogLevel.Error);
+            DeferHitResponseSynchronizationFailure(response.Reason);
+            return;
+        }
+
+        entry.CrowdPlanActive = true;
+        entry.CrowdPlanKnockback = knockbackStep;
+        entry.CrowdPlanUsesHitResponse = true;
+        entry.CrowdPlanHasTarget = hasTarget;
+        entry.CrowdPlanCurrentPositionX = currentPositionX;
+        entry.CrowdPlanCurrentPositionY = currentPositionY;
+        entry.CrowdPlanNormalPositionX = response.PositionX;
+        entry.CrowdPlanNormalPositionY = response.PositionY;
+        entry.CrowdPlanFinalPositionX = response.PositionX;
+        entry.CrowdPlanFinalPositionY = response.PositionY;
+        entry.CrowdPlanRemovalRequested = response.RemovalRequested;
+        entry.CrowdPlanCleanupReason = response.StateId == HostileShadowStateIds.Dying
+            ? HostileShadowCleanupReasonIds.DyingCompleted
+            : response.Reason;
+        entry.CrowdPlanHitResponse = response;
+        UpdateCrowdParticipant(
+            entry,
+            currentPositionX,
+            currentPositionY,
+            response.PositionX,
+            response.PositionY,
+            isBinding: false
+        );
+    }
+
+    private void PrepareNormalCrowdPlan(
+        PhysicalEntry entry,
+        double currentPositionX,
+        double currentPositionY,
+        double normalPositionX,
+        double normalPositionY,
+        bool movementPositionChanged,
+        bool isWanderingNow,
+        bool hasTarget,
+        double targetX,
+        double targetY,
+        HostileAttackStateDecision decision,
+        HostileShadowKnockbackStep knockbackStep
+    )
+    {
+        entry.CrowdPlanActive = true;
+        entry.CrowdPlanKnockback = knockbackStep;
+        entry.CrowdPlanHasTarget = hasTarget;
+        entry.CrowdPlanIsWandering = isWanderingNow;
+        entry.CrowdPlanMovementPositionChanged = movementPositionChanged;
+        entry.CrowdPlanCurrentPositionX = currentPositionX;
+        entry.CrowdPlanCurrentPositionY = currentPositionY;
+        entry.CrowdPlanNormalPositionX = normalPositionX;
+        entry.CrowdPlanNormalPositionY = normalPositionY;
+        entry.CrowdPlanFinalPositionX = normalPositionX;
+        entry.CrowdPlanFinalPositionY = normalPositionY;
+        entry.CrowdPlanTargetX = targetX;
+        entry.CrowdPlanTargetY = targetY;
+        entry.CrowdPlanAttackDecision = decision;
+        UpdateCrowdParticipant(
+            entry,
+            currentPositionX,
+            currentPositionY,
+            normalPositionX,
+            normalPositionY,
+            isBinding: false
+        );
+    }
+
+    private void UpdateCrowdParticipant(
+        PhysicalEntry entry,
+        double currentPositionX,
+        double currentPositionY,
+        double normalPositionX,
+        double normalPositionY,
+        bool isBinding
+    )
+    {
+        var movementVector = new HostileShadowPushBoxPoint(
+            normalPositionX - currentPositionX,
+            normalPositionY - currentPositionY
+        );
+        var worldBox = default(HostileShadowPushBoxWorldRectangle);
+        HostileShadowPushBoxGeometry.TryCreateWorldBox(
+            entry.AttackDefinition,
+            currentPositionX,
+            currentPositionY,
+            out worldBox
+        );
+        entry.CrowdParticipant.Update(
+            new HostileShadowPushBoxPoint(currentPositionX, currentPositionY),
+            new HostileShadowPushBoxPoint(normalPositionX, normalPositionY),
+            movementVector,
+            worldBox,
+            isActive: true,
+            isBinding,
+            isBindingRepresentative: isBinding
+        );
+        crowdParticipants.Add(entry.CrowdParticipant);
+    }
+
+    private void ResolveCrowdPlans()
+    {
+        if (crowdParticipants.Count == 0)
+            return;
+
+        var resolution = crowdCollisionResolver.Resolve(crowdParticipants);
+        projectionPushBoxBridge?.ApplyPushBoxResolution(resolution);
+        foreach (var resolved in resolution.Entries)
+        {
+            if (resolved.IsFinite)
+                crowdResolutions[resolved.StableId] = resolved;
+        }
+        if (resolution.PairFailureCount > 0)
+            LogOnce(resolution.Reason, LogLevel.Warn);
+    }
+
+    private void ApplyCrowdPlan(
+        long entityId,
+        PhysicalEntry entry,
+        bool snapshotCadence
+    )
+    {
+        if (!entry.CrowdPlanActive)
+            return;
+
+        var finalPositionX = entry.CrowdPlanNormalPositionX;
+        var finalPositionY = entry.CrowdPlanNormalPositionY;
+        if (
+            crowdResolutions.TryGetValue(
+                entry.CrowdParticipant.StableId,
+                out var resolved
+            )
+            && resolved.FinalPosition.IsFinite
+        )
+        {
+            finalPositionX = resolved.FinalPosition.X;
+            finalPositionY = resolved.FinalPosition.Y;
+        }
+        if (!double.IsFinite(finalPositionX) || !double.IsFinite(finalPositionY))
+        {
+            LogOnce(
+                "hostile-shadow.push-box-final-position-invalid",
+                LogLevel.Error
+            );
+            return;
+        }
+
+        var correctionX = finalPositionX - entry.CrowdPlanNormalPositionX;
+        var correctionY = finalPositionY - entry.CrowdPlanNormalPositionY;
+        if (
+            !double.IsFinite(correctionX)
+            || !double.IsFinite(correctionY)
+        )
+        {
+            LogOnce(
+                "hostile-shadow.push-box-correction-invalid",
+                LogLevel.Error
+            );
+            return;
+        }
+
+        if (
+            !entry.CrowdPlanUsesHitResponse
+            && !entry.CrowdPlanIsRetreating
+            && !entry.CrowdPlanIsBinding
+            && string.Equals(
+                entry.CrowdPlanAttackDecision.StateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+            && entry.AttackState.CurrentInstance is not null
+            && (correctionX != 0d || correctionY != 0d)
+            && !entry.AttackState.TryTranslateCurrentAttackOrigin(
+                correctionX,
+                correctionY,
+                out var attackOriginReason
+            )
+        )
+        {
+            LogOnce(attackOriginReason, LogLevel.Error);
+            finalPositionX = entry.CrowdPlanNormalPositionX;
+            finalPositionY = entry.CrowdPlanNormalPositionY;
+            correctionX = 0d;
+            correctionY = 0d;
+        }
+
+        entry.CrowdPlanFinalPositionX = finalPositionX;
+        entry.CrowdPlanFinalPositionY = finalPositionY;
+        entry.Monster.Position = new Vector2(
+            (float)finalPositionX,
+            (float)finalPositionY
+        );
+        // Position and velocity are committed together. This is the single consumer of the
+        // planned vanilla knockback slice; no client-side update or AI movement may consume it a
+        // second time.
+        entry.Monster.ApplyKnockbackStep(entry.CrowdPlanKnockback);
+
+        if (entry.CrowdPlanUsesHitResponse)
+        {
+            ApplyHitResponseCrowdPlan(entityId, entry);
+            return;
+        }
+        if (entry.CrowdPlanIsRetreating)
+        {
+            ApplyRetreatCrowdPlan(entityId, entry, snapshotCadence);
+            return;
+        }
+        if (entry.CrowdPlanIsBinding)
+        {
+            ApplyBindingCrowdPlan(entityId, entry, snapshotCadence);
+            return;
+        }
+
+        ApplyNormalCrowdPlan(
+            entityId,
+            entry,
+            snapshotCadence,
+            correctionX,
+            correctionY
+        );
+    }
+
+    private void ApplyNormalCrowdPlan(
+        long entityId,
+        PhysicalEntry entry,
+        bool snapshotCadence,
+        double correctionX,
+        double correctionY
+    )
+    {
+        var decision = entry.CrowdPlanAttackDecision;
+        if (
+            entry.MovementPresentation is { } movementPresentation
+            && !movementPresentation.TryAdvance(
+                (
+                    entry.CrowdPlanHasTarget
+                    && string.Equals(
+                        decision.StateId,
+                        HostileShadowStateIds.Chase,
+                        StringComparison.Ordinal
+                    )
+                )
+                    || entry.CrowdPlanIsWandering,
+                entry.CrowdPlanMovementPositionChanged,
+                entry.Monster.StandingPixel.X,
+                entry.Monster.StandingPixel.Y,
+                entry.CrowdPlanIsWandering
+                    ? entry.WanderTargetX
+                    : entry.CrowdPlanTargetX,
+                entry.CrowdPlanIsWandering
+                    ? entry.WanderTargetY
+                    : entry.CrowdPlanTargetY,
+                // DIAG-20260809: 游荡动画半速（elapsedMs × 0.5）。
+                FixedUpdateSeconds
+                    * 1000d
+                    * (entry.CrowdPlanIsWandering ? 0.5d : 1d),
+                out _
+            )
+        )
+        {
+            LogOnce(
+                "hostile-shadow.movement-presentation-input-invalid",
+                LogLevel.Error
+            );
+            authority.CleanupEntity(
+                entityId,
+                HostileShadowCleanupReasonIds.ResourceInvalidated
+            );
+            return;
+        }
+
+        if (
+            !authority.TryGetEntity(entityId, out var state)
+            || state is null
+        )
+        {
+            RemovePhysical(entityId);
+            return;
+        }
+
+        var finalPositionChanged =
+            entry.CrowdPlanCurrentPositionX != entry.CrowdPlanFinalPositionX
+            || entry.CrowdPlanCurrentPositionY != entry.CrowdPlanFinalPositionY;
+        var mustSynchronize = decision.StateChanged
+            || decision.AttackFrameChanged
+            || (
+                finalPositionChanged
+                && (
+                    snapshotCadence
+                    || string.Equals(
+                        decision.StateId,
+                        HostileShadowStateIds.Attack,
+                        StringComparison.Ordinal
+                    )
+                )
+            );
+        if (
+            mustSynchronize
+            && string.Equals(
+                decision.StateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+            && !TryAlignAttackInstanceRevision(entry, state, out var revisionReason)
+        )
+        {
+            LogOnce(revisionReason, LogLevel.Error);
+            return;
+        }
+
+        ApplyMonsterState(entry);
+        if (mustSynchronize)
+        {
+            var attackInstance = entry.AttackState.CurrentInstance;
+            if (
+                !authority.TryUpdate(
+                    new HostileShadowStateUpdate(
+                        entityId,
+                        state.LocationId,
+                        decision.StateId,
+                        entry.TargetPlayerKey,
+                        entry.CrowdPlanFinalPositionX,
+                        entry.CrowdPlanFinalPositionY,
+                        entry.Monster.Health,
+                        decision.Reason,
+                        attackInstance?.InstanceId ?? string.Empty,
+                        attackInstance?.Revision ?? 0,
+                        attackInstance?.FrameNumber ?? 0
+                    ),
+                    out var updateReason
+                )
+            )
+            {
+                LogOnce(updateReason, LogLevel.Warn);
+                return;
+            }
+            authority.TryGetEntity(entityId, out state);
+        }
+
+        if (
+            state is not null
+            && string.Equals(
+                state.StateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            attackCombat.ProcessCurrentHits(
+                entry.Monster,
+                entry.Profile,
+                entry.AttackDefinition,
+                entry.AttackState,
+                state
+            );
+        }
+        ObserveShadowCreatureSfx(entityId, entry);
+    }
+
+    private bool TryAlignAttackInstanceRevision(
+        PhysicalEntry entry,
+        ShadowStateSnapshot current,
+        out string reason
+    )
+    {
+        if (entry.AttackState.CurrentInstance is not { } instance)
+        {
+            reason = "hostile-shadow.attack-instance-missing-for-sync";
+            return false;
+        }
+
+        var revision = 0L;
+        if (
+            string.Equals(
+                current.StateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+            && string.Equals(
+                current.AttackInstanceId,
+                instance.InstanceId,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            revision = current.AttackInstanceRevision;
+        }
+        else if (authority.Revision < long.MaxValue)
+        {
+            revision = authority.Revision + 1;
+        }
+
+        reason = string.Empty;
+        if (
+            revision <= 0
+            || !entry.AttackState.TrySetCurrentAttackRevision(
+                revision,
+                out reason
+            )
+        )
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "hostile-shadow.attack-instance-revision-invalid";
+            return false;
+        }
+
+        reason = "hostile-shadow.attack-instance-revision-aligned";
+        return true;
+    }
+
+    private void ApplyHitResponseCrowdPlan(
+        long entityId,
+        PhysicalEntry entry
+    )
+    {
+        var response = entry.CrowdPlanHitResponse;
+        var finalPositionChanged =
+            entry.CrowdPlanCurrentPositionX != entry.CrowdPlanFinalPositionX
+            || entry.CrowdPlanCurrentPositionY != entry.CrowdPlanFinalPositionY;
+        ApplyMonsterState(entry);
+        if (
+            !authority.TryGetEntity(entityId, out var state)
+            || state is null
+        )
+        {
+            RemovePhysical(entityId);
+            return;
+        }
+
+        if (
+            response.StateChanged
+            || response.PositionChanged
+            || finalPositionChanged
+        )
+        {
+            var synchronize = response with
+            {
+                PositionX = entry.CrowdPlanFinalPositionX,
+                PositionY = entry.CrowdPlanFinalPositionY,
+                PositionChanged = response.PositionChanged || finalPositionChanged,
+            };
+            if (
+                response.RemovalRequested
+                && !response.StateChanged
+                && !response.PositionChanged
+            )
+            {
+                if (
+                    !TrySynchronizePositionOnly(
+                        entityId,
+                        state,
+                        entry.CrowdPlanFinalPositionX,
+                        entry.CrowdPlanFinalPositionY,
+                        response.Reason,
+                        out var positionReason
+                    )
+                )
+                {
+                    DeferHitResponseSynchronizationFailure(positionReason);
+                    return;
+                }
+            }
+            else if (
+                !TrySynchronizeHitResponse(
+                    entityId,
+                    entry,
+                    state,
+                    synchronize
+                )
+            )
+            {
+                DeferHitResponseSynchronizationFailure(response.Reason);
+                return;
+            }
+        }
+
+        if (response.RemovalRequested)
+        {
+            authority.CleanupEntity(
+                entityId,
+                entry.CrowdPlanCleanupReason
+            );
+        }
+        ObserveShadowCreatureSfx(entityId, entry);
+    }
+
+    private void ApplyRetreatCrowdPlan(
+        long entityId,
+        PhysicalEntry entry,
+        bool snapshotCadence
+    )
+    {
+        SetModDataIfChanged(
+            entry.Monster,
+            HostileShadowMonster.StateModDataKey,
+            HostileShadowStateIds.Taunt
+        );
+        SetModDataIfChanged(
+            entry.Monster,
+            HostileShadowMonster.HitTeleportVisualPhaseModDataKey,
+            HostileShadowHitTeleportVisualPhaseIds.None
+        );
+        entry.AppliedStateId = HostileShadowStateIds.Taunt;
+        entry.AppliedHitTeleportVisualPhase = HostileShadowHitTeleportVisualPhaseIds.None;
+        var finalPositionChanged =
+            entry.CrowdPlanCurrentPositionX != entry.CrowdPlanFinalPositionX
+            || entry.CrowdPlanCurrentPositionY != entry.CrowdPlanFinalPositionY;
+        if (finalPositionChanged && snapshotCadence)
+        {
+            if (
+                !authority.TryGetEntity(entityId, out var state)
+                || state is null
+            )
+            {
+                RemovePhysical(entityId);
+                return;
+            }
+            if (
+                !TrySynchronizePositionOnly(
+                    entityId,
+                    state,
+                    entry.CrowdPlanFinalPositionX,
+                    entry.CrowdPlanFinalPositionY,
+                    "hostile-shadow.retreat-push-box",
+                    out var reason
+                )
+            )
+            {
+                LogOnce(reason, LogLevel.Warn);
+                return;
+            }
+        }
+        ObserveShadowCreatureSfx(entityId, entry);
+    }
+
+    private void ApplyBindingCrowdPlan(
+        long entityId,
+        PhysicalEntry entry,
+        bool snapshotCadence
+    )
+    {
+        var normalPositionChanged =
+            entry.CrowdPlanCurrentPositionX != entry.CrowdPlanNormalPositionX
+            || entry.CrowdPlanCurrentPositionY != entry.CrowdPlanNormalPositionY;
+        var finalPositionChanged =
+            entry.CrowdPlanCurrentPositionX != entry.CrowdPlanFinalPositionX
+            || entry.CrowdPlanCurrentPositionY != entry.CrowdPlanFinalPositionY;
+        var shouldAlign = entry.CrowdPlanIsBindingAlignment
+            && (normalPositionChanged || finalPositionChanged);
+        if (shouldAlign || (finalPositionChanged && snapshotCadence))
+        {
+            if (
+                !authority.TryGetEntity(entityId, out var state)
+                || state is null
+            )
+            {
+                RemovePhysical(entityId);
+                return;
+            }
+            var stateId = shouldAlign
+                ? HostileShadowStateIds.Idle
+                : state.StateId;
+            var targetPlayerKey = shouldAlign
+                ? string.Empty
+                : state.TargetPlayerKey;
+            if (
+                !TrySynchronizePositionOnly(
+                    entityId,
+                    state,
+                    entry.CrowdPlanFinalPositionX,
+                    entry.CrowdPlanFinalPositionY,
+                    shouldAlign
+                        ? "hostile-shadow.binding-anchor-align"
+                        : "hostile-shadow.binding-push-box",
+                    out var reason,
+                    stateId,
+                    targetPlayerKey
+                )
+            )
+            {
+                LogOnce(reason, LogLevel.Warn);
+                return;
+            }
+        }
+        ObserveShadowCreatureSfx(entityId, entry);
+    }
+
+    private bool TrySynchronizePositionOnly(
+        long entityId,
+        ShadowStateSnapshot current,
+        double positionX,
+        double positionY,
+        string reason,
+        out string failureReason,
+        string? stateIdOverride = null,
+        string? targetPlayerKeyOverride = null
+    )
+    {
+        var stateId = stateIdOverride ?? current.StateId;
+        var targetPlayerKey = targetPlayerKeyOverride ?? current.TargetPlayerKey;
+        if (
+            !authority.TryUpdate(
+                new HostileShadowStateUpdate(
+                    entityId,
+                    current.LocationId,
+                    stateId,
+                    targetPlayerKey,
+                    positionX,
+                    positionY,
+                    current.Health,
+                    reason,
+                    stateId == HostileShadowStateIds.Attack
+                        ? current.AttackInstanceId
+                        : string.Empty,
+                    stateId == HostileShadowStateIds.Attack
+                        ? current.AttackInstanceRevision
+                        : 0,
+                    stateId == HostileShadowStateIds.Attack
+                        ? current.AttackFrameNumber
+                        : 0
+                ),
+                out failureReason
+            )
+        )
+        {
+            return false;
+        }
+
+        failureReason = "hostile-shadow.position-synchronized";
+        return true;
+    }
+
     private static void ApplyAttackModDataIfChanged(
         PhysicalEntry entry,
         string stateId,
         string attackInstanceId,
         long attackInstanceRevision,
-        int attackFrameNumber
+        int attackFrameNumber,
+        string hitTeleportVisualPhase
     )
     {
         if (
@@ -2548,6 +3707,21 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 stateId
             );
             entry.AppliedStateId = stateId;
+        }
+        if (
+            !string.Equals(
+                entry.AppliedHitTeleportVisualPhase,
+                hitTeleportVisualPhase,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            SetModDataIfChanged(
+                entry.Monster,
+                HostileShadowMonster.HitTeleportVisualPhaseModDataKey,
+                hitTeleportVisualPhase
+            );
+            entry.AppliedHitTeleportVisualPhase = hitTeleportVisualPhase;
         }
         if (
             !string.Equals(
@@ -2621,7 +3795,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             state.StateId,
             state.AttackInstanceId,
             state.AttackInstanceRevision,
-            state.AttackFrameNumber
+            state.AttackFrameNumber,
+            state.HitTeleportVisualPhase
         );
     }
 

@@ -139,14 +139,12 @@ public sealed class SanityAudioVisualAssetStatusGateTests
                     "PendingRealMachine",
                     clip.GetProperty("ListeningEvidence").GetProperty("OverallStatus").GetString()
                 );
-                var inspection = SanityWavInspector.InspectFile(
+                var inspection = SanityOggInspector.InspectFile(
                     ResolveShippedPath(clip.GetProperty("Path").GetString()!)
                 );
                 Assert.True(inspection.Success, string.Join(Environment.NewLine, inspection.Issues));
-                Assert.Equal(1, inspection.FormatCode);
                 Assert.Equal(2, inspection.Channels);
                 Assert.Equal(44100, inspection.SampleRateHz);
-                Assert.Equal(16, inspection.BitsPerSample);
                 Assert.Equal(clip.GetProperty("Sha256").GetString(), inspection.Sha256);
                 Assert.Equal(clip.GetProperty("DurationFrames").GetInt64(), inspection.Frames);
             });

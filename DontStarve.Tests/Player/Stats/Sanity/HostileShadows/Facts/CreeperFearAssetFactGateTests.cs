@@ -223,7 +223,7 @@ public sealed class CreeperFearAssetFactGateTests
                     clip.Path,
                     StringComparison.Ordinal
                 );
-                Assert.Equal("sanity.wav.pcm-s16-stereo-48000-v1", clip.FormatId);
+                Assert.Equal("sanity.ogg.vorbis-stereo-48000-v1", clip.FormatId);
                 Assert.False(clip.IsPlaceholder);
                 Assert.True(clip.DurationFrames > 0);
                 Assert.True(clip.DurationSeconds > 0d);

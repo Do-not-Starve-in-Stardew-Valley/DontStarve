@@ -187,9 +187,9 @@ internal static class SanityAssetManifestParser
             return true;
         }
 
-        if (string.Equals(text, "Wav", StringComparison.Ordinal))
+        if (string.Equals(text, "Ogg", StringComparison.Ordinal))
         {
-            kind = SanityAssetKind.Wav;
+            kind = SanityAssetKind.Ogg;
             return true;
         }
 

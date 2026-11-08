@@ -102,7 +102,8 @@ internal sealed class SmapiHarmlessProjectionHost
             new ShadowCreatureHarmlessProjectionIndex(),
             lifecycle,
             conversionIntentSink,
-            correlationSource
+            correlationSource,
+            random
         );
 
         lifecycle.StateEventPublished += OnStateEventPublished;
@@ -232,8 +233,9 @@ internal sealed class SmapiHarmlessProjectionHost
     }
 
     /// <summary>
-    /// Registers only one of the two stage-08 shared-pool appearances. This seam is deliberately
-    /// separate from RegisterSpecies so ordinary policies cannot acquire a shadow permit.
+    /// Registers one of the two stage-08 species that share a budget within each player owner.
+    /// This seam is deliberately separate from RegisterSpecies so ordinary policies cannot
+    /// acquire a shadow permit.
     /// </summary>
     internal bool RegisterShadowCreatureSpecies(
         ShadowCreatureHarmlessProjectionPolicy policy,
@@ -376,7 +378,7 @@ internal sealed class SmapiHarmlessProjectionHost
     /// <summary>
     /// DIAG-20260809: 测试命令 ds_spawn harmless 专用。在指定世界坐标请求影怪的
     /// 非危险形态（无害投影，creeper-fear/terrorbeak）。位置可指定；调试生成绕过自然
-    /// 预算、刷新计时、共享上限和转换锁，供测试命令稳定生成目标。
+    /// 预算、刷新计时、该玩家两种影怪合计上限和转换锁，供测试命令稳定生成目标。
     /// </summary>
     internal string DebugSpawnShadowProjectionAt(
         string speciesId,
@@ -403,7 +405,7 @@ internal sealed class SmapiHarmlessProjectionHost
 
     /// <summary>
     /// DIAG-20260809: 无害投影指定位置生成核心。调试召唤绕过自然预算、刷新计时、
-    /// 共享上限和转换锁，但仍经过宿主、物种、资源和索引完整性检查；驱赶补偿仍使用
+    /// 当前玩家两种影怪合计上限和转换锁，但仍经过宿主、物种、资源和索引完整性检查；驱赶补偿仍使用
     /// 独立的补偿通道，不经过此方法。
     /// </summary>
     private string SpawnShadowProjectionCore(
@@ -503,8 +505,8 @@ internal sealed class SmapiHarmlessProjectionHost
     {
         if (disposed || Game1.player is null || Game1.player.currentLocation is null)
             return false;
-        // DIAG-20260811: 补偿使用当前地图的共享正常总上限。绑定危险实体与绑定投影
-        // 已由 hostile occupancy provider 折算为一只；切图遗留在旧地图的影怪不占新地图名额。
+        // DIAG-20260811: 补偿受该玩家在当前地图的正常总上限约束；玩家之间不共用名额。
+        // 绑定危险实体与绑定投影已由 hostile occupancy provider 折算为一只；切图遗留在旧地图的影怪不占新地图名额。
         if (
             !lifecycle.TryGetShadowBudgetTotalCap(owner.PlayerKey, out var totalCap)
             || totalCap <= 0
@@ -728,7 +730,7 @@ internal sealed class SmapiHarmlessProjectionHost
             return false;
         }
         bindingProjections.Remove(correlationId);
-        ForceRemoveShadowCreatureSfxOwner(correlationId);
+        RemoveShadowCreatureSfxOwner(correlationId);
         if (
             !shadowCoordinator.Index.TryRemove(
                 correlationId,
@@ -948,7 +950,7 @@ internal sealed class SmapiHarmlessProjectionHost
                 )
             )
             {
-                ForceRemoveShadowCreatureSfxOwner(instance.CorrelationId);
+                RemoveShadowCreatureSfxOwner(instance.CorrelationId);
                 removed++;
             }
         }
@@ -1002,7 +1004,7 @@ internal sealed class SmapiHarmlessProjectionHost
         foreach (var correlationId in removed)
         {
             bindingProjections.Remove(correlationId);
-            ForceRemoveShadowCreatureSfxOwner(correlationId);
+            RemoveShadowCreatureSfxOwner(correlationId);
         }
     }
 

@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Generic;
 using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Hunger;
@@ -7,48 +9,67 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Hunger.HungerBehaviors;
 
 /// <summary>
-/// 检测吃食动作结束，并按 food.json 恢复饥饿值。
+/// 检测每个本地玩家吃食动作结束。主机直接结算，客机提交物品事实给主机重算。
 /// </summary>
-internal class EatFood : INonTimeRelatedBehavior
+internal sealed class EatFood : INonTimeRelatedBehavior
 {
-    public static Dictionary<string, double> FoodHunger { get; private set; }
+    public static Dictionary<string, double> FoodHunger { get; private set; } = new();
 
-    private Item lastFood;
+    private readonly HungerChangeService changeService;
+    private Item? lastFood;
     private bool lastEating;
+
+    internal EatFood(HungerChangeService changeService)
+    {
+        this.changeService = changeService;
+    }
 
     public void Init(IModHelper helper)
     {
-        // 食物数值走资源表，key 使用 Stardew 物品 ItemId；不要把具体食物硬编码进行为逻辑。
-        FoodHunger = helper.ModContent.Load<Dictionary<string, double>>("Asset/Hunger/food.json");
+        FoodHunger = helper.ModContent.Load<Dictionary<string, double>>(
+            "Asset/Hunger/food.json"
+        );
         FoodRuleRuntime.SetHunger(FoodHunger);
         helper.Events.GameLoop.UpdateTicking += (_, _) => Update();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => ResetTracking();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => ResetTracking();
     }
 
     private void Update()
     {
         var player = Game1.player;
-        if (player == null)
+        if (player is null)
             return;
 
         if (!HungerExtensions.IsEnabled)
         {
-            // 关闭期间仍同步吃食状态，避免重开时把关闭期间的动作误判成一次结算。
             lastFood = player.itemToEat;
             lastEating = player.isEating;
             return;
         }
 
         var isEating = player.isEating;
-        if (!isEating && lastEating && lastFood != null)
+        if (
+            !isEating
+            && lastEating
+            && lastFood is not null
+            && HungerFoodCompletionPolicy.ShouldUseLegacyFoodEdge(
+                changeService.Role,
+                HungerFoodCompletionPatch.IsInstalled,
+                changeService.HostFoodCompletionSupported
+            )
+        )
         {
-            // isEating 从 true 变 false 表示吃食动作刚结束，此时用上一帧 itemToEat 结算恢复值。
-            if (StarfruitFoodRules.IsStarfruit(lastFood.ItemId))
-                player.SetHunger(player.GetMaxHunger());
-            else if (FoodRuleRuntime.TryGetHunger(lastFood, out var hunger))
-                player.SetHunger(player.GetHunger() + hunger);
+            HungerExtensions.ApplyFood(player, lastFood);
         }
 
         lastFood = player.itemToEat;
-        lastEating = player.isEating;
+        lastEating = isEating;
+    }
+
+    private void ResetTracking()
+    {
+        lastFood = null;
+        lastEating = false;
     }
 }

@@ -46,6 +46,15 @@ internal readonly record struct SanityHudFrame(
     double Maximum
 );
 
+internal readonly record struct HungerHudFrame(
+    HudBounds ContainerBounds,
+    HudPoint FillerPosition,
+    int FillerWidth,
+    int FillerHeight,
+    double Current,
+    double Maximum
+);
+
 internal readonly record struct SanityDisplayVisibility(
     bool ShowBar,
     bool ShowHeldFoodTooltip
@@ -198,6 +207,63 @@ internal static class HudDisplayRules
             maximum
         );
         reason = "sanity-hud-frame-ready";
+        return true;
+    }
+
+    internal static bool TryCreateHungerFrame(
+        HudBounds containerBounds,
+        int fillerWidth,
+        double current,
+        double maximum,
+        out HungerHudFrame frame,
+        out string reason
+    )
+    {
+        frame = default;
+        if (
+            containerBounds.Width <= 0
+            || containerBounds.Height <= 0
+            || fillerWidth <= 0
+        )
+        {
+            reason = "hunger-hud-layout-dimensions-are-invalid";
+            return false;
+        }
+        if (!double.IsFinite(current))
+        {
+            reason = "hunger-hud-current-is-not-finite";
+            return false;
+        }
+        if (!double.IsFinite(maximum))
+        {
+            reason = "hunger-hud-maximum-is-not-finite";
+            return false;
+        }
+        if (maximum <= 0)
+        {
+            reason = "hunger-hud-maximum-is-not-positive";
+            return false;
+        }
+
+        // Runtime overshoot is allowed before persistence, but the player-facing HUD never
+        // exposes a negative value. Positive overflow remains a state error instead of hiding
+        // a corrupted maximum/current pair.
+        var boundedCurrent = Math.Max(0d, current);
+        if (boundedCurrent > maximum)
+        {
+            reason = "hunger-hud-current-is-out-of-range";
+            return false;
+        }
+
+        frame = new HungerHudFrame(
+            containerBounds,
+            GetFillerPosition(containerBounds),
+            fillerWidth,
+            GetFillerHeight(boundedCurrent, maximum),
+            boundedCurrent,
+            maximum
+        );
+        reason = "hunger-hud-frame-ready";
         return true;
     }
 

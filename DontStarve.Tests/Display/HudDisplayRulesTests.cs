@@ -102,6 +102,51 @@ public sealed class HudDisplayRulesTests
         Assert.False(frame.ContainerBounds.Contains(931, 784));
     }
 
+    [Fact]
+    public void HungerFrameUsesTheSameContainerBoundsForDrawingAndHitTesting()
+    {
+        var success = HudDisplayRules.TryCreateHungerFrame(
+            new HudBounds(824, 560, 48, 224),
+            24,
+            -3,
+            150,
+            out var frame,
+            out var reason
+        );
+
+        Assert.True(success, reason);
+        Assert.Equal(new HudBounds(824, 560, 48, 224), frame.ContainerBounds);
+        Assert.Equal(0, frame.Current);
+        Assert.Equal(150, frame.Maximum);
+        Assert.Equal(0, frame.FillerHeight);
+        Assert.True(frame.ContainerBounds.Contains(824, 560));
+        Assert.False(frame.ContainerBounds.Contains(872, 784));
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 150, "hunger-hud-current-is-not-finite")]
+    [InlineData(1, double.PositiveInfinity, "hunger-hud-maximum-is-not-finite")]
+    [InlineData(0, 0, "hunger-hud-maximum-is-not-positive")]
+    [InlineData(151, 150, "hunger-hud-current-is-out-of-range")]
+    public void InvalidHungerStateFailsClosed(
+        double current,
+        double maximum,
+        string expectedReason
+    )
+    {
+        var success = HudDisplayRules.TryCreateHungerFrame(
+            new HudBounds(0, 0, 1, 1),
+            1,
+            current,
+            maximum,
+            out _,
+            out var reason
+        );
+
+        Assert.False(success);
+        Assert.Equal(expectedReason, reason);
+    }
+
     [Theory]
     [InlineData(0, 0)]
     [InlineData(100, 84)]

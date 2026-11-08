@@ -308,6 +308,41 @@ public sealed class PassOutReasonPolicyTests
         Assert.DoesNotContain("takeDamage", special, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Final_health_death_recovery_routes_hunger_through_the_shared_sanity_entry()
+    {
+        var adapter = Contract("SmapiPassOutReasonService.cs");
+        var hunger = Contract("OnlinePersistence", "Hunger.cs");
+
+        Assert.Contains(
+            "var hungerResult = HungerExtensions.ApplyHealthDeathRecovery(farmer);",
+            adapter,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "HungerRules.CalculateReviveValue(farmer.GetMaxHunger())",
+            hunger,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Health_death_hunger_recovery_does_not_depend_on_sanity_being_enabled()
+    {
+        var adapter = Contract("SmapiPassOutReasonService.cs");
+
+        Assert.Contains(
+            "if (!CanApplyHostHealthDeath(farmer))",
+            adapter,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "if (lifecycle.IsEnabled)",
+            adapter,
+            StringComparison.Ordinal
+        );
+    }
+
     private static PassOutReasonEvidence Evidence(
         PassOutReason reason,
         int timeOfDay,
@@ -338,6 +373,13 @@ public sealed class PassOutReasonPolicyTests
     {
         return File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "Contracts", "PassOut", fileName)
+        );
+    }
+
+    private static string Contract(string directory, string fileName)
+    {
+        return File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "Contracts", directory, fileName)
         );
     }
 

@@ -30,6 +30,19 @@ public sealed class SanityGameMusicCoordinatorTests
     {
         Assert.Null(SanityGameMusicCapabilityGate.ValidateVersion("1.6.15"));
         Assert.Null(
+            SanityGameMusicCapabilityGate.ValidateVersion(
+                "1.6.15.3",
+                isAndroidPlatform: true
+            )
+        );
+        Assert.Equal(
+            "music.patch.game-version-mismatch",
+            SanityGameMusicCapabilityGate.ValidateVersion(
+                "1.6.15.3",
+                isAndroidPlatform: false
+            )
+        );
+        Assert.Null(
             SanityGameMusicCapabilityGate.ValidateTarget(
                 methodFound: true,
                 isStatic: true,

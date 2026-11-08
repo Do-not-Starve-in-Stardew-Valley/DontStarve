@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using DontStarve.Player.Stats.Hunger;
 using DontStarve.Resource;
 using Microsoft.Xna.Framework;
@@ -14,7 +16,17 @@ namespace DontStarve.Display.UIElements;
 /// </summary>
 internal class HungerBar : INonTimeRelatedUIElement
 {
-    public void Init(IModHelper helper) { }
+    private readonly HashSet<string> reportedFailures = new(StringComparer.Ordinal);
+    private CultureInfo culture = CultureInfo.InvariantCulture;
+
+    public void Init(IModHelper helper)
+    {
+        culture = LocalizedValueFormatter.ResolveCulture(helper.Translation.Locale);
+        helper.Events.Content.LocaleChanged += (_, e) =>
+            culture = LocalizedValueFormatter.ResolveCulture(e.NewLocale);
+        helper.Events.GameLoop.SaveLoaded += (_, _) => reportedFailures.Clear();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => reportedFailures.Clear();
+    }
 
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
@@ -25,10 +37,23 @@ internal class HungerBar : INonTimeRelatedUIElement
         var hunger = player.GetHunger();
         var maxHunger = player.GetMaxHunger();
 
-        var containerBounds = uiContext.HudLayout.HungerBounds;
-        var spriteBatch = e.SpriteBatch;
+        if (
+            !HudDisplayRules.TryCreateHungerFrame(
+                uiContext.HudLayout.HungerBounds,
+                fillerWidth: TextureLoader.HungerFillerScaledWidth,
+                current: hunger,
+                maximum: maxHunger,
+                out var frame,
+                out var reason
+            )
+        )
+        {
+            ReportFailureOnce(reason);
+            return;
+        }
 
-        var fillerWidth = TextureLoader.HungerFillerScaledWidth;
+        var containerBounds = frame.ContainerBounds;
+        var spriteBatch = e.SpriteBatch;
 
         spriteBatch.Draw(
             TextureLoader.HungerContainer,
@@ -42,16 +67,17 @@ internal class HungerBar : INonTimeRelatedUIElement
         );
 
         var fillerPosition = HudDisplayRules.GetFillerPosition(containerBounds);
+        // HungerFiller already contains #CEAF3D; a colored tint would multiply it again.
         spriteBatch.Draw(
             TextureLoader.HungerFiller,
             new Vector2(fillerPosition.X, fillerPosition.Y),
             new Rectangle(
                 0,
                 0,
-                fillerWidth,
-                HudDisplayRules.GetFillerHeight(hunger, maxHunger)
+                frame.FillerWidth,
+                frame.FillerHeight
             ),
-            Brushes.HungerBrush,
+            Color.White,
             3.138997f,
             new Vector2(0.5f, 0.5f),
             1f,
@@ -62,7 +88,18 @@ internal class HungerBar : INonTimeRelatedUIElement
         var mousePoint = Game1.getMousePosition(true);
         if (containerBounds.Contains(mousePoint.X, mousePoint.Y))
         {
-            var information = $"Hunger: {Math.Round(hunger)}/{Math.Round(maxHunger)}";
+            var label = uiContext.Helper.Translation.Get("hunger-hud.label").ToString();
+            var information = uiContext.Helper.Translation
+                .Get(
+                    "hunger-hud.value",
+                    new
+                    {
+                        label,
+                        current = LocalizedValueFormatter.FormatWhole(frame.Current, culture),
+                        maximum = LocalizedValueFormatter.FormatWhole(frame.Maximum, culture),
+                    }
+                )
+                .ToString();
             var textSize = Game1.dialogueFont.MeasureString(information);
             var posX = containerBounds.X;
             var posY =
@@ -83,5 +120,15 @@ internal class HungerBar : INonTimeRelatedUIElement
                 0f
             );
         }
+    }
+
+    private void ReportFailureOnce(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason) || !reportedFailures.Add(reason))
+            return;
+
+        Console.Error.WriteLine(
+            $"[DontStarve][HungerHud] HUD skipped for invalid state (reason={reason})."
+        );
     }
 }

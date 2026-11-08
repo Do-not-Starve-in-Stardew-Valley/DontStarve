@@ -127,7 +127,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
     public void Tier_observation_publishes_higher_revision_without_requiring_a_tier_edge()
     {
         var service = Service();
-        var lifecycle = ReadyLifecycle(service, Persistence((OwnerA, 120d, 200d)));
+        var lifecycle = ReadyLifecycle(service, Persistence((OwnerA, 121d, 200d)));
         var observed = new List<SanityTierOwnerStateSnapshot>();
         var tierEvents = new List<SanityStateEvent>();
         lifecycle.TierStateObserved += observed.Add;
@@ -137,7 +137,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
 
         Assert.Equal(SanityChangeStatus.Applied, result.Status);
         var snapshot = Assert.Single(observed);
-        Assert.Equal(119d, snapshot.Current);
+        Assert.Equal(120d, snapshot.Current);
         Assert.Equal(1, snapshot.Revision);
         Assert.Empty(tierEvents);
     }
@@ -211,7 +211,7 @@ public sealed class SanitySystemLifecycleCoordinatorTests
         service.TierStateEventPublished += published.Add;
         lifecycle.Initialize();
         lifecycle.ApplyConfiguredState(false);
-        BeginHost(service, Persistence((OwnerA, 20d, 200d)));
+        BeginHost(service, Persistence((OwnerA, 19.9999d, 200d)));
         Assert.True(service.TryGetSnapshot(OwnerA, out var before));
         published.Clear();
 

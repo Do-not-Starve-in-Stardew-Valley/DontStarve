@@ -448,9 +448,12 @@ internal sealed class SanityTierStateMachine
         for (var index = 0; index < SanityTierCatalog.Rules.Count; index++)
         {
             var rule = SanityTierCatalog.Rules[index];
+            // Tier entry and exit are strict: enter only below the entry line, and leave only
+            // above the exit line. Equality therefore keeps an active hysteresis state but never
+            // activates an inactive tier.
             next[index] = owner.ActiveTiers[index]
-                ? ratio <= rule.ExitRatio
-                : ratio <= rule.EnterRatio;
+                ? !(ratio > rule.ExitRatio)
+                : ratio < rule.EnterRatio;
         }
 
         // 嵌套 tier 上升退出时按低阈值到高阈值发布，避免消费者先收到外层退出。

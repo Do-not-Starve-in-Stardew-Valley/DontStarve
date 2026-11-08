@@ -4,9 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.Illusions.Projection;
 using Microsoft.Xna.Framework;
+using StardewModdingAPI;
 using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.WorldInteractions.DarkHand;
@@ -15,12 +17,18 @@ internal static class DarkHandStardewVersionGate
 {
     internal const string VerifiedFileVersion = "1.6.15.24356";
 
-    internal static bool IsVerified1615 { get; } = Resolve();
+    internal static bool IsAndroidContractVerified { get; } = ResolveAndroid();
 
-    private static bool Resolve()
+    internal static bool IsVerified1615 { get; } =
+        IsAndroidContractVerified || ResolveDesktop();
+
+    private static bool ResolveDesktop()
     {
         try
         {
+            if (Constants.TargetPlatform == GamePlatform.Android)
+                return false;
+
             return string.Equals(
                 FileVersionInfo.GetVersionInfo(typeof(Game1).Assembly.Location).FileVersion,
                 VerifiedFileVersion,
@@ -31,6 +39,54 @@ internal static class DarkHandStardewVersionGate
         {
             return false;
         }
+    }
+
+    private static bool ResolveAndroid()
+    {
+        try
+        {
+            if (
+                Constants.TargetPlatform != GamePlatform.Android
+                || !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
+                    Game1.version,
+                    isAndroidPlatform: true
+                )
+            )
+            {
+                return false;
+            }
+
+            const BindingFlags instanceMembers =
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var torchAction = typeof(Torch).GetMethod(
+                "checkForAction",
+                instanceMembers,
+                binder: null,
+                types: new[] { typeof(Farmer), typeof(bool) },
+                modifiers: null
+            );
+            return torchAction is not null
+                && torchAction.ReturnType == typeof(bool)
+                && HasInstanceMember(typeof(Torch), "isOn")
+                && HasInstanceMember(typeof(StardewValley.Object), "heldObject")
+                && HasInstanceMember(typeof(StardewValley.Object), "lastInputItem")
+                && HasInstanceMember(typeof(StardewValley.Object), "lastOutputRuleId")
+                && HasInstanceMember(typeof(StardewValley.Object), "readyForHarvest")
+                && HasInstanceMember(typeof(StardewValley.Object), "showNextIndex")
+                && HasInstanceMember(typeof(StardewValley.Object), "MinutesUntilReady");
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool HasInstanceMember(Type type, string name)
+    {
+        const BindingFlags flags =
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        return type.GetField(name, flags) is not null
+            || type.GetProperty(name, flags) is not null;
     }
 }
 

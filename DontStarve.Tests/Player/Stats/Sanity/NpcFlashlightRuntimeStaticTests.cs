@@ -15,7 +15,10 @@ public sealed class NpcFlashlightRuntimeStaticTests
         Assert.Contains("NpcFlashlightConeLightSource", service, StringComparison.Ordinal);
         Assert.Contains("NpcFlashlightPolicy.BodyLightRadiusTiles", service, StringComparison.Ordinal);
         Assert.Contains("NpcFlashlightPolicy.IsEligibleNpc", service, StringComparison.Ordinal);
+        Assert.Contains("npc.IsVillager", service, StringComparison.Ordinal);
+        Assert.Contains("npc.SimpleNonVillagerNPC", service, StringComparison.Ordinal);
         Assert.Contains("npc is Monster", service, StringComparison.Ordinal);
+        Assert.Contains("location.NameOrUniqueName", service, StringComparison.Ordinal);
         Assert.Contains("EnsureCachedTexture", service, StringComparison.Ordinal);
         Assert.Contains("RefreshCadenceTicks = 3", service, StringComparison.Ordinal);
         Assert.DoesNotContain("sharedLights", service, StringComparison.Ordinal);

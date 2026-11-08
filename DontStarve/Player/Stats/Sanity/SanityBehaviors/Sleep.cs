@@ -86,6 +86,16 @@ internal class Sleep : INonTimeRelatedBehavior
             // DayEnding owns the terminal reason settlement. Remove the consumed receipt now so
             // a repeated callback cannot retain session evidence into save/day boundaries.
             ledger.ForgetPlayer(playerKey);
+            if (
+                evidence.Reason == PassOutReason.VoluntarySleep
+                && lifecycle.IsCustomSleepOwned(playerKey)
+            )
+            {
+                // The shared Sleep lifecycle owns voluntary recovery/cost and will consume its
+                // receipt after Farmer.dayupdate. Keep this old reason ledger drain-only so the
+                // existing doSleep owner cannot apply a second Sanity delta at DayEnding.
+                continue;
+            }
             if (decision.Action != PassOutPolicyAction.ApplyDelta)
             {
                 if (decision.Action == PassOutPolicyAction.None)

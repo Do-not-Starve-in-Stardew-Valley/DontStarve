@@ -12,6 +12,8 @@ internal sealed class GameplayConfigFingerprint
     private static readonly string[] RequiredWorldStateKeys =
     {
         ConfigKeys.EnableHungerSystem,
+        ConfigKeys.HungerDamageMode,
+        ConfigKeys.SleepRecoveryBalance,
         ConfigKeys.EnableSeedEdibility,
         ConfigKeys.EnableSanitySystem,
         ConfigKeys.SanityMonsterIntensity,

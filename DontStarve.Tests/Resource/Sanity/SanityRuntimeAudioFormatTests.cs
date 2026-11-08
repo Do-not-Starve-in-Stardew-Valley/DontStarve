@@ -9,36 +9,36 @@ namespace DontStarve.Tests.Resource.Sanity;
 public sealed class SanityRuntimeAudioFormatTests
 {
     [Theory]
-    [InlineData(44100, "sanity.wav.pcm-s16-stereo-44100-v1", 176400)]
-    [InlineData(48000, "sanity.wav.pcm-s16-stereo-48000-v1", 192000)]
+    [InlineData(44100, "sanity.ogg.vorbis-stereo-44100-v1")]
+    [InlineData(48000, "sanity.ogg.vorbis-stereo-48000-v1")]
     public void CatalogMatchesOnlyItsExactPcmDescriptor(
         int sampleRate,
-        string formatId,
-        int byteRate
+        string formatId
     )
     {
-        var inspection = SanityWavInspector.Inspect(BuildWav(sampleRate));
+        var inspection = SanityOggInspector.Inspect(BuildOgg(sampleRate));
 
         Assert.True(inspection.Success, string.Join(Environment.NewLine, inspection.Issues));
-        Assert.Equal(byteRate, inspection.ByteRate);
-        Assert.True(SanityWavFormatCatalog.TryGet(formatId, out var descriptor));
+        Assert.Equal(2, inspection.Channels);
+        Assert.Equal(sampleRate, inspection.SampleRateHz);
+        Assert.True(SanityOggFormatCatalog.TryGet(formatId, out var descriptor));
         Assert.True(descriptor.Matches(inspection));
     }
 
     [Fact]
-    public void CatalogRejectsAValidWavWithTheWrongDeclaredRate()
+    public void CatalogRejectsAValidOggWithTheWrongDeclaredRate()
     {
-        var inspection = SanityWavInspector.Inspect(BuildWav(44100));
+        var inspection = SanityOggInspector.Inspect(BuildOgg(44100));
 
-        Assert.True(SanityWavFormatCatalog.TryGet(
-            SanityWavFormatCatalog.PcmS16Stereo48000V1,
+        Assert.True(SanityOggFormatCatalog.TryGet(
+            SanityOggFormatCatalog.VorbisStereo48000V1,
             out var descriptor
         ));
         Assert.False(descriptor.Matches(inspection));
     }
 
     [Fact]
-    public void RuntimeCacheRejectsUnknownFormatsAndAcceptsNative48000Pcm()
+    public void RuntimeCacheRejectsUnknownFormatsAndAcceptsNative48000Vorbis()
     {
         var files = new MemoryFiles();
         var factory = new FakeFactory();
@@ -49,8 +49,8 @@ public sealed class SanityRuntimeAudioFormatTests
             factory,
             diagnostics.Add
         );
-        var path = "Asset/Sanity/Audio/Creatures/test.wav";
-        var bytes = BuildWav(48000);
+        var path = "Asset/Sanity/Audio/Creatures/test.ogg";
+        var bytes = BuildOgg(48000);
         files.Add(path, bytes);
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
 
@@ -61,7 +61,7 @@ public sealed class SanityRuntimeAudioFormatTests
             hash,
             required: true,
             isPlaceholder: false,
-            expectedFormatId: "sanity.wav.unsupported-v1"
+            expectedFormatId: "sanity.ogg.unsupported-v1"
         );
         Assert.False(unknown.Success);
         Assert.Equal("resource.sound.unknown-format-id", unknown.Diagnostic.Code);
@@ -73,7 +73,7 @@ public sealed class SanityRuntimeAudioFormatTests
             hash,
             required: true,
             isPlaceholder: false,
-            expectedFormatId: SanityWavFormatCatalog.PcmS16Stereo48000V1
+            expectedFormatId: SanityOggFormatCatalog.VorbisStereo48000V1
         );
         Assert.True(accepted.Success, accepted.Diagnostic.Reason);
         Assert.Equal(1, factory.SoundCreates);
@@ -91,8 +91,8 @@ public sealed class SanityRuntimeAudioFormatTests
             factory,
             diagnostics.Add
         );
-        var path = "Asset/Sanity/Audio/Creatures/shared.wav";
-        var bytes = BuildWav(44100);
+        var path = "Asset/Sanity/Audio/Creatures/shared.ogg";
+        var bytes = BuildOgg(44100);
         files.Add(path, bytes);
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
 
@@ -103,7 +103,7 @@ public sealed class SanityRuntimeAudioFormatTests
             hash,
             required: true,
             isPlaceholder: false,
-            expectedFormatId: SanityWavFormatCatalog.PcmS16Stereo44100V1
+            expectedFormatId: SanityOggFormatCatalog.VorbisStereo44100V1
         );
         var conflicting = cache.Load(
             "sanity.cue.second",
@@ -112,7 +112,7 @@ public sealed class SanityRuntimeAudioFormatTests
             hash,
             required: true,
             isPlaceholder: false,
-            expectedFormatId: SanityWavFormatCatalog.PcmS16Stereo48000V1
+            expectedFormatId: SanityOggFormatCatalog.VorbisStereo48000V1
         );
 
         Assert.True(first.Success, first.Diagnostic.Reason);
@@ -124,9 +124,9 @@ public sealed class SanityRuntimeAudioFormatTests
     [Fact]
     public void CueResourceMapPreservesExactPoolOrderAndLegacyFlatList()
     {
-        var first = new FakeResource("first.wav");
-        var second = new FakeResource("second.wav");
-        var third = new FakeResource("third.wav");
+        var first = new FakeResource("first.ogg");
+        var second = new FakeResource("second.ogg");
+        var third = new FakeResource("third.ogg");
         var firstCue = Cue(
             "sanity.cue.test.first",
             new[] { Clip("first-1", first.Path), Clip("first-2", second.Path) }
@@ -161,7 +161,7 @@ public sealed class SanityRuntimeAudioFormatTests
             id,
             $"Asset/Sanity/Audio/Creatures/{path}",
             new string('A', 64),
-            SanityWavFormatCatalog.PcmS16Stereo44100V1,
+            SanityOggFormatCatalog.VorbisStereo44100V1,
             isPlaceholder: false,
             durationFrames: 1,
             durationSeconds: 1d / 44100d
@@ -184,26 +184,50 @@ public sealed class SanityRuntimeAudioFormatTests
         );
     }
 
-    private static byte[] BuildWav(int sampleRate)
+    private static byte[] BuildOgg(int sampleRate, int channels = 2, long frames = 4)
     {
-        const int channels = 2;
-        const int bits = 16;
-        const int blockAlign = channels * (bits / 8);
-        const int dataBytes = blockAlign * 4;
-        var bytes = new byte[44 + dataBytes];
-        Encoding.ASCII.GetBytes("RIFF").CopyTo(bytes, 0);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)(bytes.Length - 8));
-        Encoding.ASCII.GetBytes("WAVEfmt ").CopyTo(bytes, 8);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), 16);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(20), 1);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(22), channels);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), (uint)sampleRate);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), (uint)(sampleRate * blockAlign));
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(32), blockAlign);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(34), bits);
-        Encoding.ASCII.GetBytes("data").CopyTo(bytes, 36);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), dataBytes);
-        return bytes;
+        var bytes = new List<byte>();
+        var identification = new byte[30];
+        identification[0] = 1;
+        Encoding.ASCII.GetBytes("vorbis").CopyTo(identification, 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(identification.AsSpan(7), 0);
+        identification[11] = checked((byte)channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(identification.AsSpan(12), checked((uint)sampleRate));
+        identification[28] = 0x88;
+        identification[29] = 1;
+        AppendPage(bytes, headerType: 2, granulePosition: 0, sequence: 0, identification);
+
+        var comment = new byte[15];
+        comment[0] = 3;
+        Encoding.ASCII.GetBytes("vorbis").CopyTo(comment, 1);
+        AppendPage(bytes, headerType: 0, granulePosition: 0, sequence: 1, comment);
+        AppendPage(bytes, headerType: 4, granulePosition: frames, sequence: 2, new byte[] { 0 });
+        return bytes.ToArray();
+    }
+
+    private static void AppendPage(
+        List<byte> output,
+        byte headerType,
+        long granulePosition,
+        uint sequence,
+        byte[] packet
+    )
+    {
+        output.AddRange(Encoding.ASCII.GetBytes("OggS"));
+        output.Add(0);
+        output.Add(headerType);
+        var numeric = new byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(numeric, granulePosition);
+        output.AddRange(numeric);
+        numeric = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(numeric, 7);
+        output.AddRange(numeric);
+        BinaryPrimitives.WriteUInt32LittleEndian(numeric, sequence);
+        output.AddRange(numeric);
+        output.AddRange(new byte[4]);
+        output.Add(1);
+        output.Add(checked((byte)packet.Length));
+        output.AddRange(packet);
     }
 
     private sealed class MemoryFiles : ISanityAssetFileAccess

@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using DontStarve.Player.Stats.Sanity.Visual;
 using Xunit;
 
 namespace DontStarve.Tests.Player.Stats.Sanity;
@@ -89,8 +90,41 @@ public sealed class SanityVignetteStaticTests
         Assert.Contains("SanityMinigameVisualContext.Fishing", draw, StringComparison.Ordinal);
         Assert.Contains("SanityMinigameVisualContext.Other", draw, StringComparison.Ordinal);
         Assert.Contains("state.MinigameContext != minigameContext", draw, StringComparison.Ordinal);
+        Assert.Contains("state.DangerTierActive", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("TryLoadRenderer", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("Game1.activeClickableMenu", draw, StringComparison.Ordinal);
+        Assert.Contains("snapshot.ActiveTierIds", overlay, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Hud_vignette_uses_logical_ui_size_even_when_device_viewport_differs()
+    {
+        var logicalCenter = SanityVignetteViewportPolicy.GetCenter(0, 0, 1366, 768);
+        var deviceCenter = SanityVignetteViewportPolicy.GetCenter(0, 0, 2560, 1440);
+
+        Assert.Equal((683f, 384f), logicalCenter);
+        Assert.NotEqual(deviceCenter, logicalCenter);
+
+        var overlay = ReadVignetteContract("SanityVignetteOverlayService.cs");
+        var drawStart = overlay.IndexOf("private void OnRenderedHud", StringComparison.Ordinal);
+        var drawEnd = overlay.IndexOf("private bool TryRefreshCurrentOwner", drawStart, StringComparison.Ordinal);
+        Assert.True(drawStart >= 0 && drawEnd > drawStart);
+        var draw = overlay[drawStart..drawEnd];
+        Assert.Contains("new Rectangle", draw, StringComparison.Ordinal);
+        Assert.Contains("Game1.uiViewport.Width", draw, StringComparison.Ordinal);
+        Assert.Contains("Game1.uiViewport.Height", draw, StringComparison.Ordinal);
+        Assert.DoesNotContain("GraphicsDevice.Viewport.Bounds", draw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Each_screen_gets_its_own_logical_center_without_shared_viewport_state()
+    {
+        var firstScreen = SanityVignetteViewportPolicy.GetCenter(0, 0, 1000, 768);
+        var secondScreen = SanityVignetteViewportPolicy.GetCenter(0, 0, 600, 768);
+
+        Assert.Equal((500f, 384f), firstScreen);
+        Assert.Equal((300f, 384f), secondScreen);
+        Assert.NotEqual(firstScreen, secondScreen);
     }
 
     private static string RequiredAttribute(XElement element, string attributeName)

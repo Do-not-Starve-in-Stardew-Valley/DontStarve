@@ -26,6 +26,7 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
     private readonly NonLethalDamageService nonLethalDamage;
     private readonly ISanityDarknessSpecialDeathNonLethalPolicy
         specialDeathNonLethal;
+    private readonly Action<Farmer>? lethalDamageHandler;
     private readonly DarknessAttackResolutionService resolution;
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private bool disposed;
@@ -36,7 +37,8 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         SanitySystemLifecycleCoordinator lifecycle,
         SmapiDarknessAttackService darknessAttack,
         IDarknessDamageModeResolver modeResolver,
-        SanitySmapiResourceService resources
+        SanitySmapiResourceService resources,
+        Action<Farmer>? lethalDamageHandler = null
     )
     {
         this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
@@ -47,6 +49,7 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         this.modeResolver = modeResolver
             ?? throw new ArgumentNullException(nameof(modeResolver));
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
+        this.lethalDamageHandler = lethalDamageHandler;
 
         Func<string, Farmer?> resolvePlayer = ResolveCurrentScreenPlayer;
         nonLethalDamage = new NonLethalDamageService(
@@ -59,7 +62,10 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         var damageAuthority = new SmapiDarknessAttackDamageAuthority(
             lifecycle,
             nonLethalDamage,
-            new SmapiDefaultDarknessDamageExecutor(resolvePlayer)
+            new SmapiDefaultDarknessDamageExecutor(
+                resolvePlayer,
+                lethalDamageHandler
+            )
         );
         resolution = new DarknessAttackResolutionService(
             new SystemDarknessAttackResolutionRandom(),
@@ -382,10 +388,15 @@ internal sealed class SystemDarknessAttackResolutionRandom
 internal sealed class SmapiDefaultDarknessDamageExecutor
 {
     private readonly Func<string, Farmer?> resolvePlayer;
+    private readonly Action<Farmer>? lethalDamageHandler;
 
-    internal SmapiDefaultDarknessDamageExecutor(Func<string, Farmer?> resolvePlayer)
+    internal SmapiDefaultDarknessDamageExecutor(
+        Func<string, Farmer?> resolvePlayer,
+        Action<Farmer>? lethalDamageHandler = null
+    )
     {
         this.resolvePlayer = resolvePlayer ?? throw new ArgumentNullException(nameof(resolvePlayer));
+        this.lethalDamageHandler = lethalDamageHandler;
     }
 
     internal DarknessAttackDamageReceipt Execute(DarknessAttackDamageRequest request)
@@ -440,6 +451,8 @@ internal sealed class SmapiDefaultDarknessDamageExecutor
         }
         if (!vanillaHurtSoundObserved && DarknessVanillaHurtSoundBridge.IsInstalled)
             player.playNearbySoundAll("ow");
+        if (player.health <= 0)
+            lethalDamageHandler?.Invoke(player);
         if (
             player.maxHealth != maximumHealth
             || player.health < 0

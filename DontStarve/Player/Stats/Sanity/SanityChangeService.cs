@@ -27,6 +27,8 @@ internal enum SanityChangeSource
     ExhaustionPassOut = 16,
     HealthDeath = 17,
     SanityDarknessSpecialDeath = 18,
+    Garbage = 19,
+    FlowerCollection = 20,
 }
 
 internal enum SanityChangeStatus
@@ -127,12 +129,19 @@ internal readonly record struct SanityRequestPolicy(
                 SanitySaveData.CurrentDefaultMaxSanity,
                 "food-interaction-must-be-recomputed-by-host"
             )
-            : new SanityRequestPolicy(
-                false,
-                0,
-                0,
-                "change-source-is-host-only"
-            );
+            : source == SanityChangeSource.Garbage
+                ? new SanityRequestPolicy(
+                    true,
+                    0,
+                    SanitySaveData.CurrentDefaultMaxSanity,
+                    "garbage-interaction-must-be-recomputed-by-host"
+                )
+                : new SanityRequestPolicy(
+                    false,
+                    0,
+                    0,
+                    "change-source-is-host-only"
+                );
     }
 }
 
@@ -144,12 +153,23 @@ internal interface ISanityRequestTruthSource
 internal readonly record struct SanityRequestTruth(
     bool Success,
     double Delta,
-    string Reason
+    string Reason,
+    TrashCanSanityPlan? GarbagePlan = null
 )
 {
     internal static SanityRequestTruth Accepted(double delta)
     {
         return new SanityRequestTruth(true, delta, "request-truth-recomputed-by-host");
+    }
+
+    internal static SanityRequestTruth AcceptedGarbage(TrashCanSanityPlan plan)
+    {
+        return new SanityRequestTruth(
+            true,
+            plan.NetDelta,
+            "garbage-interaction-recomputed-by-host",
+            plan
+        );
     }
 
     internal static SanityRequestTruth Rejected(string reason)
@@ -308,6 +328,13 @@ internal sealed class SanityChangeService
         sanitySystemEnabled = enabled;
         var result = tierState.SetSystemEnabled(enabled);
         PublishTierResult(result);
+        if (enabled)
+        {
+            // Rebuild the pure gameplay phase from the already-authoritative snapshot when
+            // re-enabling. Disabled startup deliberately keeps the budget owner untracked.
+            foreach (var snapshot in state.CreateFullSnapshot().Players)
+                ObserveShadowGameplayPhase(snapshot);
+        }
         return result;
     }
 
@@ -620,6 +647,139 @@ internal sealed class SanityChangeService
         return SanityChangeResult.Queued(request);
     }
 
+    internal SanityChangeResult ChangeGarbage(
+        string playerKey,
+        TrashCanSanityFacts facts
+    )
+    {
+        if (facts is null)
+            return SanityChangeResult.Rejected(
+                "garbage-interaction-facts-are-missing",
+                SanityChangeSource.Garbage
+            );
+
+        if (state.Role == SanityAuthorityRole.Host)
+        {
+            if (!TryEnsureHostPlayer(playerKey, out var snapshot, out var reason))
+                return SanityChangeResult.Rejected(reason, SanityChangeSource.Garbage);
+            if (!sanitySystemEnabled)
+            {
+                return SanityChangeResult.Applied(
+                    snapshot,
+                    false,
+                    "sanity-system-disabled",
+                    SanityChangeSource.Garbage
+                );
+            }
+            if (debugSanityLocked)
+            {
+                return SanityChangeResult.Applied(
+                    snapshot,
+                    false,
+                    "sanity-change-locked-by-debug-command",
+                    SanityChangeSource.Garbage
+                );
+            }
+            if (effectiveOverlayOwners.Contains(playerKey))
+            {
+                return SanityChangeResult.Applied(
+                    snapshot,
+                    false,
+                    "sanity-change-frozen-by-effective-overlay",
+                    SanityChangeSource.Garbage
+                );
+            }
+
+            return ApplyGarbageHostPlan(
+                playerKey,
+                TrashCanSanityPolicy.Evaluate(facts)
+            );
+        }
+
+        if (state.Role != SanityAuthorityRole.Client)
+        {
+            return SanityChangeResult.Rejected(
+                "sanity-session-is-not-active",
+                SanityChangeSource.Garbage
+            );
+        }
+
+        var policy = SanityRequestPolicy.For(SanityChangeSource.Garbage);
+        if (!policy.ClientRequestAllowed)
+            return SanityChangeResult.Rejected(policy.Reason, SanityChangeSource.Garbage);
+        if (!SanityProtocol.IsValidSessionId(state.SessionId))
+        {
+            return SanityChangeResult.Rejected(
+                "client-authority-session-is-not-ready",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (!state.TryGetSnapshot(playerKey, out var clientSnapshot))
+        {
+            return SanityChangeResult.Rejected(
+                "client-player-state-is-unknown",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (!sanitySystemEnabled)
+        {
+            return SanityChangeResult.Applied(
+                clientSnapshot,
+                false,
+                "sanity-system-disabled",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (effectiveOverlayOwners.Contains(playerKey))
+        {
+            return SanityChangeResult.Applied(
+                clientSnapshot,
+                false,
+                "sanity-change-frozen-by-effective-overlay",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (nextClientNonce == long.MaxValue)
+        {
+            return SanityChangeResult.Rejected(
+                "client-request-nonce-is-exhausted",
+                SanityChangeSource.Garbage
+            );
+        }
+
+        var normalizedId = TrashCanSanityPolicy.NormalizeGarbageCanId(
+            facts.GarbageCanId
+        );
+        var interactionId = string.Concat(
+            "garbage:",
+            normalizedId,
+            ":",
+            facts.TileX,
+            ":",
+            facts.TileY
+        );
+        if (interactionId.Length > 128)
+        {
+            return SanityChangeResult.Rejected(
+                "garbage-interaction-id-is-too-long",
+                SanityChangeSource.Garbage
+            );
+        }
+
+        var request = new SanityChangeRequest
+        {
+            SessionId = state.SessionId,
+            PlayerKey = playerKey,
+            Source = SanityChangeSource.Garbage,
+            InteractionId = interactionId,
+            Nonce = ++nextClientNonce,
+            ExpectedRevision = clientSnapshot.Revision,
+            Garbage = facts,
+        };
+        ClientRequestCreated?.Invoke(request);
+        return SanityChangeResult.Queued(request);
+    }
+
     internal SanityChangeResult Set(
         string playerKey,
         double value,
@@ -750,11 +910,10 @@ internal sealed class SanityChangeService
             );
         }
 
-        var applied = Change(
-            request.PlayerKey,
-            validation.Delta,
-            request.Source
-        );
+        var applied = request.Source == SanityChangeSource.Garbage
+            && validation.GarbagePlan is { } garbagePlan
+            ? ApplyGarbageHostPlan(request.PlayerKey, garbagePlan)
+            : Change(request.PlayerKey, validation.Delta, request.Source);
         if (
             applied.Status is not SanityChangeStatus.Applied
                 and not SanityChangeStatus.NoChange
@@ -851,6 +1010,76 @@ internal sealed class SanityChangeService
         return SanityChangeResult.Applied(snapshot, changed, reason, source);
     }
 
+    private SanityChangeResult ApplyGarbageHostPlan(
+        string playerKey,
+        TrashCanSanityPlan plan
+    )
+    {
+        if (!TryEnsureHostPlayer(playerKey, out var initial, out var reason))
+            return SanityChangeResult.Rejected(reason, SanityChangeSource.Garbage);
+        if (!sanitySystemEnabled)
+        {
+            return SanityChangeResult.Applied(
+                initial,
+                false,
+                "sanity-system-disabled",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (debugSanityLocked || effectiveOverlayOwners.Contains(playerKey))
+        {
+            return SanityChangeResult.Applied(
+                initial,
+                false,
+                debugSanityLocked
+                    ? "sanity-change-locked-by-debug-command"
+                    : "sanity-change-frozen-by-effective-overlay",
+                SanityChangeSource.Garbage
+            );
+        }
+
+        var current = initial.Current;
+        if (plan.Penalty != 0)
+        {
+            var penalty = ApplyHostValue(
+                playerKey,
+                current + plan.Penalty,
+                SanityChangeSource.Garbage
+            );
+            if (
+                penalty.Status is SanityChangeStatus.Rejected
+                    || penalty.Snapshot is null
+            )
+            {
+                return penalty;
+            }
+
+            current = penalty.Snapshot.Current;
+        }
+
+        if (plan.Recovery == 0)
+        {
+            return plan.Penalty == 0
+                ? SanityChangeResult.Applied(
+                    initial,
+                    false,
+                    "garbage-interaction-produced-no-sanity-change",
+                    SanityChangeSource.Garbage
+                )
+                : ApplyHostValue(
+                    playerKey,
+                    current,
+                    SanityChangeSource.Garbage
+                );
+        }
+
+        return ApplyHostValue(
+            playerKey,
+            current + plan.Recovery,
+            SanityChangeSource.Garbage
+        );
+    }
+
     private void ObserveTierSnapshot(SanityPlayerSnapshot snapshot)
     {
         if (effectiveOverlayOwners.Contains(snapshot.PlayerKey))
@@ -866,7 +1095,24 @@ internal sealed class SanityChangeService
             && observed is not null
         )
         {
+            if (sanitySystemEnabled)
+                ObserveShadowGameplayPhase(snapshot);
             TierStateObserved?.Invoke(observed);
+        }
+    }
+
+    private void ObserveShadowGameplayPhase(SanityPlayerSnapshot snapshot)
+    {
+        if (
+            !shadowBudget.ObserveSanityRatio(
+                snapshot.PlayerKey,
+                snapshot.Current,
+                snapshot.Maximum,
+                out var budgetReason
+            )
+        )
+        {
+            ShadowBudgetDiagnosticRaised?.Invoke(budgetReason);
         }
     }
 
@@ -887,11 +1133,12 @@ internal readonly record struct SanityRequestValidation(
     bool Accepted,
     bool NeedsSnapshot,
     double Delta,
-    string Reason
+    string Reason,
+    TrashCanSanityPlan? GarbagePlan = null
 );
 
 /// <summary>
-/// source-specific 请求门：当前只有食物交互可请求，且请求自身没有 delta；
+/// source-specific 请求门：只有食物和垃圾桶交互可请求，且请求自身没有 delta；
 /// 其他来源均由主机观察/自产，客户端提交一律拒绝。
 /// </summary>
 internal sealed class SanityRequestValidator
@@ -968,8 +1215,29 @@ internal sealed class SanityRequestValidator
         var truth = truthSource.Resolve(request, senderPlayerId);
         if (!truth.Success)
             return Reject($"request-context-rejected:{truth.Reason}", false);
+        if (
+            request.Source == SanityChangeSource.Garbage
+            && !truth.GarbagePlan.HasValue
+        )
+        {
+            return Reject("garbage-request-plan-is-missing", false);
+        }
         if (!double.IsFinite(truth.Delta))
             return Reject("host-recomputed-delta-must-be-finite", false);
+        if (
+            truth.GarbagePlan is { } garbagePlan
+            && (
+                !double.IsFinite(garbagePlan.Penalty)
+                || !double.IsFinite(garbagePlan.Recovery)
+                || Math.Max(
+                    Math.Abs(garbagePlan.Penalty),
+                    Math.Abs(garbagePlan.Recovery)
+                ) > policy.MaximumAbsoluteDelta
+            )
+        )
+        {
+            return Reject("host-recomputed-garbage-plan-exceeds-source-range", false);
+        }
         var allowedMagnitude = Math.Min(
             policy.MaximumAbsoluteDelta,
             current.Maximum
@@ -981,7 +1249,8 @@ internal sealed class SanityRequestValidator
             true,
             false,
             truth.Delta,
-            "request-validated-by-host"
+            "request-validated-by-host",
+            truth.GarbagePlan
         );
     }
 

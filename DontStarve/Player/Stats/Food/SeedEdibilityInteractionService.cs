@@ -69,6 +69,24 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
         if (disposed)
             return;
 
+        if (e.Button == SButton.MouseLeft)
+        {
+            // On mobile SMAPI exposes the touch contact as MouseLeft before UpdateTicked. Capture
+            // the target here so vanilla toolbar handling cannot replace the candidate snapshot
+            // before the one-second gesture is evaluated. A real mouse has no TouchPanel contact
+            // and therefore remains entirely vanilla.
+            if (touch.IsActive)
+            {
+                // A second contact must not reach the vanilla toolbar after the first contact was
+                // captured. UpdateTicked will cancel the gesture when it observes both pointers.
+                helper.Input.Suppress(SButton.MouseLeft);
+                return;
+            }
+
+            TryBeginTouchFromButtonEvent();
+            return;
+        }
+
         if (e.Button == SButton.MouseRight)
         {
             if (
@@ -125,6 +143,12 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
         if (disposed)
             return;
 
+        if (e.Button == SButton.MouseLeft)
+        {
+            CompleteTouchFromButtonEvent();
+            return;
+        }
+
         if (e.Button == SButton.ControllerA)
             gamepad.Release(SeedFoodGamepadButton.A);
         else if (e.Button == SButton.ControllerX)
@@ -142,24 +166,8 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
             return;
         }
 
-        TouchCollection touches;
-        try
-        {
-            touches = TouchPanel.GetState();
-        }
-        catch (Exception exception)
-        {
-            touch.Cancel();
-            if (!touchReadFailureLogged)
-            {
-                touchReadFailureLogged = true;
-                monitor.Log(
-                    $"Seed touch input is disabled for this session ({exception.GetType().Name}: {exception.Message}).",
-                    LogLevel.Warn
-                );
-            }
+        if (!TryReadTouchState(out var touches))
             return;
-        }
 
         if (touches.Count != 1)
         {
@@ -173,38 +181,20 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
         var timestamp = Environment.TickCount64;
         if (location.State == TouchLocationState.Pressed)
         {
-            if (
-                TryGetCandidateAt(
-                    position,
-                    SeedFoodInputDevice.Touch,
-                    out var candidate
-                )
-            )
-            {
-                touch.TryBegin(
-                    location.Id,
-                    new SeedFoodPoint(position.X, position.Y),
-                    timestamp,
-                    BuildContext(candidate.Slot, allowActiveMenu: false)
-                );
-            }
+            // ButtonPressed normally captured this edge. This is only a fallback for runtimes
+            // that expose TouchPanel.Pressed after the SMAPI button event.
+            if (!touch.IsActive)
+                TryBeginTouch(location, timestamp, suppressMouseLeft: false);
             return;
         }
 
-        if (!touch.IsActive)
-            return;
-
         if (location.State == TouchLocationState.Released)
         {
-            var context = TryGetContextAt(position, allowActiveMenu: false);
-            var releasedCandidate = touch.Release(
-                location.Id,
-                new SeedFoodPoint(position.X, position.Y),
+            CompleteTouch(
+                location,
                 timestamp,
-                context
+                suppressMouseLeft: false
             );
-            if (releasedCandidate.HasValue)
-                RequestConfirmation(releasedCandidate.Value);
             return;
         }
 
@@ -217,6 +207,222 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
                 context,
                 multiplePointers: false
             );
+        }
+    }
+
+    private void TryBeginTouchFromButtonEvent()
+    {
+        if (touch.IsActive || !CanReadTouchInput())
+            return;
+
+        if (!TryReadTouchLocation(TouchLocationState.Pressed, out var location))
+            return;
+
+        TryBeginTouch(
+            location,
+            Environment.TickCount64,
+            suppressMouseLeft: true
+        );
+    }
+
+    private void CompleteTouchFromButtonEvent()
+    {
+        if (!touch.IsActive || !TryReadTouchState(out var touches))
+            return;
+
+        if (touches.Count > 1)
+        {
+            touch.Cancel();
+            helper.Input.Suppress(SButton.MouseLeft);
+            return;
+        }
+
+        var pointerId = touch.PointerId;
+        if (touches.Count == 1)
+        {
+            var location = touches[0];
+            if (location.Id != pointerId)
+            {
+                // The captured contact disappeared while another contact remained. This is a
+                // multi-touch cancellation, not a valid release of the captured gesture.
+                touch.Cancel();
+                helper.Input.Suppress(SButton.MouseLeft);
+                return;
+            }
+
+            // ButtonReleased is the authoritative edge. The TouchPanel state may still report
+            // Moved/Stationary here, so do not require TouchLocationState.Released.
+            CompleteTouch(
+                location,
+                Environment.TickCount64,
+                suppressMouseLeft: true
+            );
+            return;
+        }
+
+        // Some mobile runtimes remove the released location before ButtonReleased is raised. Use
+        // the last point observed for the captured pointer so a valid long press still reaches the
+        // confirmation path and a short press can still replay native toolbar selection.
+        CompleteTouch(
+            pointerId,
+            touch.LastPosition,
+            Environment.TickCount64,
+            suppressMouseLeft: true
+        );
+    }
+
+    private void TryBeginTouch(
+        TouchLocation location,
+        long timestamp,
+        bool suppressMouseLeft
+    )
+    {
+        var position = ToUiPoint(location.Position);
+        if (
+            !TryGetCandidateAt(
+                position,
+                SeedFoodInputDevice.Touch,
+                out var candidate
+            )
+        )
+        {
+            return;
+        }
+
+        if (
+            !touch.TryBegin(
+                location.Id,
+                new SeedFoodPoint(position.X, position.Y),
+                timestamp,
+                BuildContext(candidate.Slot, allowActiveMenu: false)
+            )
+        )
+        {
+            return;
+        }
+
+        if (suppressMouseLeft)
+            helper.Input.Suppress(SButton.MouseLeft);
+    }
+
+    private void CompleteTouch(
+        TouchLocation location,
+        long timestamp,
+        bool suppressMouseLeft
+    )
+    {
+        CompleteTouch(
+            location.Id,
+            ToSeedFoodPoint(location.Position),
+            timestamp,
+            suppressMouseLeft
+        );
+    }
+
+    private void CompleteTouch(
+        int pointerId,
+        SeedFoodPoint point,
+        long timestamp,
+        bool suppressMouseLeft
+    )
+    {
+        var activeCandidate = touch.ActiveCandidate;
+        if (!activeCandidate.HasValue)
+            return;
+
+        var origin = touch.Origin;
+        var position = new Point(point.X, point.Y);
+        var context = TryGetContextAt(position, allowActiveMenu: false);
+        var releasedCandidate = touch.Release(
+            pointerId,
+            point,
+            timestamp,
+            context
+        );
+
+        if (suppressMouseLeft)
+            helper.Input.Suppress(SButton.MouseLeft);
+
+        if (releasedCandidate.HasValue)
+        {
+            RequestConfirmation(releasedCandidate.Value);
+            return;
+        }
+
+        // A captured short tap is replayed through the vanilla Toolbar API. This preserves the
+        // native select/carry behavior, including two short taps, while ensuring neither tap can
+        // be mistaken for the custom long-press eating gesture.
+        if (
+            !SeedFoodInputRules.HasMoved(origin, point)
+            && activeCandidate.Value.Matches(context)
+        )
+        {
+            ReplayNativeToolbarClick(new Point(point.X, point.Y));
+        }
+    }
+
+    private bool TryReadTouchLocation(
+        TouchLocationState expectedState,
+        out TouchLocation location
+    )
+    {
+        location = default;
+        if (!TryReadTouchState(out var touches))
+            return false;
+
+        // The gesture contract is single-pointer. Do not capture or suppress a MouseLeft edge
+        // while another contact is present; the update path will cancel any prior gesture.
+        if (touches.Count != 1)
+            return false;
+
+        foreach (var candidate in touches)
+        {
+            if (candidate.State == expectedState)
+            {
+                location = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryReadTouchState(out TouchCollection touches)
+    {
+        touches = default;
+        try
+        {
+            touches = TouchPanel.GetState();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            touch.Cancel();
+            if (!touchReadFailureLogged)
+            {
+                touchReadFailureLogged = true;
+                monitor.Log(
+                    $"Seed touch input is disabled for this session ({exception.GetType().Name}: {exception.Message}).",
+                    LogLevel.Warn
+                );
+            }
+
+            return false;
+        }
+    }
+
+    private static void ReplayNativeToolbarClick(Point position)
+    {
+        if (Game1.onScreenMenus is null)
+            return;
+
+        foreach (var menu in Game1.onScreenMenus)
+        {
+            if (menu is Toolbar toolbar && toolbar.isWithinBounds(position.X, position.Y))
+            {
+                toolbar.receiveLeftClick(position.X, position.Y);
+                return;
+            }
         }
     }
 
@@ -442,5 +648,11 @@ internal sealed class SeedEdibilityInteractionService : IDisposable
             (int)(screenPosition.X / scale),
             (int)(screenPosition.Y / scale)
         );
+    }
+
+    private static SeedFoodPoint ToSeedFoodPoint(Vector2 screenPosition)
+    {
+        var point = ToUiPoint(screenPosition);
+        return new SeedFoodPoint(point.X, point.Y);
     }
 }

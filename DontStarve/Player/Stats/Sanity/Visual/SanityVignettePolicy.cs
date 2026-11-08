@@ -13,7 +13,9 @@ internal enum SanityVignetteMode
 
 /// <summary>
 /// Keeps the two player-facing controls independent: the vignette toggle owns ordinary dark
-/// corners, while the existing low-Sanity filter owns the animated insane state below 15%.
+/// corners, while the existing low-Sanity filter owns the animated insane state entered below
+/// 15%. Once the authoritative Danger tier has entered, it keeps that state through the tier's
+/// 17.5% exit line.
 /// </summary>
 internal static class SanityVignettePolicy
 {
@@ -22,7 +24,8 @@ internal static class SanityVignettePolicy
     internal static SanityVignetteMode Resolve(
         bool lowSanityFilterEnabled,
         bool vignetteEnabled,
-        double sanityRatio
+        double sanityRatio,
+        bool dangerTierActive = false
     )
     {
         if (
@@ -34,7 +37,9 @@ internal static class SanityVignettePolicy
             return SanityVignetteMode.Hidden;
         }
 
-        if (lowSanityFilterEnabled && sanityRatio <= InsaneThreshold)
+        // Do not recompute Danger's exit line here. The tier state machine owns the strict
+        // <15% entry / >17.5% exit hysteresis; this policy only consumes its active receipt.
+        if (lowSanityFilterEnabled && (dangerTierActive || sanityRatio < InsaneThreshold))
             return SanityVignetteMode.Insane;
 
         return vignetteEnabled

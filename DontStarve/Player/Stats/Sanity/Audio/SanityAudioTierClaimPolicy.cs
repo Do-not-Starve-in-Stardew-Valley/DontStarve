@@ -25,14 +25,15 @@ internal static class SanityAudioTierClaimPolicy
             {
                 case SanityTierIds.ShadowCreatures:
                     ambience = true;
-                    // <=50% owns the continuous ambience lane and vanilla game-music suppression.
+                    // <50% owns the continuous ambience lane and vanilla game-music suppression;
+                    // an exact boundary is retained only when the authoritative tier was active.
                     musicSuppression = true;
                     break;
                 case SanityTierIds.Whispers:
                     whispers = true;
                     break;
                 case SanityTierIds.Danger:
-                    // <=15%, with the state machine's >17.5% exit hysteresis, owns only this lane.
+                    // <15% enters this lane; the state machine exits only above 17.5%.
                     danger = true;
                     break;
             }

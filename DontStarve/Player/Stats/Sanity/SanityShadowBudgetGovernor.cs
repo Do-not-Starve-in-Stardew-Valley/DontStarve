@@ -154,6 +154,8 @@ internal sealed class SanityShadowBudgetGovernor
 
         internal bool TerrorbeakActive { get; set; }
 
+        internal SanityGameplayPhase? GameplayPhase { get; set; }
+
         internal int Occupancy { get; set; }
 
         internal bool HasPolicy { get; set; }
@@ -178,14 +180,24 @@ internal sealed class SanityShadowBudgetGovernor
 
         internal bool WasAtCap { get; set; }
 
-        internal SanityShadowPoolTier CurrentPoolTier =>
-            !ShadowCreaturesActive
-                ? SanityShadowPoolTier.Inactive
-                : TerrorbeakActive
-                    ? SanityShadowPoolTier.Hostile10
-                    : DangerActive
-                        ? SanityShadowPoolTier.Hostile15
-                        : SanityShadowPoolTier.Harmless50;
+        internal SanityShadowPoolTier CurrentPoolTier
+        {
+            get
+            {
+                // GameplayPhase is a strict, stateless ratio classification. Authoritative
+                // event tiers take precedence once entered so their strict exit hysteresis is
+                // not lost when the raw ratio sits on or just above an entry boundary.
+                if (TerrorbeakActive)
+                    return SanityShadowPoolTier.Hostile10;
+                if (DangerActive)
+                    return SanityShadowPoolTier.Hostile15;
+                if (GameplayPhase is { } phase)
+                    return SanityGameplayPhaseCatalog.ToShadowPoolTier(phase);
+                return ShadowCreaturesActive
+                    ? SanityShadowPoolTier.Harmless50
+                    : SanityShadowPoolTier.Inactive;
+            }
+        }
     }
 
     private readonly Dictionary<string, OwnerState> owners =
@@ -233,6 +245,7 @@ internal sealed class SanityShadowBudgetGovernor
                     owner.ShadowCreaturesActive = false;
                     owner.DangerActive = false;
                     owner.TerrorbeakActive = false;
+                    owner.GameplayPhase = null;
                     ResetPolicy(owner);
                 }
                 reason = "budget.system-disabled";
@@ -263,6 +276,45 @@ internal sealed class SanityShadowBudgetGovernor
                 reason = "budget.state-event-unsupported";
                 return false;
         }
+    }
+
+    internal bool ObserveSanityRatio(
+        string playerKey,
+        double current,
+        double maximum,
+        out string reason
+    )
+    {
+        if (!SanityPlayerKey.IsCanonical(playerKey))
+        {
+            reason = "budget.player-key-invalid";
+            return false;
+        }
+        if (!double.IsFinite(current) || !double.IsFinite(maximum))
+        {
+            reason = "budget.sanity-ratio-non-finite";
+            return false;
+        }
+        if (maximum <= 0 || current < 0 || current > maximum)
+        {
+            reason = "budget.sanity-ratio-out-of-range";
+            return false;
+        }
+        if (!SanityGameplayPhaseCatalog.TryResolve(current / maximum, out var phase))
+        {
+            reason = "budget.sanity-phase-unavailable";
+            return false;
+        }
+
+        if (!owners.TryGetValue(playerKey, out var owner))
+        {
+            owner = new OwnerState(playerKey);
+            owners.Add(playerKey, owner);
+        }
+
+        owner.GameplayPhase = phase;
+        reason = "budget.sanity-phase-observed";
+        return true;
     }
 
     internal SanityShadowBudgetEvaluationResult Evaluate(
@@ -908,8 +960,8 @@ internal sealed class SanityShadowBudgetGovernor
     }
 
     /// <summary>
-    /// DIAG-20260810: 只读查询当前密度档的玩家级共享总容量。不推进预算/计时器，
-    /// 供超限清理和切图补刷使用。
+    /// DIAG-20260810: 只读查询指定玩家自己的当前密度档总容量。两种影怪在该玩家池内
+    /// 共用容量，不同玩家各自独立；查询不推进预算/计时器，供超限清理和切图补刷使用。
     /// </summary>
     internal bool TryGetTotalCap(string playerKey, out int totalCap)
     {

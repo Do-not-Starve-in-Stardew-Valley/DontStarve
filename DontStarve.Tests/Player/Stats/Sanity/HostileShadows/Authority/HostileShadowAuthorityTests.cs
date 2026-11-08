@@ -383,8 +383,13 @@ public sealed class HostileShadowAuthorityTests
     }
 
     [Fact]
-    public void Current_map_unlocked_shadow_does_not_consume_natural_refresh_slot()
+    public void Current_map_unlocked_shadow_consumes_the_natural_refresh_slot()
     {
+        // DIAG-20260922: this test used to freeze the exact defect that caused the reported
+        // "unbounded shadow spawns". Occupancy keyed on TargetPlayerKey meant a freshly spawned,
+        // still-untargeted shadow never counted, so the cap (here 2 for Default intensity) never
+        // engaged and every interval granted another permit. Occupancy now keys on ownership and
+        // location only, so untargeted shadows do occupy their owner's current-map slot.
         var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
         EnterDanger(fixture, OwnerA, revision: 1);
 
@@ -395,15 +400,31 @@ public sealed class HostileShadowAuthorityTests
         Assert.True(first.Spawned, first.Reason);
         Assert.Equal(0, first.Occupancy);
 
+        // Default intensity cap is 3, so two more permits are still available and each one now
+        // observes the untargeted shadows that already exist on this map.
         var second = fixture.Authority.TrySpawn(Interval("unlocked-second", OwnerA, 120));
         Assert.True(second.Spawned, second.Reason);
-        Assert.Equal(0, second.Occupancy);
-        Assert.Equal(2, fixture.Authority.Count);
+        Assert.Equal(1, second.Occupancy);
+
+        var third = fixture.Authority.TrySpawn(Interval("unlocked-third", OwnerA, 180));
+        Assert.True(third.Spawned, third.Reason);
+        Assert.Equal(2, third.Occupancy);
+        Assert.Equal(3, fixture.Authority.Count);
+
+        // The cap now engages: no fourth permit, hence no unbounded spawning.
+        var fourth = fixture.Authority.TrySpawn(Interval("unlocked-fourth", OwnerA, 240));
+        Assert.Equal(HostileShadowSpawnStatus.AtCap, fourth.Status);
+        Assert.Equal(3, fixture.Authority.Count);
     }
 
     [Fact]
-    public void Current_map_shadow_locked_to_another_player_does_not_consume_owner_slot()
+    public void Retargeted_shadow_still_consumes_its_owners_current_map_slot()
     {
+        // DIAG-20260922: handoff of the live aggro target (TargetPlayerKey) must not change
+        // attribution or occupancy. The shadow still belongs to its owner (OwnerPlayerKey is
+        // written once at spawn and never mutated), so it keeps consuming that owner's
+        // current-map cap. Before the fix it silently dropped out of the count, which is the same
+        // defect as the unbounded-spawn report.
         var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
         EnterDanger(fixture, OwnerA, revision: 1);
 
@@ -417,8 +438,83 @@ public sealed class HostileShadowAuthorityTests
 
         var second = fixture.Authority.TrySpawn(Interval("other-player-second", OwnerA, 120));
         Assert.True(second.Spawned, second.Reason);
+        // The first shadow is now targeting OwnerB, yet it still occupies OwnerA's slot.
+        Assert.Equal(1, second.Occupancy);
+
+        var third = fixture.Authority.TrySpawn(Interval("other-player-third", OwnerA, 180));
+        Assert.True(third.Spawned, third.Reason);
+        Assert.Equal(2, third.Occupancy);
+        Assert.Equal(3, fixture.Authority.Count);
+
+        var fourth = fixture.Authority.TrySpawn(Interval("other-player-fourth", OwnerA, 240));
+        Assert.Equal(HostileShadowSpawnStatus.AtCap, fourth.Status);
+        Assert.Equal(3, fixture.Authority.Count);
+    }
+
+    [Fact]
+    public void Current_map_occupancy_keeps_location_and_despawn_boundaries()
+    {
+        // DIAG-20260922: relaxing the target-key requirement must not relax the other two
+        // boundaries. An off-map shadow still does not consume this map's slot, and a Despawn
+        // classified shadow is not alive and never counts.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var mine = fixture.Authority.TrySpawn(
+            WarpFast("occupancy-mine", OwnerA, "Mine", gameMinute: 0, cap: 3)
+        );
+        Assert.True(mine.Spawned, mine.Reason);
+
+        // WarpFast uses the fast refill budget, whose Occupancy field is the destination
+        // occupancy observed for the permit. What matters here is that the two locations keep
+        // independent occupancy for the same owner.
+        var farm = fixture.Authority.TrySpawn(
+            WarpFast("occupancy-farm", OwnerA, "Farm", gameMinute: 0, cap: 3)
+        );
+        Assert.True(farm.Spawned, farm.Reason);
+
+        Assert.Equal(1, fixture.Authority.GetOwnerOccupancyAtLocation(OwnerA, "Mine"));
+        Assert.Equal(1, fixture.Authority.GetOwnerOccupancyAtLocation(OwnerA, "Farm"));
+        Assert.Equal(2, fixture.Authority.GetOwnerOccupancy(OwnerA));
+    }
+
+    [Fact]
+    public void Despawn_shadow_never_consumes_current_map_occupancy()
+    {
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+
+        var timerStart = fixture.Authority.TrySpawn(
+            Interval("despawn-slot-timer-start", OwnerA, 0)
+        );
+        Assert.Equal(HostileShadowSpawnStatus.Waiting, timerStart.Status);
+
+        var first = fixture.Authority.TrySpawn(Interval("despawn-slot-first", OwnerA, 60));
+        Assert.True(first.Spawned, first.Reason);
+        var entityId = first.EntityId!.Value;
+
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                new HostileShadowStateUpdate(
+                    entityId,
+                    "Farm",
+                    HostileShadowStateIds.Despawn,
+                    string.Empty,
+                    128d,
+                    256d,
+                    1,
+                    "hostile-shadow.despawn-classified"
+                ),
+                out var reason
+            ),
+            reason
+        );
+
+        // Still registered, but a Despawn-classified entity is not alive and must free the slot.
+        Assert.Equal(1, fixture.Authority.Count);
+        var second = fixture.Authority.TrySpawn(Interval("despawn-slot-second", OwnerA, 120));
+        Assert.True(second.Spawned, second.Reason);
         Assert.Equal(0, second.Occupancy);
-        Assert.Equal(2, fixture.Authority.Count);
     }
 
     [Fact]
@@ -804,6 +900,193 @@ public sealed class HostileShadowAuthorityTests
             )
         );
         Assert.Equal(1, fixture.Authority.Revision);
+    }
+
+    [Fact]
+    public void External_health_inflation_ratchets_max_health_up_instead_of_being_rejected()
+    {
+        // DIAG-20260922 regression: an external difficulty/health mod rewrote the physical
+        // monster's MaxHealth from our canonical 100 to 175 (x1.75) right after materialization.
+        // The ledger used to reject that update forever, so the physical health and the ledger
+        // stayed permanently out of sync. The ledger must now adopt and ratchet instead.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var spawned = fixture.Authority.TrySpawn(
+            Conversion("external-inflation", OwnerA, 0)
+        );
+        var entityId = spawned.EntityId!.Value;
+
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                new HostileShadowStateUpdate(
+                    entityId,
+                    "Farm",
+                    HostileShadowStateIds.Chase,
+                    OwnerB,
+                    128d,
+                    256d,
+                    175,
+                    "hostile-shadow.external-health-observed"
+                ),
+                out var reason
+            ),
+            reason
+        );
+
+        Assert.True(fixture.Authority.TryGetEntity(entityId, out var state));
+        Assert.Equal(175, state!.Health);
+        Assert.Equal(175, state.MaxHealth);
+    }
+
+    [Fact]
+    public void Max_health_ratchet_is_monotonic_and_never_lowers_the_external_buff()
+    {
+        // The user requirement is explicit: external buffing must be preserved and never pulled
+        // back. Therefore the ratchet only moves upward; a later, lower observation must not
+        // reduce an already-ratcheted max health.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var spawned = fixture.Authority.TrySpawn(
+            Conversion("monotonic-ratchet", OwnerA, 0)
+        );
+        var entityId = spawned.EntityId!.Value;
+
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, 175, "hostile-shadow.first"),
+                out var firstReason
+            ),
+            firstReason
+        );
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, 150, "hostile-shadow.second"),
+                out var secondReason
+            ),
+            secondReason
+        );
+
+        Assert.True(fixture.Authority.TryGetEntity(entityId, out var state));
+        Assert.Equal(150, state!.Health);
+        Assert.Equal(175, state.MaxHealth);
+    }
+
+    [Fact]
+    public void Ratchet_is_published_once_and_shares_the_revision_with_the_state_change()
+    {
+        // The ratchet must not consume an extra revision, otherwise the shared snapshot would
+        // advance twice for one logical observation and lock-step deltas would desync clients.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var spawned = fixture.Authority.TrySpawn(
+            Conversion("ratchet-revision", OwnerA, 0)
+        );
+        var entityId = spawned.EntityId!.Value;
+        // Subscribe after the spawn so the observed delta list only contains the ratchet update.
+        var ratchets = new List<HostileShadowMaxHealthRatchet>();
+        var deltas = new List<ShadowStateDeltaMessage>();
+        fixture.Authority.MaxHealthRatcheted += ratchets.Add;
+        fixture.Authority.DeltaProduced += deltas.Add;
+        var revisionBeforeUpdate = fixture.Authority.Revision;
+
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, 175, "hostile-shadow.ratchet-once"),
+                out var reason
+            ),
+            reason
+        );
+
+        var ratchet = Assert.Single(ratchets);
+        Assert.Equal(entityId, ratchet.EntityId);
+        Assert.Equal(100, ratchet.PreviousMaxHealth);
+        Assert.Equal(175, ratchet.CurrentMaxHealth);
+        Assert.Single(deltas);
+        Assert.Equal(revisionBeforeUpdate + 1, fixture.Authority.Revision);
+        Assert.Equal(
+            revisionBeforeUpdate + 1,
+            deltas[0].Change.State!.Revision
+        );
+        Assert.Equal(175, deltas[0].Change.State!.MaxHealth);
+    }
+
+    [Fact]
+    public void Repeating_the_same_inflated_health_is_a_duplicate_and_does_not_ratchet_again()
+    {
+        // Once the ledger has adopted the external value, every following frame observes the same
+        // numbers. Those frames must short-circuit as duplicates instead of emitting a delta storm.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        var ratchets = new List<HostileShadowMaxHealthRatchet>();
+        fixture.Authority.MaxHealthRatcheted += ratchets.Add;
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var spawned = fixture.Authority.TrySpawn(
+            Conversion("ratchet-duplicate", OwnerA, 0)
+        );
+        var entityId = spawned.EntityId!.Value;
+
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, 175, "hostile-shadow.first"),
+                out _
+            )
+        );
+        Assert.True(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, 175, "hostile-shadow.second"),
+                out var duplicateReason
+            )
+        );
+
+        Assert.Equal("hostile-shadow.update-duplicate", duplicateReason);
+        Assert.Single(ratchets);
+        Assert.Equal(2, fixture.Authority.Revision);
+    }
+
+    [Fact]
+    public void Ratchet_still_rejects_negative_health_and_positive_dying_health()
+    {
+        // The external-health relaxation is deliberately narrow: it only removes the
+        // "above the ledger's max health" gate. Every other health invariant is untouched.
+        var fixture = CreateFixture(SanityMonsterIntensityIds.Default);
+        EnterDanger(fixture, OwnerA, revision: 1);
+        var spawned = fixture.Authority.TrySpawn(
+            Conversion("ratchet-invariants", OwnerA, 0)
+        );
+        var entityId = spawned.EntityId!.Value;
+
+        Assert.False(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Chase, -1, "hostile-shadow.negative"),
+                out _
+            )
+        );
+        Assert.False(
+            fixture.Authority.TryUpdate(
+                Update(entityId, HostileShadowStateIds.Dying, 175, "hostile-shadow.dying-positive"),
+                out _
+            )
+        );
+        Assert.True(fixture.Authority.TryGetEntity(entityId, out var state));
+        Assert.Equal(100, state!.MaxHealth);
+    }
+
+    private static HostileShadowStateUpdate Update(
+        long entityId,
+        string stateId,
+        int health,
+        string reason
+    )
+    {
+        return new HostileShadowStateUpdate(
+            entityId,
+            "Farm",
+            stateId,
+            OwnerB,
+            128d,
+            256d,
+            health,
+            reason
+        );
     }
 
     [Fact]

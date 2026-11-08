@@ -66,7 +66,7 @@ internal static class HostileShadowNpcGreetingPatch
     /// Harmony prefix for the final vanilla greeting sink. Harmless shadow projections are
     /// mod-private and never enter GameLocation.characters, so they cannot reach this method.
     /// </summary>
-    internal static bool Prefix(Character character)
+    internal static bool Prefix([HarmonyArgument(0)] Character character)
     {
         return character is not HostileShadowMonster;
     }

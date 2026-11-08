@@ -65,6 +65,14 @@ internal sealed class SanitySmapiResourceService
         var snapshot = loader.Prime();
         loader.SetEnabled(enabled);
         LogPrimeSnapshot(snapshot);
+        if (enabled)
+        {
+            var audioPreload = loader.PrimeAudioCueSets();
+            monitor.Log(
+                $"Sanity audio resources preloaded (cue-sets={audioPreload.Loaded}, failed={audioPreload.Failed}).",
+                audioPreload.Failed == 0 ? LogLevel.Debug : LogLevel.Warn
+            );
+        }
 
         helper.ConsoleCommands.Add(
             PreviewCommand,
@@ -667,7 +675,7 @@ internal sealed class XnaSanityPhysicalResourceFactory : ISanityPhysicalResource
         try
         {
             using var stream = new MemoryStream(bytes, writable: false);
-            var soundEffect = SoundEffect.FromStream(stream);
+            var soundEffect = SoundEffect.FromStream(stream, true);
             return SanityPhysicalResourceCreationResult.Created(
                 new XnaSanitySoundResource(path, soundEffect)
             );

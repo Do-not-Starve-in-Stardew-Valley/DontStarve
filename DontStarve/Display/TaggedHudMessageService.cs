@@ -14,6 +14,7 @@ namespace DontStarve.Display;
 /// </summary>
 internal static class HudMessageGroupTags
 {
+    internal const string Default = "default";
     internal const string DarknessAttack = "darkness-attack";
 }
 

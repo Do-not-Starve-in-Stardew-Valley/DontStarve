@@ -93,10 +93,9 @@ internal sealed class SmapiEnvironmentLightFinalVisibilitySampler
         _ = e;
         if (
             !Context.IsWorldReady
-            || !string.Equals(
+            || !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
                 Game1.version,
-                EnvironmentLightProductionContract.SupportedGameVersion,
-                StringComparison.Ordinal
+                Constants.TargetPlatform == GamePlatform.Android
             )
         )
         {

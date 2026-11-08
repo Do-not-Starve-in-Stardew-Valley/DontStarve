@@ -8,9 +8,10 @@ using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 namespace DontStarve.Player.Stats.Sanity.Illusions.Projection;
 
 /// <summary>
-/// Bounded mod-private index for the two shared-pool harmless species. Unlike the ordinary index,
-/// one owner may hold multiple instances of the same species, so occupancy can represent every cap
-/// frozen by task family 02 without creating a world object.
+/// Bounded mod-private index for the two harmless species that share a pool within one player
+/// owner. Different owners remain isolated. Unlike the ordinary index, one owner may hold multiple
+/// instances of the same species, so occupancy can represent every cap frozen by task family 02
+/// without creating a world object.
 /// </summary>
 internal sealed class ShadowCreatureHarmlessProjectionIndex
 {

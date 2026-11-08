@@ -382,7 +382,8 @@ internal sealed class SmapiHostileShadowHost
                 "hostile-shadow.conversion-species-invalid"
             );
         }
-        // DIAG-20260809: 转化语义（主策划 16:36 定稿）——Danger 档（≤15%）内两种影怪
+        // DIAG-20260809: 转化语义（主策划 16:36 定稿）——Danger 档（低于 15% 进入；
+        // 已进入后直到高于 17.5% 才退出）内两种影怪
         // 都能从无害转化而来；10% 档只约束自然刷新（interval），不约束转化（转化 1:1
         // 替换无害投影，密度额度已由投影侧 cap 管理）。此前按 terrorbeakActive 选档
         // 导致 15%~10% 区间转化恐怖尖喙被拒（budget.terrorbeak-requires-hostile10）。
@@ -766,7 +767,7 @@ internal sealed class SmapiHostileShadowHost
             var evaluation = lifecycle.EvaluateHostileShadowBudgetRealTime(
                 playerKey,
                 timeApi.Time,
-                CountCurrentMapLockedShadowOccupancy(playerKey, locationId),
+                CountCurrentMapShadowOccupancy(playerKey, locationId),
                 elapsedMilliseconds,
                 requestedSpecies
             );
@@ -1301,8 +1302,9 @@ internal sealed class SmapiHostileShadowHost
         return false;
     }
 
-    /// <summary>DIAG-20260812: 指定玩家当前是否处于 ShadowCreatures 档（理智 ≤50%）。
-    /// 未激活 = 高理智（>50%），脱变后的绑定投影应进入高理智淡出消失链条。</summary>
+    /// <summary>DIAG-20260812: 指定玩家当前是否处于 ShadowCreatures 档。
+    /// 该 tier 低于 50% 才进入，高于 50% 才退出；精确阈值由状态机的严格退出规则保持当前状态。
+    /// 未激活 = 高理智（>50%），转化后的绑定投影应进入高理智淡出消失链条。</summary>
     private bool IsShadowCreaturesActiveFor(string playerKey)
     {
         if (
@@ -1956,7 +1958,7 @@ internal sealed class SmapiHostileShadowHost
         }
         // DIAG-20260806: ds_spawn 是纯测试命令，但不隐式清理已有实体；
         // 明确执行 ds_spawn clear 才会清理测试残留。DebugCommand 本身已经绕过自然预算、
-        // 共享上限和转换锁，避免把“是否清场”与“能否生成”耦合在一起。
+        // 当前玩家名下的影怪合计上限和转换锁，避免把“是否清场”与“能否生成”耦合在一起。
         var player = Game1.player;
         var location = player?.currentLocation;
         if (
@@ -2393,7 +2395,7 @@ internal sealed class SmapiHostileShadowHost
             return;
         }
         // DIAG-20260809: Danger 档变化驱动绑定生命周期：
-        // - 进入（san≤15%）→ 全部绑定影怪恢复危险形态（解除隐藏+删绑定投影）；
+        // - 进入（san<15%）→ 全部绑定影怪恢复危险形态（解除隐藏+删绑定投影）；
         // - 退出（san>17.5%）→ 武装脱战计时（之后每 10 游戏分钟 roll 25%）。
         if (
             !string.Equals(
@@ -2428,8 +2430,8 @@ internal sealed class SmapiHostileShadowHost
     }
 
     /// <summary>
-    /// DIAG-20260810: 超过当前地图、当前玩家的共享上限时，每只 Creeper/Terrorbeak
-    /// 从自己的生成时间起每 10 游戏分钟独立 roll 50%。绑定实体和绑定投影只作为一个
+    /// DIAG-20260810: 超过当前地图该玩家自己的影怪合计上限时，每只 Creeper/Terrorbeak
+    /// 从自己的生成时间起每 10 游戏分钟独立 roll 50%。不同玩家不互相清理；绑定实体和绑定投影只作为一个
     /// 候选；选中后仍走“完成当前动作→一次恐吓→约 1 秒淡出”的延迟生命周期。
     /// </summary>
     private void TrimOverCap(long gameMinute)
@@ -2612,7 +2614,8 @@ internal sealed class SmapiHostileShadowHost
                 hostile += pair.Value;
         }
 
-        // The hidden entity and its binding projection are one shadow in the shared pool.
+        // For this player's occupancy/cap, the hidden entity and its binding projection count as
+        // one shadow; another player's pool remains independent.
         var boundPairs = 0;
         foreach (var entityId in bindingCorrelationByEntity.Keys)
         {
@@ -3066,7 +3069,7 @@ internal sealed class SmapiHostileShadowHost
                 continue;
             }
             var currentMapLockedOccupancy =
-                CountCurrentMapLockedShadowOccupancy(playerKey, targetLocationId);
+                CountCurrentMapShadowOccupancy(playerKey, targetLocationId);
             if (
                 !lifecycle.TryGetShadowBudgetTotalCap(playerKey, out var totalCap)
                 || totalCap <= 0
@@ -3234,16 +3237,21 @@ internal sealed class SmapiHostileShadowHost
     }
 
     /// <summary>
-    /// Refresh capacity is deliberately local to the current map and target lock. Off-map
-    /// entities remain alive and keep their own despawn lifecycle, but cannot block this map's
-    /// natural or cut-map refresh permit.
+    /// DIAG-20260922: 刷新上限的占用计数，口径 = 该 owner 在当前地图上的存活影怪数。
     /// </summary>
-    private int CountCurrentMapLockedShadowOccupancy(
+    /// <remarks>
+    /// 这里**不是**"锁定到该 owner 的影怪"：占用只看归属与地点，不看 <c>TargetPlayerKey</c>。
+    /// 旧实现要求"当前仇恨目标必须是自己"，导致未索敌的新影怪不计入占用、上限失效
+    /// （粉丝报告的"无限制刷新大量影怪"）。离图影怪仍不算当前地图占用——它们继续存活并
+    /// 走自己的消失生命周期，但不阻塞本图刷新许可；未索敌影怪则**会**占上限，由自身的
+    /// 无目标倒计时与自然 TTL 生命周期清理。
+    /// </remarks>
+    private int CountCurrentMapShadowOccupancy(
         string playerKey,
         string locationId
     )
     {
-        return world.CountLockedEntitiesForOwnerAtLocation(playerKey, locationId);
+        return world.CountOwnerEntitiesOnCurrentMap(playerKey, locationId);
     }
 
     int IHostileShadowLocationOccupancyProvider.CountHostileShadowsForOwnerAtLocation(

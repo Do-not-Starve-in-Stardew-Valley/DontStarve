@@ -105,12 +105,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             SanityShadowBudgetPolicyCatalog.TryGet(intensityId, out var policy)
         );
         var harness = new Harness(intensityId);
-        harness.Observe(OwnerA, current: 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, current: 49.9999d, revision: 1, gameMinute: 0);
         var local = harness.AddLocal(OwnerA, "Farm", "fifty-local-creeper");
 
         var danger = harness.Observe(
             OwnerA,
-            current: 15d,
+            current: 14.9999d,
             revision: 2,
             gameMinute: 100
         );
@@ -157,12 +157,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     public void Two_owners_convert_independently_without_removing_or_reassigning_the_other_owner()
     {
         var harness = new Harness(SanityMonsterIntensityIds.Default);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
-        harness.Observe(OwnerB, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerB, 49.9999d, revision: 1, gameMinute: 0);
         var localA = harness.AddLocal(OwnerA, "Farm", "owner-a-local");
         var localB = harness.AddLocal(OwnerB, "Mine", "owner-b-local");
 
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 10);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 10);
 
         Assert.True(localA.IsCleanedUp);
         Assert.False(localB.IsCleanedUp);
@@ -171,7 +171,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerA));
         Assert.Equal(0, harness.Authority.GetOwnerOccupancy(OwnerB));
 
-        harness.Observe(OwnerB, 15d, revision: 2, gameMinute: 10);
+        harness.Observe(OwnerB, 14.9999d, revision: 2, gameMinute: 10);
 
         Assert.True(localB.IsCleanedUp);
         Assert.Equal(1, harness.Authority.GetOwnerOccupancy(OwnerA));
@@ -186,9 +186,9 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     public void Danger_hysteresis_preserves_shared_entity_above_seventeen_point_five_until_retreat()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "hysteresis-local");
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 10);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 10);
         Assert.Equal(1, harness.Authority.Count);
 
         var exactExit = harness.Observe(
@@ -223,10 +223,10 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     public void Ten_percent_terrorbeak_shares_the_owner_total_cap_with_the_same_species()
     {
         var harness = new Harness(SanityMonsterIntensityIds.Default);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "creeper-conversion");
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 0);
-        harness.Observe(OwnerA, 10d, revision: 3, gameMinute: 1);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerA, 9.9999d, revision: 3, gameMinute: 1);
         var converted = Assert.Single(harness.Authority.CreateFullSnapshot().Entities);
         LockToPlayer(harness.Authority, converted, OwnerA);
 
@@ -263,8 +263,8 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             )
         );
 
-        harness.Observe(OwnerB, 50d, revision: 1, gameMinute: 0);
-        harness.Observe(OwnerB, 15d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerB, 49.9999d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerB, 14.9999d, revision: 2, gameMinute: 0);
         var otherOwner = harness.Authority.TrySpawn(
             Command(
                 "other-owner-conversion",
@@ -301,9 +301,9 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     public void Full_cap_pauses_and_one_vacancy_grants_exactly_one_replacement()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "vacancy-conversion");
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 0);
         Assert.True(
             harness.Authority.TrySpawn(
                 Command(
@@ -608,9 +608,9 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     private static Harness SingleSharedHarness()
     {
         var harness = new Harness(SanityMonsterIntensityIds.Default);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "single-shared-local");
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 0);
         Assert.Equal(1, harness.Authority.Count);
         return harness;
     }
@@ -618,12 +618,12 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     private static Harness TwoLocationHarness()
     {
         var harness = new Harness(SanityMonsterIntensityIds.Default);
-        harness.Observe(OwnerA, 50d, revision: 1, gameMinute: 0);
-        harness.Observe(OwnerB, 50d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
+        harness.Observe(OwnerB, 49.9999d, revision: 1, gameMinute: 0);
         harness.AddLocal(OwnerA, "Farm", "farm-local");
         harness.AddLocal(OwnerB, "Mine", "mine-local");
-        harness.Observe(OwnerA, 15d, revision: 2, gameMinute: 0);
-        harness.Observe(OwnerB, 15d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerA, 14.9999d, revision: 2, gameMinute: 0);
+        harness.Observe(OwnerB, 14.9999d, revision: 2, gameMinute: 0);
         Assert.Equal(2, harness.Authority.Count);
         return harness;
     }
@@ -993,7 +993,8 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
                 Index,
                 new GovernorProjectionBudget(Governor),
                 Sink,
-                new DeterministicCorrelationSource()
+                new DeterministicCorrelationSource(),
+                new ConstantProjectionRandom()
             );
             foreach (var policy in ShadowCreatureHarmlessProjectionCatalog.Policies)
                 Assert.True(Coordinator.RegisterPolicy(policy, out reason), reason);
@@ -1192,6 +1193,14 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
         public string Next(string playerKey, string speciesId)
         {
             return $"stage-08-05-{playerKey}-{++next:D4}";
+        }
+    }
+
+    private sealed class ConstantProjectionRandom : IHarmlessProjectionRandom
+    {
+        public double NextUnitDouble()
+        {
+            return 0d;
         }
     }
 

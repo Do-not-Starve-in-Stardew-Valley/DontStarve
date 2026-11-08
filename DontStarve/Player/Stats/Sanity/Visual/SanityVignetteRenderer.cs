@@ -101,10 +101,13 @@ internal sealed class SanityVignetteRenderer
             viewport.Width / SourceCanvasWidth,
             viewport.Height / SourceCanvasHeight
         ) * OverlayScale;
-        var screenCenter = new Vector2(
-            viewport.X + (viewport.Width / 2f),
-            viewport.Y + (viewport.Height / 2f)
+        var center = SanityVignetteViewportPolicy.GetCenter(
+            viewport.X,
+            viewport.Y,
+            viewport.Width,
+            viewport.Height
         );
+        var screenCenter = new Vector2(center.X, center.Y);
 
         for (var index = 0; index < mainlineKey.References.Length; index++)
         {

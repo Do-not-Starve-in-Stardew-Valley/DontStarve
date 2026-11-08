@@ -8,9 +8,9 @@ namespace DontStarve;
 internal static class Brushes
 {
     private static readonly Color fullSanityBrush = new(0xFF, 0xC7, 0x00);
-    private static readonly Color fullHungerBrush = new(0xFF, 0xC7, 0x00);
     private static readonly Color emptySanityBrush = new(0xA9, 0xA9, 0xA9);
-    private static readonly Color emptyHungerBrush = new(0xA9, 0xA9, 0xA9);
+    // Hunger only changes fill height; keep its color independent of player state.
+    internal static Color HungerBrush { get; } = new(0xCE, 0xAF, 0x3D);
 
     internal static Color SanityBrush
     {
@@ -33,24 +33,4 @@ internal static class Brushes
         }
     }
 
-    internal static Color HungerBrush
-    {
-        get
-        {
-            if (Game1.player == null)
-            {
-                return emptyHungerBrush;
-            }
-
-            var percent = Game1.player.GetHunger() / Game1.player.GetMaxHunger();
-            var lerpR = fullHungerBrush.R - emptyHungerBrush.R;
-            var lerpG = fullHungerBrush.G - emptyHungerBrush.G;
-            var lerpB = fullHungerBrush.B - emptyHungerBrush.B;
-            return new Color(
-                emptyHungerBrush.R + (int)(percent * lerpR),
-                emptyHungerBrush.G + (int)(percent * lerpG),
-                emptyHungerBrush.B + (int)(percent * lerpB)
-            );
-        }
-    }
 }

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -69,7 +70,7 @@ public sealed class SanityAudioAssetTests
     }
 
     [Fact]
-    public void EveryPhysicalClipHasCanonicalPcmFormatHashAndDuration()
+    public void EveryPhysicalClipHasCanonicalVorbisFormatHashAndDuration()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(MetadataPath));
         var clips = AllClips(document.RootElement).ToArray();
@@ -81,7 +82,7 @@ public sealed class SanityAudioAssetTests
         {
             var relativePath = clip.GetProperty("Path").GetString()!;
             Assert.StartsWith("Asset/Sanity/Audio/", relativePath, StringComparison.Ordinal);
-            Assert.EndsWith(".wav", relativePath, StringComparison.Ordinal);
+            Assert.EndsWith(".ogg", relativePath, StringComparison.Ordinal);
             Assert.All(relativePath, character => Assert.InRange((int)character, 0x20, 0x7E));
             Assert.True(
                 SanityAssetPathPolicy.TryResolveFromDeploymentRoot(
@@ -92,11 +93,11 @@ public sealed class SanityAudioAssetTests
                 ),
                 reason
             );
-            var inspection = SanityWavInspector.InspectFile(absolutePath);
+            var inspection = SanityOggInspector.InspectFile(absolutePath);
             Assert.True(inspection.Success, string.Join(Environment.NewLine, inspection.Issues));
             var formatId = clip.GetProperty("FormatId").GetString();
             Assert.True(
-                SanityWavFormatCatalog.TryGet(formatId, out var expectedFormat),
+                SanityOggFormatCatalog.TryGet(formatId, out var expectedFormat),
                 $"Unsupported clip format id '{formatId}'."
             );
             Assert.True(expectedFormat.Matches(inspection));
@@ -150,7 +151,7 @@ public sealed class SanityAudioAssetTests
     {
         using var document = JsonDocument.Parse(File.ReadAllText(MetadataPath));
         var root = document.RootElement;
-        Assert.Equal("sanity.wav.pcm-s16-stereo-44100-v1", root.GetProperty("RuntimeFormat").GetProperty("FormatId").GetString());
+        Assert.Equal("sanity.ogg.vorbis-stereo-44100-v1", root.GetProperty("RuntimeFormat").GetProperty("FormatId").GetString());
         var sets = root.GetProperty("CueSets").EnumerateArray().ToArray();
         Assert.Equal(9, sets.Length);
         Assert.All(sets, set =>
@@ -181,20 +182,20 @@ public sealed class SanityAudioAssetTests
     }
 
     [Theory]
-    [InlineData("bad-riff", "wav.invalid-riff")]
-    [InlineData("unknown-codec", "wav.unknown-codec")]
-    [InlineData("empty-audio", "wav.empty-audio")]
-    public void WavInspectorFailsClosedForMalformedInputs(string mutation, string expectedCode)
+    [InlineData("bad-capture", "ogg.invalid-capture")]
+    [InlineData("invalid-identification", "ogg.invalid-identification")]
+    [InlineData("empty-audio", "ogg.empty-audio")]
+    public void OggInspectorFailsClosedForMalformedInputs(string mutation, string expectedCode)
     {
-        var bytes = BuildWav(formatCode: 1, channels: 2, sampleRate: 44100, bits: 16, dataBytes: 16);
-        if (mutation == "bad-riff")
+        var bytes = BuildOgg(channels: 2, sampleRate: 44100, frames: 16);
+        if (mutation == "bad-capture")
             bytes[0] = (byte)'X';
-        else if (mutation == "unknown-codec")
-            BitConverter.GetBytes((ushort)3).CopyTo(bytes, 20);
+        else if (mutation == "invalid-identification")
+            bytes[28] = 2;
         else if (mutation == "empty-audio")
-            bytes = BuildWav(formatCode: 1, channels: 2, sampleRate: 44100, bits: 16, dataBytes: 0);
+            bytes = BuildOgg(channels: 2, sampleRate: 44100, frames: 0);
 
-        var result = SanityWavInspector.Inspect(bytes);
+        var result = SanityOggInspector.Inspect(bytes);
 
         Assert.False(result.Success);
         Assert.Contains(result.Issues, issue => issue.Code == expectedCode);
@@ -213,7 +214,7 @@ public sealed class SanityAudioAssetTests
     public void ValidatorRejectsTraversalPaths()
     {
         AssertMetadataRejected(
-            root => FirstClip(root)["Path"] = "Asset/Sanity/Audio/../outside.wav",
+            root => FirstClip(root)["Path"] = "Asset/Sanity/Audio/../outside.ogg",
             "audio.clip.invalid-path"
         );
     }
@@ -232,7 +233,7 @@ public sealed class SanityAudioAssetTests
     }
 
     [Fact]
-    public void ValidatorAllowsMissingClipHashWhenThePathAndWavAreValid()
+    public void ValidatorAllowsMissingClipHashWhenThePathAndOggAreValid()
     {
         AssertMetadataWarning(
             root => FirstClip(root).Remove("Sha256"),
@@ -253,10 +254,10 @@ public sealed class SanityAudioAssetTests
         {
             var root = ReadMetadataNode();
             var clip = FirstClip(root);
-            const string relativePath = "Asset/Sanity/Audio/Test/mono.wav";
-            var absolutePath = Path.Combine(temporaryRoot, "Asset", "Sanity", "Audio", "Test", "mono.wav");
+            const string relativePath = "Asset/Sanity/Audio/Test/mono.ogg";
+            var absolutePath = Path.Combine(temporaryRoot, "Asset", "Sanity", "Audio", "Test", "mono.ogg");
             Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
-            var bytes = BuildWav(formatCode: 1, channels: 1, sampleRate: 44100, bits: 16, dataBytes: 200);
+            var bytes = BuildOgg(channels: 1, sampleRate: 44100, frames: 100);
             File.WriteAllBytes(absolutePath, bytes);
             clip["Path"] = relativePath;
             clip["Sha256"] = Convert.ToHexString(SHA256.HashData(bytes));
@@ -393,33 +394,49 @@ public sealed class SanityAudioAssetTests
         );
     }
 
-    private static byte[] BuildWav(
-        ushort formatCode,
-        ushort channels,
-        int sampleRate,
-        ushort bits,
-        int dataBytes
+    private static byte[] BuildOgg(int channels, int sampleRate, long frames)
+    {
+        var bytes = new List<byte>();
+        var identification = new byte[30];
+        identification[0] = 1;
+        Encoding.ASCII.GetBytes("vorbis").CopyTo(identification, 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(identification.AsSpan(7), 0);
+        identification[11] = checked((byte)channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(identification.AsSpan(12), checked((uint)sampleRate));
+        identification[28] = 0x88;
+        identification[29] = 1;
+        AppendPage(bytes, headerType: 2, granulePosition: 0, sequence: 0, identification);
+
+        var comment = new byte[15];
+        comment[0] = 3;
+        Encoding.ASCII.GetBytes("vorbis").CopyTo(comment, 1);
+        AppendPage(bytes, headerType: 0, granulePosition: 0, sequence: 1, comment);
+        AppendPage(bytes, headerType: 4, granulePosition: frames, sequence: 2, new byte[] { 0 });
+        return bytes.ToArray();
+    }
+
+    private static void AppendPage(
+        List<byte> output,
+        byte headerType,
+        long granulePosition,
+        uint sequence,
+        byte[] packet
     )
     {
-        var bytesPerSample = (bits + 7) / 8;
-        var blockAlign = checked((ushort)(channels * bytesPerSample));
-        var byteRate = sampleRate * blockAlign;
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-        writer.Write(Encoding.ASCII.GetBytes("RIFF"));
-        writer.Write(36 + dataBytes);
-        writer.Write(Encoding.ASCII.GetBytes("WAVE"));
-        writer.Write(Encoding.ASCII.GetBytes("fmt "));
-        writer.Write(16);
-        writer.Write(formatCode);
-        writer.Write(channels);
-        writer.Write(sampleRate);
-        writer.Write(byteRate);
-        writer.Write(blockAlign);
-        writer.Write(bits);
-        writer.Write(Encoding.ASCII.GetBytes("data"));
-        writer.Write(dataBytes);
-        writer.Write(new byte[dataBytes]);
-        return stream.ToArray();
+        output.AddRange(Encoding.ASCII.GetBytes("OggS"));
+        output.Add(0);
+        output.Add(headerType);
+        var numeric = new byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(numeric, granulePosition);
+        output.AddRange(numeric);
+        numeric = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(numeric, 7);
+        output.AddRange(numeric);
+        BinaryPrimitives.WriteUInt32LittleEndian(numeric, sequence);
+        output.AddRange(numeric);
+        output.AddRange(new byte[4]);
+        output.Add(1);
+        output.Add(checked((byte)packet.Length));
+        output.AddRange(packet);
     }
 }

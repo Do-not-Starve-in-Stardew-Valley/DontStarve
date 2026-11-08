@@ -126,8 +126,8 @@ internal sealed class SanityShadowBudgetPolicy
 
     /// <summary>
     /// Historical config columns are retained for save/config compatibility. They describe the
-    /// two existing density values; runtime spawning uses their sum as one owner-wide cap rather
-    /// than allocating separate Creeper/Terrorbeak slots.
+    /// two existing density values; runtime spawning sums them into one cap per player owner, so
+    /// Creeper Fear and Terrorbeak share that player's pool rather than receiving separate slots.
     /// </summary>
     internal int BaseCap { get; }
 

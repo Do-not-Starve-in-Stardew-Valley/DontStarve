@@ -9,6 +9,8 @@ namespace DontStarve.Config;
 internal static class ConfigKeys
 {
     internal const string EnableHungerSystem = "EnableHungerSystem";
+    internal const string HungerDamageMode = "HungerDamageMode";
+    internal const string SleepRecoveryBalance = "SleepRecoveryBalance";
     internal const string EnableSeedEdibility = "EnableSeedEdibility";
     internal const string EnableSanitySystem = "EnableSanitySystem";
     internal const string SanityMonsterIntensity = "SanityMonsterIntensity";
@@ -24,11 +26,14 @@ internal static class ConfigKeys
     internal const string EnableDangerMinigameBlocking =
         "EnableDangerMinigameBlocking";
     internal const string EnableDawnDuskMusic = "EnableDawnDuskMusic";
+    internal const string EnableActivityMusic = "EnableActivityMusic";
 
     private static readonly HashSet<string> FrozenKeys = new(
         new[]
         {
             EnableHungerSystem,
+            HungerDamageMode,
+            SleepRecoveryBalance,
             EnableSeedEdibility,
             EnableSanitySystem,
             SanityMonsterIntensity,
@@ -42,6 +47,7 @@ internal static class ConfigKeys
             EnableJunimoBlessing,
             EnableDangerMinigameBlocking,
             EnableDawnDuskMusic,
+            EnableActivityMusic,
         },
         StringComparer.Ordinal
     );
@@ -121,9 +127,12 @@ internal sealed class ConfigOptionDefinition
         IReadOnlyList<string> allowedValues,
         bool exposeToContentPatcher,
         bool affectsWorldState,
-        string sectionI18n,
+        string parentPageI18n,
+        string pageI18n,
         string nameI18n,
         string tooltipI18n,
+        int parentPageOrder,
+        int pageOrder,
         int order
     )
     {
@@ -138,9 +147,12 @@ internal sealed class ConfigOptionDefinition
         allowedValueSet = new HashSet<string>(copiedAllowedValues, StringComparer.Ordinal);
         ExposeToContentPatcher = exposeToContentPatcher;
         AffectsWorldState = affectsWorldState;
-        SectionI18n = sectionI18n;
+        ParentPageI18n = parentPageI18n;
+        PageI18n = pageI18n;
         NameI18n = nameI18n;
         TooltipI18n = tooltipI18n;
+        ParentPageOrder = parentPageOrder;
+        PageOrder = pageOrder;
         Order = order;
     }
 
@@ -156,11 +168,17 @@ internal sealed class ConfigOptionDefinition
 
     internal bool AffectsWorldState { get; }
 
-    internal string SectionI18n { get; }
+    internal string ParentPageI18n { get; }
+
+    internal string PageI18n { get; }
 
     internal string NameI18n { get; }
 
     internal string TooltipI18n { get; }
+
+    internal int ParentPageOrder { get; }
+
+    internal int PageOrder { get; }
 
     internal int Order { get; }
 

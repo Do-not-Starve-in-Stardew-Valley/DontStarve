@@ -211,7 +211,8 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         var mode = SanityVignettePolicy.Resolve(
             lowSanityFilterEnabled && !state.EffectiveSanityOverrideActive,
             vignetteEnabled,
-            state.SanityRatio
+            state.SanityRatio,
+            state.DangerTierActive
         );
         if (mode == SanityVignetteMode.Hidden || !renderer.IsLoaded)
             return;
@@ -220,7 +221,12 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         {
             renderer.Draw(
                 e.SpriteBatch,
-                e.SpriteBatch.GraphicsDevice.Viewport.Bounds,
+                new Rectangle(
+                    0,
+                    0,
+                    Game1.uiViewport.Width,
+                    Game1.uiViewport.Height
+                ),
                 mode,
                 (long)Game1.currentGameTime.TotalGameTime.TotalMilliseconds
             );
@@ -270,6 +276,8 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         if (!double.IsFinite(ratio) || ratio < 0d || ratio > 1d)
             return false;
 
+        var dangerTierActive = IsDangerTierActive(snapshot.ActiveTierIds);
+
         var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
         if (
             minigameContext == SanityMinigameVisualContext.Other
@@ -289,7 +297,8 @@ internal sealed class SanityVignetteOverlayService : IDisposable
             SanityVignettePolicy.Resolve(
                 lowSanityFilterEnabled && !effectiveSanityOverrideActive,
                 vignetteEnabled,
-                ratio
+                ratio,
+                dangerTierActive
             ) == SanityVignetteMode.Hidden
         )
         {
@@ -310,9 +319,21 @@ internal sealed class SanityVignetteOverlayService : IDisposable
             sessionId,
             ratio,
             effectiveSanityOverrideActive,
-            minigameContext
+            minigameContext,
+            dangerTierActive
         );
         return true;
+    }
+
+    private static bool IsDangerTierActive(IReadOnlyList<string> activeTierIds)
+    {
+        for (var index = 0; index < activeTierIds.Count; index++)
+        {
+            if (string.Equals(activeTierIds[index], SanityTierIds.Danger, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private bool TryLoadRenderer()
@@ -390,6 +411,7 @@ internal sealed class SanityVignetteOverlayService : IDisposable
         string SessionId,
         double SanityRatio,
         bool EffectiveSanityOverrideActive,
-        SanityMinigameVisualContext MinigameContext
+        SanityMinigameVisualContext MinigameContext,
+        bool DangerTierActive
     );
 }

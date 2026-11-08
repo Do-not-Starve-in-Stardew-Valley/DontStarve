@@ -4,6 +4,7 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework.Audio;
+using StardewModdingAPI;
 using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.Audio;
@@ -42,12 +43,19 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         this.diagnosticSink = diagnosticSink
             ?? throw new ArgumentNullException(nameof(diagnosticSink));
 
-        var gateReason = SanityGameMusicCapabilityGate.ValidateVersion(Game1.version);
+        var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
+        var targetGameVersion = StardewRuntimeVersionPolicy.ExpectedGameVersion(
+            isAndroidPlatform
+        );
+        var gateReason = SanityGameMusicCapabilityGate.ValidateVersion(
+            Game1.version,
+            isAndroidPlatform
+        );
         if (gateReason is not null)
         {
             Capability = SanityGameMusicCapability.Unavailable(
                 patchOwnerId,
-                ExpectedGameVersion,
+                targetGameVersion,
                 ExpectedTargetSignature,
                 gateReason
             );
@@ -69,7 +77,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         {
             Capability = SanityGameMusicCapability.Unavailable(
                 patchOwnerId,
-                ExpectedGameVersion,
+                targetGameVersion,
                 ExpectedTargetSignature,
                 gateReason
             );
@@ -79,7 +87,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         {
             Capability = SanityGameMusicCapability.Unavailable(
                 patchOwnerId,
-                ExpectedGameVersion,
+                targetGameVersion,
                 ExpectedTargetSignature,
                 "music.patch.process-owner-conflict"
             );
@@ -98,7 +106,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
             {
                 Capability = SanityGameMusicCapability.Unavailable(
                     patchOwnerId,
-                    ExpectedGameVersion,
+                    targetGameVersion,
                     ExpectedTargetSignature,
                     "music.patch.prefix-signature-mismatch"
                 );
@@ -115,7 +123,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
                 harmony.Unpatch(targetMethod, HarmonyPatchType.Prefix, patchOwnerId);
                 Capability = SanityGameMusicCapability.Unavailable(
                     patchOwnerId,
-                    ExpectedGameVersion,
+                    targetGameVersion,
                     ExpectedTargetSignature,
                     "music.patch.install-verification-failed"
                 );
@@ -125,7 +133,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
             activeAdapter = this;
             Capability = SanityGameMusicCapability.Available(
                 patchOwnerId,
-                ExpectedGameVersion,
+                targetGameVersion,
                 ExpectedTargetSignature
             );
         }
@@ -151,7 +159,7 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
             }
             Capability = SanityGameMusicCapability.Unavailable(
                 patchOwnerId,
-                ExpectedGameVersion,
+                targetGameVersion,
                 ExpectedTargetSignature,
                 "music.patch.install-failed"
             );

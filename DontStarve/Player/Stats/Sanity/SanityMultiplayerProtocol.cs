@@ -56,6 +56,12 @@ internal sealed class SanityChangeRequest
     public long Nonce { get; set; }
 
     public long ExpectedRevision { get; set; }
+
+    /// <summary>
+    /// Garbage-can interaction facts. This is evidence only; the host validates and recomputes
+    /// the ordered penalty/recovery plan before changing the authoritative snapshot.
+    /// </summary>
+    public TrashCanSanityFacts? Garbage { get; set; }
 }
 
 internal sealed class SanitySnapshotRequest

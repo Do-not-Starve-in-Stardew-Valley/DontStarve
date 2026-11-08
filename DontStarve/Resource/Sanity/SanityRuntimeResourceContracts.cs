@@ -41,89 +41,61 @@ internal enum SanityVisualPreviewKind
 
 /// <summary>
 /// Exact audio formats accepted by the runtime resource pipeline. Keeping this catalog
-/// centralized prevents a new WAV rate from being accepted by one gate and rejected by another.
+/// centralized prevents a new Vorbis rate from being accepted by one gate and rejected by another.
 /// </summary>
-internal sealed class SanityWavFormatDescriptor
+internal sealed class SanityOggFormatDescriptor
 {
-    internal SanityWavFormatDescriptor(
+    internal SanityOggFormatDescriptor(
         string formatId,
-        int formatCode,
         int channels,
-        int sampleRateHz,
-        int bitsPerSample,
-        int blockAlign,
-        int byteRate
+        int sampleRateHz
     )
     {
         FormatId = formatId;
-        FormatCode = formatCode;
         Channels = channels;
         SampleRateHz = sampleRateHz;
-        BitsPerSample = bitsPerSample;
-        BlockAlign = blockAlign;
-        ByteRate = byteRate;
     }
 
     internal string FormatId { get; }
-
-    internal int FormatCode { get; }
 
     internal int Channels { get; }
 
     internal int SampleRateHz { get; }
 
-    internal int BitsPerSample { get; }
-
-    internal int BlockAlign { get; }
-
-    internal int ByteRate { get; }
-
-    internal bool Matches(SanityWavInspectionResult inspection)
+    internal bool Matches(SanityOggInspectionResult inspection)
     {
         ArgumentNullException.ThrowIfNull(inspection);
         return inspection.Success
-            && inspection.FormatCode == FormatCode
             && inspection.Channels == Channels
-            && inspection.SampleRateHz == SampleRateHz
-            && inspection.BitsPerSample == BitsPerSample
-            && inspection.BlockAlign == BlockAlign
-            && inspection.ByteRate == ByteRate;
+            && inspection.SampleRateHz == SampleRateHz;
     }
 }
 
-internal static class SanityWavFormatCatalog
+internal static class SanityOggFormatCatalog
 {
-    internal const string PcmS16Stereo44100V1 = "sanity.wav.pcm-s16-stereo-44100-v1";
-    internal const string PcmS16Stereo48000V1 = "sanity.wav.pcm-s16-stereo-48000-v1";
+    internal const string VorbisStereo44100V1 = "sanity.ogg.vorbis-stereo-44100-v1";
+    internal const string VorbisStereo48000V1 = "sanity.ogg.vorbis-stereo-48000-v1";
 
-    private static readonly IReadOnlyDictionary<string, SanityWavFormatDescriptor> Formats =
-        new ReadOnlyDictionary<string, SanityWavFormatDescriptor>(
-            new Dictionary<string, SanityWavFormatDescriptor>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, SanityOggFormatDescriptor> Formats =
+        new ReadOnlyDictionary<string, SanityOggFormatDescriptor>(
+            new Dictionary<string, SanityOggFormatDescriptor>(StringComparer.Ordinal)
             {
-                [PcmS16Stereo44100V1] = new(
-                    PcmS16Stereo44100V1,
-                    formatCode: 1,
+                [VorbisStereo44100V1] = new(
+                    VorbisStereo44100V1,
                     channels: 2,
-                    sampleRateHz: 44100,
-                    bitsPerSample: 16,
-                    blockAlign: 4,
-                    byteRate: 176400
+                    sampleRateHz: 44100
                 ),
-                [PcmS16Stereo48000V1] = new(
-                    PcmS16Stereo48000V1,
-                    formatCode: 1,
+                [VorbisStereo48000V1] = new(
+                    VorbisStereo48000V1,
                     channels: 2,
-                    sampleRateHz: 48000,
-                    bitsPerSample: 16,
-                    blockAlign: 4,
-                    byteRate: 192000
+                    sampleRateHz: 48000
                 ),
             }
         );
 
     internal static bool TryGet(
         string? formatId,
-        out SanityWavFormatDescriptor descriptor
+        out SanityOggFormatDescriptor descriptor
     )
     {
         if (!string.IsNullOrWhiteSpace(formatId) && Formats.TryGetValue(formatId, out descriptor!))

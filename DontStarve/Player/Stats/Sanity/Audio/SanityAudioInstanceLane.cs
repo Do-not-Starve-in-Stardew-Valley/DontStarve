@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace DontStarve.Player.Stats.Sanity.Audio;
 
@@ -24,6 +25,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
     private bool desiredContinuousActive;
     private bool paused;
     private bool? pendingPauseState;
+    private int resumeAfterStoppedTicks;
     private bool failed;
     private bool stopRequested;
     private bool disposeRequested;
@@ -61,6 +63,13 @@ internal sealed class SanityAudioInstanceLane : IDisposable
 
     internal bool IsDisposed => disposed;
 
+    internal SanityAudioPlaybackState CurrentState => current?.State ?? SanityAudioPlaybackState.Stopped;
+
+    internal string DiagnosticState =>
+        current is null
+            ? $"none/desired={desiredContinuousActive}/paused={paused}"
+            : $"{current.State}/id={RuntimeHelpers.GetHashCode(current)}/resume-grace={resumeAfterStoppedTicks}/desired={desiredContinuousActive}/paused={paused}";
+
     internal void SetContinuousActive(bool active, float targetVolume)
     {
         if (disposed || !continuous)
@@ -71,6 +80,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         if (!active)
         {
             pendingPauseState = null;
+            resumeAfterStoppedTicks = 0;
             StopAndDispose();
             return;
         }
@@ -202,7 +212,20 @@ internal sealed class SanityAudioInstanceLane : IDisposable
             try
             {
                 if (current.State == SanityAudioPlaybackState.Stopped)
+                {
+                    if (resumeAfterStoppedTicks > 0)
+                    {
+                        resumeAfterStoppedTicks--;
+                        current.Resume();
+                        if (current.State != SanityAudioPlaybackState.Stopped)
+                            resumeAfterStoppedTicks = 0;
+                        else
+                            return;
+                    }
+
+                    resumeAfterStoppedTicks = 0;
                     StopAndDisposeCore();
+                }
             }
             catch (Exception exception)
             {
@@ -303,6 +326,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         {
             if (current is null)
             {
+                resumeAfterStoppedTicks = 0;
                 if (continuous && desiredContinuousActive)
                     EnsurePlaying();
                 return;
@@ -310,17 +334,22 @@ internal sealed class SanityAudioInstanceLane : IDisposable
 
             var state = current.State;
             if (state == SanityAudioPlaybackState.Paused)
+            {
+                resumeAfterStoppedTicks = 0;
                 current.Resume();
+            }
             else if (
                 state == SanityAudioPlaybackState.Stopped
                 && continuous
                 && desiredContinuousActive
             )
             {
-                // A platform can report Stopped if the focus callback raced the backend. Reuse the
-                // same instance before Tick() gets a chance to dispose it, so focus recovery never
-                // selects a different random clip for a continuous lane.
-                current.Play();
+                // A platform can report Stopped if the focus callback raced the backend. Treat this
+                // as a focus-resume candidate first: Play() reinitializes a stopped instance and
+                // therefore resets its position, while Resume() gives the backend a chance to keep
+                // the existing source position. Tick() still owns the normal natural-end cleanup.
+                current.Resume();
+                resumeAfterStoppedTicks = current.State == SanityAudioPlaybackState.Stopped ? 3 : 0;
             }
         }
         catch (Exception exception)
@@ -343,6 +372,7 @@ internal sealed class SanityAudioInstanceLane : IDisposable
     {
         var instance = current;
         current = null;
+        resumeAfterStoppedTicks = 0;
         if (instance is null)
             return;
 

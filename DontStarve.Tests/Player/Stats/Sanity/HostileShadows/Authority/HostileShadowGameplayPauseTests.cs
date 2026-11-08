@@ -79,6 +79,34 @@ public sealed class HostileShadowGameplayPauseTests
         Assert.DoesNotContain("Game1.paused || !Game1.game1.IsActive", projection, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Binding_projection_visual_cleanup_does_not_force_stop_projection_audio()
+    {
+        var projection = Contract("ShadowProjection", "SmapiHarmlessProjectionHost.cs");
+
+        AssertUsesNormalProjectionAudioRemoval(
+            Slice(
+                projection,
+                "internal bool TryRemoveBindingProjection(",
+                "internal bool BeginBindingFadeOut("
+            )
+        );
+        AssertUsesNormalProjectionAudioRemoval(
+            Slice(
+                projection,
+                "internal int TrimShadowProjectionsForOwner(",
+                "internal bool TryGetBindingProjectionPosition("
+            )
+        );
+        AssertUsesNormalProjectionAudioRemoval(
+            Slice(
+                projection,
+                "private void PruneDeadBindingProjections(",
+                "private bool TryLoadShadowProjectionVisuals("
+            )
+        );
+    }
+
     private static int Count(string source, string value)
     {
         var count = 0;
@@ -105,5 +133,15 @@ public sealed class HostileShadowGameplayPauseTests
         Assert.True(start >= 0, $"Missing start marker: {startMarker}");
         Assert.True(end > start, $"Missing end marker: {endMarker}");
         return source[start..end];
+    }
+
+    private static void AssertUsesNormalProjectionAudioRemoval(string source)
+    {
+        Assert.Contains("RemoveShadowCreatureSfxOwner(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ForceRemoveShadowCreatureSfxOwner(",
+            source,
+            StringComparison.Ordinal
+        );
     }
 }

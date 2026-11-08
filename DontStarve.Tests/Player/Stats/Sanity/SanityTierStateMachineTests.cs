@@ -66,7 +66,7 @@ public sealed class SanityTierStateMachineTests
 
     [Theory]
     [MemberData(nameof(StandardRules))]
-    public void Standard_tiers_enter_at_or_below_and_exit_only_above(
+    public void Standard_tiers_enter_below_and_exit_only_above(
         string tierId,
         double threshold
     )
@@ -78,7 +78,7 @@ public sealed class SanityTierStateMachineTests
             Player(OwnerA, (threshold + 0.001d) * maximum, maximum, 0),
             true
         );
-        var equal = machine.Observe(
+        var equalBeforeEntry = machine.Observe(
             Player(OwnerA, threshold * maximum, maximum, 1),
             true
         );
@@ -86,8 +86,12 @@ public sealed class SanityTierStateMachineTests
             Player(OwnerA, (threshold - 0.001d) * maximum, maximum, 2),
             true
         );
+        var equalAfterEntry = machine.Observe(
+            Player(OwnerA, threshold * maximum, maximum, 3),
+            true
+        );
         var exited = machine.Observe(
-            Player(OwnerA, (threshold + 0.001d) * maximum, maximum, 3),
+            Player(OwnerA, (threshold + 0.001d) * maximum, maximum, 4),
             true
         );
 
@@ -95,11 +99,12 @@ public sealed class SanityTierStateMachineTests
             SanityStateEventIds.TierEntered(tierId),
             EventIds(above)
         );
+        Assert.Empty(TierEventIds(equalBeforeEntry, tierId));
         Assert.Equal(
             new[] { SanityStateEventIds.TierEntered(tierId) },
-            TierEventIds(equal, tierId)
+            TierEventIds(below, tierId)
         );
-        Assert.Empty(TierEventIds(below, tierId));
+        Assert.Empty(TierEventIds(equalAfterEntry, tierId));
         Assert.Equal(
             new[] { SanityStateEventIds.TierExited(tierId) },
             TierEventIds(exited, tierId)
@@ -112,19 +117,21 @@ public sealed class SanityTierStateMachineTests
         var machine = new SanityTierStateMachine();
         machine.Observe(Player(OwnerA, 36d, 200d, 0), true);
 
-        var entered = machine.Observe(Player(OwnerA, 30d, 200d, 1), true);
-        var sixteen = machine.Observe(Player(OwnerA, 32d, 200d, 2), true);
+        var exactEntryLine = machine.Observe(Player(OwnerA, 30d, 200d, 1), true);
+        var entered = machine.Observe(Player(OwnerA, 29.9999d, 200d, 2), true);
+        var sixteen = machine.Observe(Player(OwnerA, 32d, 200d, 3), true);
         var exactExitLine = machine.Observe(
-            Player(OwnerA, 35d, 200d, 3),
+            Player(OwnerA, 35d, 200d, 4),
             true
         );
-        var exited = machine.Observe(Player(OwnerA, 35.0001d, 200d, 4), true);
+        var exited = machine.Observe(Player(OwnerA, 35.0001d, 200d, 5), true);
         var sixteenAfterExit = machine.Observe(
-            Player(OwnerA, 32d, 200d, 5),
+            Player(OwnerA, 32d, 200d, 6),
             true
         );
-        var reentered = machine.Observe(Player(OwnerA, 29.9999d, 200d, 6), true);
+        var reentered = machine.Observe(Player(OwnerA, 29.9999d, 200d, 7), true);
 
+        Assert.Empty(TierEventIds(exactEntryLine, SanityTierIds.Danger));
         Assert.Equal(
             new[] { "sanity/tier/danger/entered" },
             TierEventIds(entered, SanityTierIds.Danger)
@@ -151,7 +158,7 @@ public sealed class SanityTierStateMachineTests
         var machine = new SanityTierStateMachine();
 
         var result = machine.Observe(
-            Player(OwnerA, maximum * 0.15d, maximum, 0),
+            Player(OwnerA, maximum * 0.1499d, maximum, 0),
             true
         );
 
@@ -166,7 +173,7 @@ public sealed class SanityTierStateMachineTests
     {
         var machine = new SanityTierStateMachine();
 
-        var result = machine.Observe(Player(OwnerA, 10d, 200d, 7), true);
+        var result = machine.Observe(Player(OwnerA, 9.9999d, 200d, 7), true);
 
         var expected = new List<string> { SanityStateEventIds.SystemEnabled };
         expected.AddRange(
@@ -179,7 +186,7 @@ public sealed class SanityTierStateMachineTests
             {
                 Assert.Equal(OwnerA, stateEvent.PlayerKey);
                 Assert.Equal(7, stateEvent.Revision);
-                Assert.Equal(0.05d, stateEvent.Ratio);
+                 Assert.Equal(9.9999d / 200d, stateEvent.Ratio);
             }
         );
     }
@@ -188,9 +195,9 @@ public sealed class SanityTierStateMachineTests
     public void Duplicate_and_stale_revisions_do_not_repeat_events_and_conflict_fails_closed()
     {
         var machine = new SanityTierStateMachine();
-        machine.Observe(Player(OwnerA, 20d, 200d, 4), true);
+        machine.Observe(Player(OwnerA, 19.9999d, 200d, 4), true);
 
-        var duplicate = machine.Observe(Player(OwnerA, 20d, 200d, 4), true);
+        var duplicate = machine.Observe(Player(OwnerA, 19.9999d, 200d, 4), true);
         var stale = machine.Observe(Player(OwnerA, 200d, 200d, 3), true);
         var conflict = machine.Observe(Player(OwnerA, 200d, 200d, 4), true);
 
@@ -249,7 +256,7 @@ public sealed class SanityTierStateMachineTests
     public void Invalid_input_safely_exits_old_state_and_deduplicates_invalidation()
     {
         var machine = new SanityTierStateMachine();
-        machine.Observe(Player(OwnerA, 10d, 200d, 0), true);
+        machine.Observe(Player(OwnerA, 9.9999d, 200d, 0), true);
 
         var invalid = machine.Observe(Player(OwnerA, 10d, 0d, 1), true);
         var duplicate = machine.Observe(Player(OwnerA, 10d, 0d, 1), true);
@@ -268,10 +275,10 @@ public sealed class SanityTierStateMachineTests
     public void Owners_are_isolated_and_only_the_changed_owner_transitions()
     {
         var machine = new SanityTierStateMachine();
-        machine.Observe(Player(OwnerA, 20d, 200d, 0), true);
+        machine.Observe(Player(OwnerA, 19.9999d, 200d, 0), true);
         machine.Observe(Player(OwnerB, 200d, 200d, 0), true);
 
-        var ownerBEntered = machine.Observe(Player(OwnerB, 100d, 200d, 1), true);
+        var ownerBEntered = machine.Observe(Player(OwnerB, 99.9999d, 200d, 1), true);
 
         Assert.All(
             ownerBEntered.Events.Where(IsTierEvent),
@@ -288,11 +295,11 @@ public sealed class SanityTierStateMachineTests
     public void Disabled_input_exits_once_tracks_latest_snapshot_and_reenters_deterministically()
     {
         var machine = new SanityTierStateMachine();
-        machine.Observe(Player(OwnerA, 20d, 200d, 0), true);
+        machine.Observe(Player(OwnerA, 19.9999d, 200d, 0), true);
 
         var disabled = machine.SetSystemEnabled(false);
         var disabledAgain = machine.SetSystemEnabled(false);
-        var whileDisabled = machine.Observe(Player(OwnerA, 10d, 200d, 1), false);
+        var whileDisabled = machine.Observe(Player(OwnerA, 9.9999d, 200d, 1), false);
         var enabled = machine.SetSystemEnabled(true);
 
         var expectedDisabled = SanityTierCatalog.Rules
@@ -316,7 +323,7 @@ public sealed class SanityTierStateMachineTests
     public void Owner_invalidation_and_world_cleanup_are_idempotent_lifecycle_events()
     {
         var machine = new SanityTierStateMachine();
-        machine.Observe(Player(OwnerA, 20d, 200d, 0), true);
+        machine.Observe(Player(OwnerA, 19.9999d, 200d, 0), true);
         machine.Observe(Player(OwnerB, 100d, 200d, 0), true);
 
         var invalidated = machine.InvalidateOwner(OwnerA);
@@ -337,12 +344,12 @@ public sealed class SanityTierStateMachineTests
     [Fact]
     public void Host_service_wiring_publishes_initial_change_and_cleanup_sequences_once()
     {
-        var data = SanitySaveDataCodec.NewData(OwnerA, 20d, 200d);
+        var data = SanitySaveDataCodec.NewData(OwnerA, 19.9999d, 200d);
         var persistence = new SanityPersistenceResult(
             SanityPersistenceStatus.LoadedV2,
             SanityPersistenceCapability.ReadWrite,
             "test",
-            20d,
+            19.9999d,
             data
         );
         var service = new SanityChangeService(new DefaultSanityMaximumProvider());
@@ -375,12 +382,12 @@ public sealed class SanityTierStateMachineTests
     [Fact]
     public void Host_service_repeated_reads_are_event_free_and_peer_forget_invalidates_once()
     {
-        var data = SanitySaveDataCodec.NewData(OwnerA, 20d, 200d);
+        var data = SanitySaveDataCodec.NewData(OwnerA, 19.9999d, 200d);
         var persistence = new SanityPersistenceResult(
             SanityPersistenceStatus.LoadedV2,
             SanityPersistenceCapability.ReadWrite,
             "test",
-            20d,
+            19.9999d,
             data
         );
         var service = new SanityChangeService(new DefaultSanityMaximumProvider());
@@ -435,7 +442,7 @@ public sealed class SanityTierStateMachineTests
         service.TierStateEventPublished += published.Add;
         Assert.True(service.BeginClientSession(OwnerA, out var reason), reason);
 
-        var low = Full(Player(OwnerA, 20d, 200d, 4));
+        var low = Full(Player(OwnerA, 19.9999d, 200d, 4));
         var applied = service.ApplyClientSnapshot(low);
         var afterApplied = published.Count;
         var duplicate = service.ApplyClientSnapshot(low);

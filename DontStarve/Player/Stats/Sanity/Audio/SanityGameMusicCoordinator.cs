@@ -12,10 +12,17 @@ internal static class SanityGameMusicCapabilityGate
 
     internal static string? ValidateVersion(string? actualGameVersion)
     {
-        return string.Equals(
+        return ValidateVersion(actualGameVersion, isAndroidPlatform: false);
+    }
+
+    internal static string? ValidateVersion(
+        string? actualGameVersion,
+        bool isAndroidPlatform
+    )
+    {
+        return StardewRuntimeVersionPolicy.IsSupportedGameVersion(
             actualGameVersion,
-            ExpectedGameVersion,
-            StringComparison.Ordinal
+            isAndroidPlatform
         )
             ? null
             : "music.patch.game-version-mismatch";
@@ -419,7 +426,7 @@ internal sealed class SanityGameMusicCoordinator : IDisposable
         // 不应被低理智压制（主策划确认：进事件后不压事件音乐是正确行为）。
         // 事件期间 claim 保持不变（见 SanitySmapiAudioService.SubmitSnapshot 的
         // IsEventCoverageActive 保留逻辑），故事件结束后 EventSuspended=false 立即恢复
-        // 正常决策（<=50% 的独立 music request 即压制），原版音乐不会趁机响起。
+        // 正常决策（<50% 的独立 music request 即压制；精确边界由 tier 状态保持），原版音乐不会趁机响起。
         if (processAudio.EventSuspended)
         {
             return Decision(
@@ -432,7 +439,7 @@ internal sealed class SanityGameMusicCoordinator : IDisposable
                 processAudio.Winner
             );
         }
-        // DIAG-20260806: 只要 <=50% 的 music request 激活，就禁用原版音乐（不影响音效）。
+        // DIAG-20260806: 只要 <50% 的 music request 激活，就禁用原版音乐（不影响音效）。
         // 窗口失焦（ProcessPaused）不阻断抑制——失焦时原版音乐同样不允许响起。
         // 点唱机豁免保留（玩家主动播放）。
         if (miniJukeboxPlaying)

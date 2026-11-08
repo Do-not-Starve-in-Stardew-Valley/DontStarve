@@ -1,14 +1,17 @@
+#nullable enable
+
 using System.Collections.Generic;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Objects;
+using System;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
 /// <summary>
 /// 根据当前装备表每分钟调整理智，正值恢复、负值扣减。
 /// </summary>
-internal class Wearing : ITimeRelatedBehavior
+internal class Wearing : IPlayerTimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.Wearing";
     private static Dictionary<string, double> hatSanity = new();
@@ -17,7 +20,13 @@ internal class Wearing : ITimeRelatedBehavior
     private static Dictionary<string, double> bootsSanity = new();
     private static Dictionary<string, double> ringSanity = new();
     private static Dictionary<string, double> trinketSanity = new();
-    private long wait;
+    private readonly SanitySystemLifecycleCoordinator lifecycle;
+    private readonly PlayerTimeBehaviorState state = new();
+
+    internal Wearing(SanitySystemLifecycleCoordinator lifecycle)
+    {
+        this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
+    }
 
     public void Init(IModHelper helper)
     {
@@ -40,7 +49,7 @@ internal class Wearing : ITimeRelatedBehavior
             return false;
 
         var qualifiedId = item.QualifiedItemId;
-        Dictionary<string, double> values = qualifiedId switch
+        Dictionary<string, double>? values = qualifiedId switch
         {
             var id when id.StartsWith("(H)", System.StringComparison.Ordinal) =>
                 hatSanity,
@@ -63,16 +72,13 @@ internal class Wearing : ITimeRelatedBehavior
         return values is not null && values.TryGetValue(item.ItemId, out value);
     }
 
-    public void Update(long _)
+    public void Update(Farmer player, long time)
     {
-        if (wait > 0)
-        {
-            wait--;
-            return;
-        }
-
-        var player = Game1.player;
-        if (player == null)
+        if (
+            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
+            || lifecycle.IsPlayerInSleepContext(playerKey)
+            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
+        )
             return;
 
         // 每分钟重新读取当前穿戴状态，不缓存装备对象，避免换装后继续沿用旧效果。
@@ -107,25 +113,38 @@ internal class Wearing : ITimeRelatedBehavior
         player.ChangeSanity(sanity, SanityChangeSource.Equipment);
     }
 
-    public void Sync(long _, long delta)
+    public void Sync(string playerKey, long time, long delta)
     {
         if (delta < 0)
-            wait += -delta;
+            state.AddRewindWait(playerKey, delta);
     }
 
     public void Load(IModHelper helper)
     {
         var data = helper.Data.ReadSaveData<WearingData>(SAVE_KEY);
-        wait = data?.Wait ?? 0;
+        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
+            Game1.MasterPlayer,
+            out var playerKey
+        )
+            ? playerKey
+            : null;
+        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
     }
 
     public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData(SAVE_KEY, new WearingData { Wait = wait });
+        helper.Data.WriteSaveData(
+            SAVE_KEY,
+            new WearingData { Players = state.CaptureWaits() }
+        );
     }
+
+    public void Reset() => state.Clear();
 }
 
 internal class WearingData
 {
     public long Wait { get; init; }
+
+    public Dictionary<string, long>? Players { get; init; }
 }

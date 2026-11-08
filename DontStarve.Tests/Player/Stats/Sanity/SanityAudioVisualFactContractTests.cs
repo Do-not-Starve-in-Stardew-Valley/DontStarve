@@ -195,7 +195,7 @@ public sealed class SanityAudioVisualFactContractTests
         var dusk = ReadSource("DuskMusicService.cs");
 
         Assert.Contains("internal static class MusicManager", manager, StringComparison.Ordinal);
-        Assert.Contains("SoundEffect.FromStream(stream)", loader, StringComparison.Ordinal);
+        Assert.Contains("SoundEffect.FromStream(stream, true)", loader, StringComparison.Ordinal);
         Assert.Contains("soundEffect.CreateInstance()", loader, StringComparison.Ordinal);
         Assert.Contains("Game1.currentSong", dawn, StringComparison.Ordinal);
         Assert.Contains("Game1.updateMusic()", dawn, StringComparison.Ordinal);

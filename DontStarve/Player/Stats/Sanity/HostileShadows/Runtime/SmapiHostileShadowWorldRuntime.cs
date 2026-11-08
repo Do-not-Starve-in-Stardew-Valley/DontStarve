@@ -258,6 +258,9 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         );
 
         authority.DeltaProduced += OnAuthorityDelta;
+        // DIAG-20260922: 按固定 key 去重记录"外部抬高了我们怪物的血量上限"。只订阅、不改变
+        // 任何判定逻辑；正文里带 entity/新旧上限，便于下次直接从一份日志认出是哪个模组在动血。
+        authority.MaxHealthRatcheted += OnMaxHealthRatcheted;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         resources.WorldResourcesReleasing += OnWorldResourcesReleasing;
     }
@@ -607,11 +610,19 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     }
 
     /// <summary>
-    /// Refresh capacity is local to the current map and only counts this owner's hostile
-    /// entities which are currently locked to that owner. Off-map entities and entities which
-    /// have not acquired a target must not suppress the current-map refresh permit.
+    /// DIAG-20260922: 刷新上限的占用计数——当前地图上属于该 owner 的影怪数量。
     /// </summary>
-    internal int CountLockedEntitiesForOwnerAtLocation(
+    /// <remarks>
+    /// 判据只有**归属**（<c>OwnerPlayerKey</c>）、**地点**（<c>LocationId</c>）与"不是 Despawn"。
+    /// 这里刻意**不看** <c>TargetPlayerKey</c>。旧注释曾写着"未索敌的实体不得抑制本图刷新许可"，
+    /// 那句在今天是**错的**：<c>TargetPlayerKey</c> 只是实时的"当前在打谁"，会被受击拉仇恨、
+    /// 仇恨传播与脱战反复改写，所以刚出生（未索敌）的影怪根本不计入占用，上限因此失效——
+    /// 这就是粉丝报告的"影怪刷新数量不受限制"（实测日志：occupancy 恒为 0、cap = 2，
+    /// 却每 84 秒都批准一只）。未索敌的影怪现在**会**占上限，因为它们确实活着；它们由自己的
+    /// 无目标倒计时和自然 TTL 生命周期清理，不会永久堵住刷新。
+    /// 离图实体仍然不计入当前地图占用（这一点原本就正确，予以保留）。
+    /// </remarks>
+    internal int CountOwnerEntitiesOnCurrentMap(
         string playerKey,
         string locationId
     )
@@ -632,11 +643,6 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 || state is null
                 || !string.Equals(
                     state.OwnerPlayerKey,
-                    playerKey,
-                    StringComparison.Ordinal
-                )
-                || !string.Equals(
-                    state.TargetPlayerKey,
                     playerKey,
                     StringComparison.Ordinal
                 )
@@ -1349,26 +1355,6 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             );
             return 0;
         }
-        if (state.Health != monster.Health)
-        {
-            LogOnce(
-                string.Concat(
-                    "hostile-shadow.hit-guard-health-mismatch (entity=",
-                    entityId,
-                    ", stateHealth=",
-                    state.Health,
-                    ", monsterHealth=",
-                    monster.Health,
-                    ", stateId=",
-                    state.StateId,
-                    ", rev=",
-                    state.Revision,
-                    ")"
-                ),
-                LogLevel.Warn
-            );
-            return 0;
-        }
         if (monster.Health <= 0)
         {
             LogOnce(
@@ -1408,6 +1394,106 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 LogLevel.Warn
             );
             return 0;
+        }
+
+        // DIAG-20260922 external-health compatibility (repair-then-hit):
+        // The ledger and the live monster used to be written by the same code, so any mismatch was
+        // treated as corruption and the hit was refused outright (damage number 0, shadow took no
+        // damage). A third-party difficulty/health mod now rewrites the physical monster's
+        // MaxHealth after materialization (observed x1.75: 300->525, 400->700), so a mismatch is an
+        // expected external observation, not corruption. We therefore adopt the live physical
+        // health into the ledger FIRST (which also ratchets MaxHealth up, never down), and only
+        // then resolve this hit against the reconciled values. Repairing before hitting is
+        // mandatory: resolving against a stale ledger would misprice the damage.
+        if (state.Health != monster.Health)
+        {
+            // DIAG-20260922: this observation point (drift seen on the hit path, then adopted) owns
+            // exactly ONE canonical reason: "hostile-shadow.ledger-adopted-physical-health". Stage 03
+            // had added a synonymous reason "hostile-shadow.hit-guard-health-mismatch-adopted" here;
+            // it is gone because it was built with the single-argument overload
+            // (string.Concat("hostile-shadow.hit-guard-health-mismatch-adopted (entity=", entityId, ...)),
+            // so `entity` ended up INSIDE the dedup key: one table entry per monster, which is exactly
+            // the exhaustion the 64-entry budget cannot afford. Stage 06 hard requirement 6 forbids two
+            // reasons recording the same event, and its merge clause requires merging rather than
+            // adding a second synonymous reason, so the surviving name is the one frozen by
+            // 00-基准.md clause 6.
+            //
+            // Dedup tradeoff (deliberate): the key is the fixed reason only, so the entity/numeric
+            // detail in the body can never grow the table. Cost: only the FIRST sample per reason is
+            // kept. We accept that in exchange for a hard "never floods the log" guarantee; the
+            // numeric drift in the body is what identifies the third-party mod, not the monster id.
+            var ledgerHealthBefore = state.Health;
+            var physicalHealth = monster.Health;
+            // The repair carries the ledger's own identity, position, targeting, attack instance
+            // and visual phase unchanged; only Health differs, so the only field the authority can
+            // ratchet is MaxHealth. Reusing the ledger's own attack fields keeps
+            // IsValidAttackUpdate satisfied and avoids inventing a state transition here.
+            if (
+                !authority.TryUpdate(
+                    new HostileShadowStateUpdate(
+                        entityId,
+                        state.LocationId,
+                        state.StateId,
+                        state.TargetPlayerKey,
+                        state.PositionX,
+                        state.PositionY,
+                        physicalHealth,
+                        "hostile-shadow.hit-guard-health-repair",
+                        state.AttackInstanceId,
+                        state.AttackInstanceRevision,
+                        state.AttackFrameNumber,
+                        state.HitTeleportVisualPhase
+                    ),
+                    out var repairReason
+                )
+            )
+            {
+                // The ledger could not adopt the live value (for example a revision overflow). That
+                // is a genuine fault, so the hit still fails closed instead of being priced against
+                // a value we could not record.
+                LogOnce(
+                    string.Concat(
+                        "hostile-shadow.hit-guard-health-repair-failed (",
+                        repairReason,
+                        ", entity=",
+                        entityId,
+                        ")"
+                    ),
+                    LogLevel.Error
+                );
+                return 0;
+            }
+            if (!authority.TryGetEntity(entityId, out state) || state is null)
+            {
+                LogOnce(
+                    "hostile-shadow.hit-guard-entity-missing",
+                    LogLevel.Warn
+                );
+                return 0;
+            }
+            // Logged only after the ledger really followed (before -> after), so a failed adoption
+            // never produces a line claiming success; that path is already covered by
+            // "hostile-shadow.hit-guard-health-repair-failed" above.
+            LogOnce(
+                "hostile-shadow.ledger-adopted-physical-health",
+                string.Concat(
+                    "entity=",
+                    entityId,
+                    ", ledgerHealthBefore=",
+                    ledgerHealthBefore,
+                    ", ledgerHealthAfter=",
+                    state.Health,
+                    ", physicalHealth=",
+                    physicalHealth,
+                    ", delta=",
+                    state.Health - ledgerHealthBefore,
+                    ", cause=",
+                    "hostile-shadow.hit-guard-health-repair",
+                    ", stateId=",
+                    state.StateId
+                ),
+                LogLevel.Debug
+            );
         }
 
         var attackerPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(
@@ -1883,6 +1969,9 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
 
     private void SettleDying(long entityId, PhysicalEntry entry)
     {
+        // DIAG-20260922: 结算资格以**垂死收据 + 我们账本发布的 0**为准，不再回头量物理血。
+        // state.Health 是账本自己的发布值（由 ResolvePublishedHealth 保证 Dying 时为 0），
+        // 而 entry.Monster.Health 可能已被外部模组改写，两者来源不同，绝不能混用。
         if (
             !Game1.IsMasterGame
             || !authority.TryGetEntity(entityId, out var state)
@@ -1892,7 +1981,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 HostileShadowStateIds.Dying,
                 StringComparison.Ordinal
             )
-            || state.Health != 0
+            || !IsTrueDyingForSettlement(state)
             || !lifecycleReceipts.TryGetDying(
                 authority.SessionId,
                 entityId,
@@ -1957,6 +2046,46 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         }
     }
 
+    /// <summary>
+    /// DIAG-20260922: 决定写入权威账本的"要发布的血量"。
+    /// </summary>
+    /// <remarks>
+    /// 对于垂死（Dying），发布值恒为 0 且来自我们自己的裁决，绝不回读物理血：外部模组可能在
+    /// 我们把 monster.Health 写成 0 之后又把它改回正数，回读会让账本发出
+    /// <c>Dying + 正数</c>，违反 <c>IsHealthValid</c>（Dying 要求 health == 0），使
+    /// TryUpdate 失败并让结算链彻底断掉（击杀/掉落失效）。
+    /// 其它状态仍回读物理血，这是"账本跟随外部"（条款 1）要求的兼容行为。
+    /// </remarks>
+    private static int ResolvePublishedHealth(string stateId, int physicalHealth)
+    {
+        return string.Equals(
+            stateId,
+            HostileShadowStateIds.Dying,
+            StringComparison.Ordinal
+        )
+            ? 0
+            : physicalHealth;
+    }
+
+    /// <summary>
+    /// DIAG-20260922: 结算资格判定。要求账本处于 Dying 且**我们在本次垂死转场中发布过 0**。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意不读 <c>entry.Monster.Health</c>：物理血可能被外部模组改写。判定依据只有账本
+    /// 自己的发布值，配合收据（Kind == Dying、SettlementEligible、DeathRevision == Revision、
+    /// Reason == DyingHealthZero）构成完整的结算资格。收据缺失时由调用方按
+    /// <c>hostile-shadow.settlement-confirmed-dying-receipt-missing</c> 拒绝。
+    /// </remarks>
+    private static bool IsTrueDyingForSettlement(ShadowStateSnapshot state)
+    {
+        return string.Equals(
+                state.StateId,
+                HostileShadowStateIds.Dying,
+                StringComparison.Ordinal
+            )
+            && state.Health == 0;
+    }
+
     private bool TrySynchronizeHitResponse(
         long entityId,
         PhysicalEntry entry,
@@ -1980,7 +2109,10 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     targetPlayerKey,
                     decision.PositionX,
                     decision.PositionY,
-                    entry.Monster.Health,
+                    // DIAG-20260922: 垂死状态的发布值是**我们自己的裁决结果**，不是回读物理血。
+                    // 若外部模组在我们写 0 之后又把 monster.Health 改成正数，回读会让账本发出
+                    // Dying + 正数，直接违反 IsHealthValid(Dying, health == 0)，结算链整条断掉。
+                    ResolvePublishedHealth(decision.StateId, entry.Monster.Health),
                     decision.Reason,
                     hitTeleportVisualPhase: entry.HitResponse.HitTeleportVisualPhase
                 ),
@@ -2043,6 +2175,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         disposed = true;
 
         authority.DeltaProduced -= OnAuthorityDelta;
+        authority.MaxHealthRatcheted -= OnMaxHealthRatcheted;
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         resourceService.WorldResourcesReleasing -= OnWorldResourcesReleasing;
         ClearSession();
@@ -2404,6 +2537,35 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                         ", health=",
                         entry.Monster.Health,
                         ")"
+                    ),
+                    LogLevel.Warn
+                );
+            }
+            else if (state.Health != entry.Monster.Health)
+            {
+                // DIAG-20260922: 常规每帧同步期间发现物理血与账本血不一致。只在真的不同时
+                // 构造消息（热路径不做无条件字符串拼接），并且只有一个固定 key，因此永远
+                // 只留第一条样本，不会刷屏。
+                LogOnce(
+                    "hostile-shadow.external-health-mutation-observed",
+                    string.Concat(
+                        "entity=",
+                        entityId,
+                        // state is a pre-update clone, so these are the ledger values that were
+                        // observed at the start of this tick, before the sync adopted the
+                        // physical numbers.
+                        ", ledgerHealthBefore=",
+                        state.Health,
+                        ", ledgerMaxHealthBefore=",
+                        state.MaxHealth,
+                        ", physicalHealth=",
+                        entry.Monster.Health,
+                        ", physicalMaxHealth=",
+                        entry.Monster.MaxHealth,
+                        ", delta=",
+                        entry.Monster.Health - state.Health,
+                        ", stateId=",
+                        entry.AttackState.StateId
                     ),
                     LogLevel.Warn
                 );
@@ -3800,6 +3962,27 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         );
     }
 
+    /// <summary>
+    /// DIAG-20260922: 外部模组抬高物理怪物血量上限时的诊断记录。中性措辞，不判定为错误。
+    /// </summary>
+    private void OnMaxHealthRatcheted(HostileShadowMaxHealthRatchet ratchet)
+    {
+        LogOnce(
+            "hostile-shadow.max-health-ratcheted",
+            string.Concat(
+                "entity=",
+                ratchet.EntityId,
+                ", stateId=",
+                ratchet.StateId,
+                ", previousMaxHealth=",
+                ratchet.PreviousMaxHealth,
+                ", currentMaxHealth=",
+                ratchet.CurrentMaxHealth
+            ),
+            LogLevel.Warn
+        );
+    }
+
     private void OnAuthorityDelta(ShadowStateDeltaMessage message)
     {
         if (message.Change.Kind == ShadowStateDeltaKind.Removed)
@@ -4057,6 +4240,34 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                 LogLevel.Debug
             );
         }
+    }
+
+    /// <summary>
+    /// DIAG-20260922: 去重日志，按 <paramref name="reason"/> 作为**固定 key**，正文可以带每次
+    /// 观察到的细节（entity、数值等）。
+    /// </summary>
+    /// <remarks>
+    /// 现有单参数版本把 reason 同时当作去重 key 和正文，因此正文里一旦拼入 entity 就会让
+    /// 去重表被"每个实体一条"塞满（上限 <see cref="MaximumLoggedReasons"/> = 64），
+    /// 诊断价值反而下降。这个重载把两者分开：**key 固定、正文详细、每个 key 只留第一条样本**。
+    /// 取舍是刻意的——优先保证不刷屏（性能底线），代价是只看得到首个样本。
+    /// </remarks>
+    private void LogOnce(string reason, string detail, LogLevel level)
+    {
+        if (
+            string.IsNullOrWhiteSpace(reason)
+            || loggedReasons.Count >= MaximumLoggedReasons
+            || !loggedReasons.Add(reason)
+        )
+        {
+            return;
+        }
+        monitor.Log(
+            string.IsNullOrWhiteSpace(detail)
+                ? $"Hostile shadow world runtime: {reason}"
+                : $"Hostile shadow world runtime: {reason} ({detail})",
+            level
+        );
     }
 
     private void LogOnce(string reason, LogLevel level)

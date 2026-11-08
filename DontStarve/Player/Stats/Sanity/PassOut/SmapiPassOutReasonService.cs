@@ -6,6 +6,7 @@ using System.Reflection;
 using HarmonyLib;
 using StardewModdingAPI;
 using StardewValley;
+using DontStarve.Player.Stats.Hunger;
 
 namespace DontStarve.Player.Stats.Sanity.PassOut;
 
@@ -25,9 +26,11 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     private readonly PassOutReasonLedger ledger;
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
     private Harmony? harmony;
+    private MethodInfo? startSleepMethod;
     private MethodInfo? doSleepMethod;
     private MethodInfo? checkForEventsMethod;
     private bool disposed;
+    private bool knownStartSleepAttempt;
 
     internal SmapiPassOutReasonService(
         IMonitor monitor,
@@ -46,6 +49,17 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         InstallPatches();
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
+
+    /// <summary>
+    /// The shared Sleep adapter subscribes here instead of installing another GameLocation
+    /// Harmony owner. Returning false suppresses only the vanilla startSleep entry while a
+    /// player is answering the custom confirmation dialogue.
+    /// </summary>
+    internal event Func<Farmer, bool>? StartSleepRequested;
+
+    internal event Action<Farmer>? StartSleepObserved;
+
+    internal event Action<Farmer, PassOutReasonEvidence>? VoluntarySleepCommitted;
 
     internal PassOutReasonClassification ClassifyStartToPassOut(Farmer farmer)
     {
@@ -100,6 +114,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     {
         ledger.Clear();
         loggedReasons.Clear();
+        knownStartSleepAttempt = false;
     }
 
     public void Dispose()
@@ -124,6 +139,11 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             return;
         }
 
+        startSleepMethod = AccessTools.Method(
+            typeof(GameLocation),
+            "startSleep",
+            Type.EmptyTypes
+        );
         doSleepMethod = AccessTools.Method(
             typeof(GameLocation),
             "doSleep",
@@ -138,6 +158,14 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             typeof(SmapiPassOutReasonService),
             nameof(DoSleepPrefix)
         );
+        var startSleepPrefix = AccessTools.Method(
+            typeof(SmapiPassOutReasonService),
+            nameof(StartSleepPrefix)
+        );
+        var startSleepPostfix = AccessTools.Method(
+            typeof(SmapiPassOutReasonService),
+            nameof(StartSleepPostfix)
+        );
         var checkForEventsPrefix = AccessTools.Method(
             typeof(SmapiPassOutReasonService),
             nameof(CheckForEventsPrefix)
@@ -148,13 +176,17 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         );
         if (
             doSleepMethod is null
+            || startSleepMethod is null
             || checkForEventsMethod is null
             || doSleepPrefix is null
+            || startSleepPrefix is null
+            || startSleepPostfix is null
             || checkForEventsPrefix is null
             || checkForEventsPostfix is null
         )
         {
             doSleepMethod = null;
+            startSleepMethod = null;
             checkForEventsMethod = null;
             Log(
                 "passout.reason.patch-signature-unavailable",
@@ -167,6 +199,11 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         try
         {
             harmony = new Harmony(string.Concat(modId, ".Sanity4.PassOutReason"));
+            harmony.Patch(
+                startSleepMethod,
+                prefix: new HarmonyMethod(startSleepPrefix),
+                postfix: new HarmonyMethod(startSleepPostfix)
+            );
             harmony.Patch(doSleepMethod, prefix: new HarmonyMethod(doSleepPrefix));
             harmony.Patch(
                 checkForEventsMethod,
@@ -178,6 +215,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         catch (Exception exception)
         {
             harmony = null;
+            startSleepMethod = null;
             doSleepMethod = null;
             checkForEventsMethod = null;
             Log(
@@ -192,12 +230,14 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     {
         if (harmony is not null)
         {
+            TryUnpatch(startSleepMethod);
             TryUnpatch(doSleepMethod);
             TryUnpatch(checkForEventsMethod);
         }
         if (ReferenceEquals(activePatchOwner, this))
             activePatchOwner = null;
         harmony = null;
+        startSleepMethod = null;
         doSleepMethod = null;
         checkForEventsMethod = null;
     }
@@ -225,6 +265,19 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         var owner = activePatchOwner;
         if (owner is null)
             return;
+        if (
+            !owner.knownStartSleepAttempt
+            || Game1.player is null
+            || Game1.player.timeWentToBed.Value == 0
+        )
+        {
+            owner.Log(
+                "passout.reason.do-sleep-without-start-sleep-evidence",
+                "GameLocation.doSleep() had no preceding recognized startSleep() evidence; custom sleep consequences were skipped.",
+                LogLevel.Warn
+            );
+            return;
+        }
         try
         {
             owner.CaptureVoluntarySleep();
@@ -234,6 +287,52 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             owner.Log(
                 "passout.reason.voluntary-sleep-prefix-threw",
                 $"Voluntary sleep evidence failed closed ({exception.GetType().Name}: {exception.Message}).",
+                LogLevel.Error
+            );
+        }
+        finally
+        {
+            owner.knownStartSleepAttempt = false;
+        }
+    }
+
+    private static bool StartSleepPrefix()
+    {
+        var owner = activePatchOwner;
+        if (owner is null)
+            return true;
+        try
+        {
+            var allowed = owner.AllowStartSleep(Game1.player);
+            if (allowed)
+                owner.knownStartSleepAttempt = true;
+            return allowed;
+        }
+        catch (Exception exception)
+        {
+            owner.Log(
+                "passout.reason.start-sleep-prefix-threw",
+                $"Sleep entry guard failed open ({exception.GetType().Name}: {exception.Message}).",
+                LogLevel.Error
+            );
+            return true;
+        }
+    }
+
+    private static void StartSleepPostfix()
+    {
+        var owner = activePatchOwner;
+        if (owner is null)
+            return;
+        try
+        {
+            owner.ObserveStartSleep(Game1.player);
+        }
+        catch (Exception exception)
+        {
+            owner.Log(
+                "passout.reason.start-sleep-postfix-threw",
+                $"Sleep entry observation failed closed ({exception.GetType().Name}: {exception.Message}).",
                 LogLevel.Error
             );
         }
@@ -273,12 +372,50 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         );
         var result = CaptureStartToPassOut(Game1.player, classification);
         ReportCaptureFailure(result);
+        if (result.Status != PassOutReasonCaptureStatus.Captured)
+            return;
+
+        try
+        {
+            VoluntarySleepCommitted?.Invoke(Game1.player, result.Evidence);
+        }
+        catch (Exception exception)
+        {
+            Log(
+                "passout.reason.voluntary-sleep-observer-threw",
+                $"Voluntary sleep observer failed closed ({exception.GetType().Name}: {exception.Message}).",
+                LogLevel.Error
+            );
+        }
+    }
+
+    private bool AllowStartSleep(Farmer farmer)
+    {
+        var handlers = StartSleepRequested;
+        if (handlers is null)
+            return true;
+
+        foreach (Func<Farmer, bool> handler in handlers.GetInvocationList())
+        {
+            if (!handler(farmer))
+                return false;
+        }
+        return true;
+    }
+
+    private void ObserveStartSleep(Farmer farmer)
+    {
+        var handlers = StartSleepObserved;
+        if (handlers is null)
+            return;
+        foreach (Action<Farmer> handler in handlers.GetInvocationList())
+            handler(farmer);
     }
 
     private void ApplyHealthDeathRecovery(bool wasKillScreen)
     {
         var farmer = Game1.player;
-        if (!CanApplyHostPolicy(farmer))
+        if (!CanApplyHostHealthDeath(farmer))
             return;
 
         var decision = PassOutReasonPolicy.ResolveHealthDeathRecovery(
@@ -289,13 +426,31 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         );
         if (decision.Action != PassOutPolicyAction.SetToMaximumFraction)
             return;
-        var target = farmer.GetMaxSanity() * decision.TargetMaximumFraction;
-        var result = farmer.SetSanity(target, decision.Source);
-        if (result.Status == SanityChangeStatus.Rejected)
+
+        // The death transition is shared with Hunger, but each stat keeps its own configured
+        // consumer gate. Disabling Sanity must not disable Hunger's independent revive rule.
+        if (lifecycle.IsEnabled)
+        {
+            var target = farmer.GetMaxSanity() * decision.TargetMaximumFraction;
+            var result = farmer.SetSanity(target, decision.Source);
+            if (result.Status == SanityChangeStatus.Rejected)
+            {
+                Log(
+                    result.Reason,
+                    $"Health-death Sanity recovery was rejected ({result.Reason}).",
+                    LogLevel.Warn
+                );
+            }
+        }
+
+        // This is the single confirmed true-death boundary. Hunger must consume the same
+        // transition so it cannot drift into a second, independently maintained death hook.
+        var hungerResult = HungerExtensions.ApplyHealthDeathRecovery(farmer);
+        if (HungerExtensions.IsEnabled && !hungerResult.Accepted)
         {
             Log(
-                result.Reason,
-                $"Health-death Sanity recovery was rejected ({result.Reason}).",
+                hungerResult.Reason,
+                $"Health-death Hunger recovery was rejected ({hungerResult.Reason}).",
                 LogLevel.Warn
             );
         }
@@ -333,10 +488,14 @@ internal sealed class SmapiPassOutReasonService : IDisposable
 
     private bool CanApplyHostPolicy(Farmer? farmer)
     {
+        return lifecycle.IsEnabled && CanApplyHostHealthDeath(farmer);
+    }
+
+    private bool CanApplyHostHealthDeath(Farmer? farmer)
+    {
         return !disposed
             && Context.IsWorldReady
             && Context.IsMainPlayer
-            && lifecycle.IsEnabled
             && lifecycle.AuthorityRole == SanityAuthorityRole.Host
             && SanityProtocol.IsValidSessionId(lifecycle.SessionId)
             && farmer is not null

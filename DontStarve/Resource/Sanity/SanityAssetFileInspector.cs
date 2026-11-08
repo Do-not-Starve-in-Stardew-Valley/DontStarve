@@ -26,7 +26,7 @@ internal static class SanityAssetFileInspector
         {
             SanityAssetKind.Png => ".png",
             SanityAssetKind.Json => ".json",
-            SanityAssetKind.Wav => ".wav",
+            SanityAssetKind.Ogg => ".ogg",
             _ => string.Empty,
         };
         return string.Equals(Path.GetExtension(path), expected, StringComparison.OrdinalIgnoreCase);
@@ -38,7 +38,7 @@ internal static class SanityAssetFileInspector
         {
             SanityAssetKind.Png => IsPngHeader(bytes),
             SanityAssetKind.Json => IsStrictJson(bytes),
-            SanityAssetKind.Wav => IsWaveHeader(bytes),
+            SanityAssetKind.Ogg => IsOggHeader(bytes),
             _ => false,
         };
     }
@@ -80,17 +80,13 @@ internal static class SanityAssetFileInspector
             && ReadBigEndianInt32(bytes, 20) > 0;
     }
 
-    private static bool IsWaveHeader(byte[] bytes)
+    private static bool IsOggHeader(byte[] bytes)
     {
-        return bytes.Length >= 12
-            && bytes[0] == (byte)'R'
-            && bytes[1] == (byte)'I'
-            && bytes[2] == (byte)'F'
-            && bytes[3] == (byte)'F'
-            && bytes[8] == (byte)'W'
-            && bytes[9] == (byte)'A'
-            && bytes[10] == (byte)'V'
-            && bytes[11] == (byte)'E';
+        return bytes.Length >= 4
+            && bytes[0] == (byte)'O'
+            && bytes[1] == (byte)'g'
+            && bytes[2] == (byte)'g'
+            && bytes[3] == (byte)'S';
     }
 
     private static bool IsStrictJson(byte[] bytes)

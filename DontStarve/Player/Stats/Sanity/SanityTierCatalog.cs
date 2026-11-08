@@ -91,7 +91,7 @@ internal static class SanityTierCatalog
                 new SanityTierRule(SanityTierIds.ShadowCreatures, 0.5d, 0.5d),
                 new SanityTierRule(SanityTierIds.Whispers, 0.45d, 0.45d),
                 new SanityTierRule(SanityTierIds.BeardRabbit, 0.4d, 0.4d),
-                // danger 是唯一有数值滞回的 tier：<=15% 进入，>17.5% 才退出。
+                // danger 是唯一有数值滞回的 tier：<15% 进入，>17.5% 才退出。
                 new SanityTierRule(SanityTierIds.Danger, 0.15d, 0.175d),
                 new SanityTierRule(SanityTierIds.Terrorbeak, 0.1d, 0.1d),
             }

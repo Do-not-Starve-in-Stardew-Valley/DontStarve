@@ -19,6 +19,18 @@ public interface IGenericModConfigMenuApi
     /// </param>
     void Register(IManifest manifest, Action reset, Action save, bool titleScreenOnly = false);
 
+    /// <summary>Start registering options for a named page.</summary>
+    /// <param name="manifest">The mod's manifest.</param>
+    /// <param name="pageId">The stable page ID.</param>
+    /// <param name="pageTitle">The localized page title.</param>
+    void AddPage(IManifest manifest, string pageId, Func<string> pageTitle = null);
+
+    /// <summary>Add a navigation link to a named page.</summary>
+    /// <param name="manifest">The mod's manifest.</param>
+    /// <param name="pageId">The stable page ID.</param>
+    /// <param name="text">The localized link text.</param>
+    void AddPageLink(IManifest manifest, string pageId, Func<string> text, Func<string> tooltip = null);
+
     /// <summary>Add a section title at the current position in the form.</summary>
     /// <param name="manifest">The mod's manifest.</param>
     /// <param name="text">The title text shown in the form.</param>

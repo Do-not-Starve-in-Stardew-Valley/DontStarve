@@ -29,6 +29,22 @@ public sealed class SanityRuntimeResourceLoaderTests
     }
 
     [Fact]
+    public void ShippedAudioCueSetsCanBePreloadedBeforeAnyGameplayRequest()
+    {
+        var factory = new FakeFactory();
+        using var loader = new SanityRuntimeResourceLoader(ShippedModRoot, factory);
+
+        loader.Prime();
+        loader.SetEnabled(true);
+        var preload = loader.PrimeAudioCueSets();
+
+        Assert.Equal(9, preload.Loaded);
+        Assert.Equal(0, preload.Failed);
+        Assert.True(factory.SoundCreates > 0);
+        Assert.Equal(0, factory.TextureCreates);
+    }
+
+    [Fact]
     public void WrongDeploymentRootFailsClosedWithoutTryingSourcePrefixedFallbacks()
     {
         var factory = new FakeFactory();

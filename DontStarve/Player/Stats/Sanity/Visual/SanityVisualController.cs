@@ -409,19 +409,20 @@ internal sealed class SanityVisualController
 
         private static bool IsIdleEligible(SanityVisualObservation observation)
         {
-            if (observation.Current / observation.Maximum >= 0.5d)
-                return false;
-            foreach (var tierId in observation.ActiveTierIds)
+            if (observation.Current / observation.Maximum < 0.5d)
             {
-                if (
-                    string.Equals(
-                        tierId,
-                        SanityTierIds.ShadowCreatures,
-                        StringComparison.Ordinal
-                    )
-                )
+                foreach (var tierId in observation.ActiveTierIds)
                 {
-                    return true;
+                    if (
+                        string.Equals(
+                            tierId,
+                            SanityTierIds.ShadowCreatures,
+                            StringComparison.Ordinal
+                        )
+                    )
+                    {
+                        return true;
+                    }
                 }
             }
             return false;

@@ -57,13 +57,13 @@ internal sealed class SanityRuntimePhysicalResourceCache
         string? expectedFormatId = null
     )
     {
-        SanityWavFormatDescriptor? expectedAudioFormat = null;
+        SanityOggFormatDescriptor? expectedAudioFormat = null;
         if (kind == SanityPhysicalResourceKind.SoundEffect)
         {
             var resolvedFormatId = string.IsNullOrWhiteSpace(expectedFormatId)
-                ? SanityWavFormatCatalog.PcmS16Stereo44100V1
+                ? SanityOggFormatCatalog.VorbisStereo44100V1
                 : expectedFormatId;
-            if (!SanityWavFormatCatalog.TryGet(resolvedFormatId, out var descriptor))
+            if (!SanityOggFormatCatalog.TryGet(resolvedFormatId, out var descriptor))
             {
                 return Failed(
                     slotId,
@@ -204,8 +204,8 @@ internal sealed class SanityRuntimePhysicalResourceCache
         }
         else
         {
-            var wav = SanityWavInspector.Inspect(bytes);
-            if (expectedAudioFormat is null || !expectedAudioFormat.Matches(wav))
+            var ogg = SanityOggInspector.Inspect(bytes);
+            if (expectedAudioFormat is null || !expectedAudioFormat.Matches(ogg))
             {
                 return Failed(
                     slotId,
@@ -213,7 +213,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
                     required,
                     isPlaceholder,
                     "resource.sound.invalid-runtime-format",
-                    $"The deployed WAV failed {expectedAudioFormat?.FormatId ?? "the declared runtime format"}."
+                    $"The deployed OGG failed {expectedAudioFormat?.FormatId ?? "the declared runtime format"}."
                 );
             }
         }

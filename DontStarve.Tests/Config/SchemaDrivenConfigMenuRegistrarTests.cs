@@ -36,24 +36,54 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             result.RegisteredKeys
         );
         Assert.Equal(
-            new[] { "config.hunger.section", "config.sanity.section", "config.music.section" },
-            menu.Sections
+            new[]
+            {
+                "dontstarve.config.config.game-mechanics.page",
+                "dontstarve.config.config.hunger.page",
+                "dontstarve.config.config.sanity.page",
+                "dontstarve.config.config.darkness.page",
+                "dontstarve.config.config.detail-adjustments.page",
+                "dontstarve.config.config.balance-compatibility.page",
+                "dontstarve.config.config.vanilla-balance.page",
+                "dontstarve.config.config.visuals-audio.page",
+                "dontstarve.config.config.screen-filter.page",
+                "dontstarve.config.config.audio-effects.page",
+            },
+            menu.Pages
+        );
+        Assert.Equal(
+            new[]
+            {
+                "dontstarve.config.config.game-mechanics.page",
+                "dontstarve.config.config.balance-compatibility.page",
+                "dontstarve.config.config.visuals-audio.page",
+                "dontstarve.config.config.hunger.page",
+                "dontstarve.config.config.sanity.page",
+                "dontstarve.config.config.darkness.page",
+                "dontstarve.config.config.detail-adjustments.page",
+                "dontstarve.config.config.vanilla-balance.page",
+                "dontstarve.config.config.screen-filter.page",
+                "dontstarve.config.config.audio-effects.page",
+            },
+            menu.PageLinks
         );
         Assert.Equal(
             registry.Options.Select(option => option.Key),
             menu.FieldOrder
         );
-        Assert.Equal(10, menu.BooleanFields.Count);
-        Assert.Equal(4, menu.EnumFields.Count);
-        Assert.False(
+        Assert.Equal(12, menu.BooleanFields.Count);
+        Assert.Equal(5, menu.EnumFields.Count);
+        Assert.True(
             menu.BooleanFields[ConfigKeys.EnableHungerSystem].GetValue()
         );
+        Assert.True(menu.BooleanFields[ConfigKeys.SleepRecoveryBalance].GetValue());
         Assert.True(
             menu.BooleanFields[ConfigKeys.EnableSeedEdibility].GetValue()
         );
         Assert.False(
             menu.BooleanFields[ConfigKeys.EnableDawnDuskMusic].GetValue()
         );
+        Assert.True(menu.BooleanFields[ConfigKeys.EnableActivityMusic].GetValue());
         Assert.True(
             menu.BooleanFields[ConfigKeys.EnableSanityVignette].GetValue()
         );
@@ -68,6 +98,10 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
         Assert.Equal("Don't Starve (Beta)", profile.FormatAllowedValue("DontStarve"));
         Assert.Equal("Unknown", profile.FormatAllowedValue("Unknown"));
+        Assert.Equal(
+            new[] { "Default", "NonLethal", "Disabled" },
+            menu.EnumFields[ConfigKeys.HungerDamageMode].AllowedValues
+        );
         Assert.Empty(diagnostics);
 
         foreach (var field in menu.BooleanFields.Values)
@@ -199,13 +233,13 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         var darkHand = menu.EnumFields[ConfigKeys.DarkHandMode];
         Assert.Equal(
             "Hunger",
-            menu.SectionTextGetters["config.hunger.section"]()
+            menu.PageTitleGetters["dontstarve.config.config.hunger.page"]()
         );
-        Assert.Equal("Enable Hunger system (Beta)", hunger.GetName());
+        Assert.Equal("Enable hunger system (Beta)", hunger.GetName());
         Assert.Equal("Enable seed edibility", seedEdibility.GetName());
         Assert.Equal(
             "Sanity",
-            menu.SectionTextGetters["config.sanity.section"]()
+            menu.PageTitleGetters["dontstarve.config.config.sanity.page"]()
         );
         Assert.Equal("Enable Sanity system", sanity.GetName());
         Assert.Equal("Fire Thief", darkHand.FormatAllowedValue("FireThief"));
@@ -213,14 +247,17 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         translations.SetValues(JsonTranslationProvider.Zh.Values);
 
         Assert.Equal(
-            "理智",
-            menu.SectionTextGetters["config.sanity.section"]()
+            "理智值",
+            menu.PageTitleGetters["dontstarve.config.config.sanity.page"]()
         );
         Assert.Equal("启用理智系统", sanity.GetName());
         Assert.Equal("启用理智系统及其玩法效果。", sanity.GetTooltip());
-        Assert.Equal("饱食度", menu.SectionTextGetters["config.hunger.section"]());
-        Assert.Equal("启用饱食度系统（beta）", hunger.GetName());
-        Assert.Equal("启用饱食度系统及其玩法效果。此功能目前处于 beta 阶段。", hunger.GetTooltip());
+        Assert.Equal(
+            "饥饿值",
+            menu.PageTitleGetters["dontstarve.config.config.hunger.page"]()
+        );
+        Assert.Equal("启用饥饿值系统（Beta）", hunger.GetName());
+        Assert.Equal("启用饥饿值系统及其玩法效果。此功能目前处于 Beta 阶段。", hunger.GetTooltip());
         Assert.Equal("种子可食用", seedEdibility.GetName());
         Assert.Equal("允许符合条件的作物种子被食用。此设置由种子食用功能使用。", seedEdibility.GetTooltip());
         Assert.Equal("偷火", darkHand.FormatAllowedValue("FireThief"));
@@ -288,7 +325,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 );
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
-                Assert.Equal(14, document.RootElement.EnumerateObject().Count(property =>
+                Assert.Equal(17, document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 ));
             }
@@ -397,7 +434,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
 
         Assert.Equal(ConfigMenuRegistrationStatus.Degraded, partial.Status);
-        Assert.Equal(13, partial.RegisteredKeys.Count);
+        Assert.Equal(16, partial.RegisteredKeys.Count);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, partial.RegisteredKeys);
         Assert.Equal(
             new[] { $"gmcm.option-registration-failed:{ConfigKeys.DarkHandMode}" },
@@ -471,9 +508,12 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             Array.Empty<string>(),
             true,
             true,
-            "config.sanity.section",
+            "config.game-mechanics.page",
+            "config.sanity.page",
             "config.enable-sanity-system.name",
             "config.enable-sanity-system.tooltip",
+            10,
+            20,
             10
         );
         var music = new ConfigOptionDefinition(
@@ -483,9 +523,12 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             Array.Empty<string>(),
             false,
             false,
-            "config.music.section",
+            "config.visuals-audio.page",
+            "config.audio-effects.page",
             "config.enable-dawn-dusk-music.name",
             "config.enable-dawn-dusk-music.tooltip",
+            30,
+            20,
             90
         );
         var registry = new ConfigRegistry(1, new[] { unsupported, music });
@@ -529,7 +572,8 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
         foreach (var option in registry.Options)
         {
-            AssertTranslation(option.SectionI18n);
+            AssertTranslation(option.ParentPageI18n);
+            AssertTranslation(option.PageI18n);
             AssertTranslation(option.NameI18n);
             AssertTranslation(option.TooltipI18n);
             foreach (var allowedValue in option.AllowedValues)
@@ -605,9 +649,14 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
 
     internal Action? SaveAction { get; private set; }
 
-    internal List<string> Sections { get; } = new();
+    internal List<string> Pages { get; } = new();
 
-    internal Dictionary<string, Func<string>> SectionTextGetters { get; } =
+    internal List<string> PageLinks { get; } = new();
+
+    internal Dictionary<string, Func<string>> PageTitleGetters { get; } =
+        new(StringComparer.Ordinal);
+
+    internal Dictionary<string, Func<string>> PageLinkTextGetters { get; } =
         new(StringComparer.Ordinal);
 
     internal List<string> FieldOrder { get; } = new();
@@ -628,10 +677,19 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
         SaveAction = save;
     }
 
-    public void AddSection(string sectionId, Func<string> getText)
+    public void AddPage(string pageId, Func<string> getTitle)
     {
-        Sections.Add(sectionId);
-        SectionTextGetters.Add(sectionId, getText);
+        if (PageTitleGetters.ContainsKey(pageId))
+            return;
+
+        Pages.Add(pageId);
+        PageTitleGetters.Add(pageId, getTitle);
+    }
+
+    public void AddPageLink(string pageId, Func<string> getText)
+    {
+        PageLinks.Add(pageId);
+        PageLinkTextGetters.Add(pageId, getText);
     }
 
     public void AddBoolean(

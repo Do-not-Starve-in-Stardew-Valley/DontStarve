@@ -276,6 +276,67 @@ public sealed class SanityShadowBudgetGovernorTests
         Assert.Equal(3, hostile10.Cap);
     }
 
+    [Theory]
+    [InlineData(0.6d, (int)SanityShadowPoolTier.Inactive)]
+    [InlineData(0.5d, (int)SanityShadowPoolTier.Inactive)]
+    [InlineData(0.15d, (int)SanityShadowPoolTier.Inactive)]
+    [InlineData(0.1d, (int)SanityShadowPoolTier.Inactive)]
+    public void Observed_sanity_ratio_drives_the_mutually_exclusive_pool_phase(
+        double ratio,
+        int expected
+    )
+    {
+        var governor = EnabledGovernor(new MutableIntensityProvider());
+        Assert.True(
+            governor.ObserveSanityRatio(
+                OwnerA,
+                ratio * 200d,
+                200d,
+                out var reason
+            ),
+            reason
+        );
+
+        var result = governor.Evaluate(OwnerA, 0, 0);
+
+        Assert.Equal((SanityShadowPoolTier)expected, result.PoolTier);
+        Assert.Equal(
+            (SanityShadowPoolTier)expected == SanityShadowPoolTier.Inactive
+                ? SanityShadowBudgetEvaluationStatus.Inactive
+                : SanityShadowBudgetEvaluationStatus.Waiting,
+            result.Status
+        );
+    }
+
+    [Fact]
+    public void Active_danger_tier_keeps_hostile15_pool_through_strict_exit_boundary()
+    {
+        var governor = ReadyDefaultGovernor(OwnerA);
+        Enter(governor, OwnerA, SanityTierIds.Danger);
+
+        Assert.True(
+            governor.ObserveSanityRatio(OwnerA, 30d, 200d, out var atEntryLineReason),
+            atEntryLineReason
+        );
+        var atEntryLine = governor.Evaluate(OwnerA, 0, 0);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, atEntryLine.PoolTier);
+
+        Assert.True(
+            governor.ObserveSanityRatio(OwnerA, 35d, 200d, out var atExitLineReason),
+            atExitLineReason
+        );
+        var atExitLine = governor.Evaluate(OwnerA, 1, 0);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, atExitLine.PoolTier);
+
+        Exit(governor, OwnerA, SanityTierIds.Danger);
+        Assert.True(
+            governor.ObserveSanityRatio(OwnerA, 35.0001d, 200d, out var aboveExitReason),
+            aboveExitReason
+        );
+        var aboveExit = governor.Evaluate(OwnerA, 2, 0);
+        Assert.Equal(SanityShadowPoolTier.Harmless50, aboveExit.PoolTier);
+    }
+
     [Fact]
     public void Exact_sixty_game_minutes_issue_once_and_restart_the_cycle()
     {
@@ -699,12 +760,12 @@ public sealed class SanityShadowBudgetGovernorTests
     public void Change_service_wires_authoritative_tiers_and_cached_config_into_budget_only()
     {
         var provider = new MutableIntensityProvider();
-        var data = SanitySaveDataCodec.NewData(OwnerA, 20d, 200d);
+        var data = SanitySaveDataCodec.NewData(OwnerA, 19.9999d, 200d);
         var persistence = new SanityPersistenceResult(
             SanityPersistenceStatus.LoadedV2,
             SanityPersistenceCapability.ReadWrite,
             "test",
-            20d,
+            19.9999d,
             data
         );
         var service = new SanityChangeService(

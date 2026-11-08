@@ -147,6 +147,42 @@ public sealed class SanityRequestValidatorTests
     }
 
     [Fact]
+    public void Garbage_request_applies_penalty_before_recovery()
+    {
+        var service = Host();
+        Assert.Equal(
+            SanityChangeStatus.Applied,
+            service.Set(FarmhandKey, 5d, SanityChangeSource.Administration).Status
+        );
+        var request = Request(nonce: 1, expectedRevision: 1);
+        request.Source = SanityChangeSource.Garbage;
+        request.InteractionId = "garbage:Mayor:10:10";
+        request.Garbage = new TrashCanSanityFacts
+        {
+            LocationNameOrUniqueName = "Farm",
+            TileX = 10,
+            TileY = 10,
+            GarbageCanId = "Mayor",
+        };
+
+        var result = service.HandleHostRequest(
+            request,
+            FarmhandId,
+            new FakeTruthSource(
+                SanityRequestTruth.AcceptedGarbage(
+                    new TrashCanSanityPlan(-20, 3)
+                )
+            ),
+            1000
+        );
+
+        Assert.True(result.Accepted, result.Reason);
+        Assert.Equal(3d, service.GetCurrent(FarmhandKey));
+        Assert.True(service.TryGetSnapshot(FarmhandKey, out var snapshot));
+        Assert.Equal(3, snapshot.Revision);
+    }
+
+    [Fact]
     public void Host_context_rejection_does_not_change_state()
     {
         var service = Host();
@@ -281,14 +317,14 @@ public sealed class SanityRequestValidatorTests
         Assert.Contains("ExpectedRevision", properties);
     }
 
-    private static SanityChangeService Host()
+    private static SanityChangeService Host(double current = 200d)
     {
-        var data = SanitySaveDataCodec.NewData(MasterKey, 200d, 200d);
+        var data = SanitySaveDataCodec.NewData(MasterKey, current, 200d);
         var persistence = new SanityPersistenceResult(
             SanityPersistenceStatus.LoadedV2,
             SanityPersistenceCapability.ReadWrite,
             "test",
-            200d,
+            current,
             data
         );
         var service = new SanityChangeService(new DefaultSanityMaximumProvider());

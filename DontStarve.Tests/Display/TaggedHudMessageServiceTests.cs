@@ -43,6 +43,20 @@ public sealed class TaggedHudMessageServiceTests
         Assert.DoesNotContain("Game1.hudMessages", remote, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Hunger_uses_default_group_without_touching_darkness_group()
+    {
+        var messages = ReadSource("TaggedHudMessageService.cs");
+        var hunger = ReadContract("OnlinePersistence", "Hunger.cs");
+
+        Assert.Contains("internal const string Default = \"default\";", messages, StringComparison.Ordinal);
+        Assert.Contains("internal const string DarknessAttack = \"darkness-attack\";", messages, StringComparison.Ordinal);
+        Assert.Contains("FadeExisting(normalizedTag);", messages, StringComparison.Ordinal);
+        Assert.Contains("hudMessages.AddCornerTextbox(", hunger, StringComparison.Ordinal);
+        Assert.Contains("HudMessageGroupTags.Default", hunger, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game1.addHUDMessage(", hunger, StringComparison.Ordinal);
+    }
+
     private static string ReadSource(string fileName)
     {
         return ReadContract("HudMessages", fileName);

@@ -106,10 +106,19 @@ internal sealed class SeedFoodTouchGestureState
     private bool active;
     private int pointerId;
     private SeedFoodPoint origin;
+    private SeedFoodPoint lastPosition;
     private long startedAt;
     private SeedFoodInputCandidate candidate;
 
     internal bool IsActive => active;
+
+    internal SeedFoodPoint Origin => origin;
+
+    internal SeedFoodPoint LastPosition => lastPosition;
+
+    internal int PointerId => pointerId;
+
+    internal SeedFoodInputCandidate? ActiveCandidate => active ? candidate : null;
 
     internal bool TryBegin(
         int pointerId,
@@ -125,6 +134,7 @@ internal sealed class SeedFoodTouchGestureState
         active = true;
         this.pointerId = pointerId;
         origin = position;
+        lastPosition = position;
         startedAt = timestamp;
         candidate = new SeedFoodInputCandidate(
             SeedFoodInputDevice.Touch,
@@ -153,7 +163,10 @@ internal sealed class SeedFoodTouchGestureState
         )
         {
             Reset();
+            return;
         }
+
+        lastPosition = position;
     }
 
     internal SeedFoodInputCandidate? Release(
@@ -186,6 +199,7 @@ internal sealed class SeedFoodTouchGestureState
         active = false;
         pointerId = 0;
         origin = default;
+        lastPosition = default;
         startedAt = 0;
         candidate = default;
     }

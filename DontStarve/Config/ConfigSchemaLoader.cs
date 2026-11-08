@@ -26,9 +26,12 @@ internal static class ConfigSchemaLoader
             "AllowedValues",
             "ExposeToContentPatcher",
             "AffectsWorldState",
-            "SectionI18n",
+            "ParentPageI18n",
+            "PageI18n",
             "NameI18n",
             "TooltipI18n",
+            "ParentPageOrder",
+            "PageOrder",
             "Order",
         },
         StringComparer.Ordinal
@@ -211,9 +214,12 @@ internal static class ConfigSchemaLoader
             !values.TryGetValue("Default", out var defaultElement)
             || !TryRequiredBoolean(values, "ExposeToContentPatcher", out var exposeToCp)
             || !TryRequiredBoolean(values, "AffectsWorldState", out var affectsWorldState)
-            || !TryRequiredString(values, "SectionI18n", out var sectionI18n)
+            || !TryRequiredString(values, "ParentPageI18n", out var parentPageI18n)
+            || !TryRequiredString(values, "PageI18n", out var pageI18n)
             || !TryRequiredString(values, "NameI18n", out var nameI18n)
             || !TryRequiredString(values, "TooltipI18n", out var tooltipI18n)
+            || !TryRequiredInt32(values, "ParentPageOrder", out var parentPageOrder)
+            || !TryRequiredInt32(values, "PageOrder", out var pageOrder)
             || !values.TryGetValue("Order", out var orderElement)
             || orderElement.ValueKind != JsonValueKind.Number
             || !orderElement.TryGetInt32(out var order)
@@ -272,9 +278,12 @@ internal static class ConfigSchemaLoader
             allowedValues,
             exposeToCp,
             affectsWorldState,
-            sectionI18n,
+            parentPageI18n,
+            pageI18n,
             nameI18n,
             tooltipI18n,
+            parentPageOrder,
+            pageOrder,
             order
         );
         return true;
@@ -367,6 +376,25 @@ internal static class ConfigSchemaLoader
         }
 
         value = element.GetBoolean();
+        return true;
+    }
+
+    private static bool TryRequiredInt32(
+        IReadOnlyDictionary<string, JsonElement> values,
+        string propertyName,
+        out int value
+    )
+    {
+        value = 0;
+        if (
+            !values.TryGetValue(propertyName, out var element)
+            || element.ValueKind != JsonValueKind.Number
+            || !element.TryGetInt32(out value)
+        )
+        {
+            return false;
+        }
+
         return true;
     }
 

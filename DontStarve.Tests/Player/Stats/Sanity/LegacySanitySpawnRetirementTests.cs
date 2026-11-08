@@ -12,32 +12,32 @@ public sealed class LegacySanitySpawnRetirementTests
             {
                 "SpawnMrSkitts.cs",
                 "DontStarve.Sanity.SpawnMrSkitts",
-                "E377CB3818E1BB2FF65CC537488755D1DBB537A4CD7015593E4A0F8A6A97AFD2"
+                "E01F2EBED94BB574B383C3155737FC2FB36968BDEE7D41E24FCB28FDC73A25BF"
             },
             {
                 "SpawnDarkHand.cs",
                 "DontStarve.Sanity.SpawnDarkHand",
-                "46D2300ACE7F0B9EFC32F326EFFFDDE70A872F493670326C908C2975B0E7ABB1"
+                "0CDDDD8A8BBD74FD8CB99FA21753062512727F97A946234F08E15F45E9E076A7"
             },
             {
                 "SpawnDarkWatcher.cs",
                 "DontStarve.Sanity.SpawnDarkWatcher",
-                "8724D4FB2B4C18940C73AEC45024FA531F134883B3789726E2868D26950FC824"
+                "F8D93E90AD98A0D73AEA6BA4DF64E36844E2F7335F29FBDE7273DC2074B45477"
             },
             {
                 "SpawnEye.cs",
                 "DontStarve.Sanity.SpawnEye",
-                "B6BD68EB52B95C2925934D2B05661329E4249B44B16488E448C202F63C4909DC"
+                "12D7A90B0897842A2DE957687A4C2E418D5ED69CC38282B925B5E55F56A86AD7"
             },
             {
                 "SpawnCreeperFear.cs",
                 "DontStarve.Sanity.SpawnCreeperFear",
-                "92DD3D16D183929919D1EB63E224A56FE0E59A1F600EA82E9EC569910592D5A7"
+                "32D00F2F5B57DC8305FADC887781E73C106E666C8520DCC710C3F483E29C92BB"
             },
             {
                 "SpawnTerrifyingSharpBeak.cs",
                 "DontStarve.Sanity.SpawnTerrifyingSharpBeak",
-                "81331555A156604C8D2C2D69703EE306330B1BE550A39E1268062CF988907284"
+                "BD19324522068D091864CE33B2B24A35540497E81E4957C9B8B9C486DEE11BCC"
             },
         };
 

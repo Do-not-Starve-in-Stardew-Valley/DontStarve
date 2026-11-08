@@ -381,11 +381,20 @@ internal sealed class SmapiForageVisualProjectionService : IDisposable
     {
         if (!groundCapability.CanProjectGroundObjects)
             return;
-        if (!string.Equals(Game1.version, ExpectedGameVersion, StringComparison.Ordinal))
+        var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
+        var expectedGameVersion = StardewRuntimeVersionPolicy.ExpectedGameVersion(
+            isAndroidPlatform
+        );
+        if (
+            !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
+                Game1.version,
+                isAndroidPlatform
+            )
+        )
         {
             LogFailureOnce(
                 "object-patch-version",
-                $"Forage ground projection is unavailable (expected-game-version={ExpectedGameVersion}, actual={Game1.version})."
+                $"Forage ground projection is unavailable (expected-game-version={expectedGameVersion}, actual={Game1.version})."
             );
             return;
         }

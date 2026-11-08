@@ -552,6 +552,8 @@ public sealed class SanityProcessAudioCoordinatorTests
         var lane = Lane(SanityAudioLaneKind.Whispers, new[] { effect }, true);
         lane.SetContinuousActive(true, 1f);
         var instance = Assert.Single(effect.Instances);
+        var initialPlayCount = instance.PlayCount;
+        var initialResumeCount = instance.ResumeCount;
 
         lane.Pause();
         instance.SetStopped();
@@ -560,7 +562,37 @@ public sealed class SanityProcessAudioCoordinatorTests
         Assert.Single(effect.Instances);
         Assert.Same(instance, effect.Instances[0]);
         Assert.False(instance.Disposed);
+        Assert.Equal(initialPlayCount, instance.PlayCount);
+        Assert.Equal(initialResumeCount + 1, instance.ResumeCount);
         Assert.Equal(SanityAudioPlaybackState.Playing, instance.State);
+    }
+
+    [Fact]
+    public void Continuous_lane_defers_natural_end_cleanup_during_focus_resume_grace()
+    {
+        var effect = new FakeEffect("pool");
+        var lane = Lane(SanityAudioLaneKind.Whispers, new[] { effect }, true);
+        lane.SetContinuousActive(true, 1f);
+        var instance = Assert.Single(effect.Instances);
+
+        lane.Pause();
+        instance.RemainStoppedOnResume = true;
+        instance.SetStopped();
+        lane.Resume();
+
+        Assert.False(instance.Disposed);
+        Assert.Single(effect.Instances);
+        lane.Tick();
+        lane.Tick();
+        lane.Tick();
+
+        Assert.False(instance.Disposed);
+        Assert.Single(effect.Instances);
+
+        lane.Tick();
+
+        Assert.True(instance.Disposed);
+        Assert.Equal(2, effect.Instances.Count);
     }
 
     [Fact]
@@ -938,12 +970,19 @@ public sealed class SanityProcessAudioCoordinatorTests
 
         internal bool ThrowOnPlay { get; set; }
 
+        internal bool RemainStoppedOnResume { get; set; }
+
         internal bool Disposed { get; private set; }
 
         internal int DisposeCount { get; private set; }
 
+        internal int PlayCount { get; private set; }
+
+        internal int ResumeCount { get; private set; }
+
         public void Play()
         {
+            PlayCount++;
             if (ThrowOnPlay)
                 throw new InvalidOperationException("play failed");
             State = SanityAudioPlaybackState.Playing;
@@ -951,7 +990,13 @@ public sealed class SanityProcessAudioCoordinatorTests
 
         public void Pause() => State = SanityAudioPlaybackState.Paused;
 
-        public void Resume() => State = SanityAudioPlaybackState.Playing;
+        public void Resume()
+        {
+            ResumeCount++;
+            State = RemainStoppedOnResume
+                ? SanityAudioPlaybackState.Stopped
+                : SanityAudioPlaybackState.Playing;
+        }
 
         public void Stop() => State = SanityAudioPlaybackState.Stopped;
 

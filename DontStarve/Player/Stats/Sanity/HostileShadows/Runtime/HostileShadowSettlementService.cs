@@ -1269,6 +1269,11 @@ internal sealed class HostileShadowSettlementService
             reason = "hostile-shadow.settlement-dying-receipt-invalid";
             return false;
         }
+        // DIAG-20260922: request.Health 是**主机账本发布过的血量**（SettleDying 从权威账本
+        // 读取，而不是回读物理怪物），因此"发布过 0"仍是真垂死的可靠证据。上面的
+        // receipt.Kind / SettlementEligible / DeathRevision / CorrelationId / Reason 已经锁死
+        // 资格来源，本条只补"账本确实发布过 0"这一条，两者都由我们自己的账本控制，
+        // 不会被外部模组改写。
         if (
             !string.Equals(
                 request.StateId,

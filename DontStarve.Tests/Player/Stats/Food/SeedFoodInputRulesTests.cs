@@ -107,6 +107,43 @@ public sealed class SeedFoodInputRulesTests
         Assert.Null(state.Release(4, new SeedFoodPoint(116, 200), 4000, context));
     }
 
+    [Fact]
+    public void TouchStateKeepsTheCapturedPointerAndLastSafePointForReleaseFallback()
+    {
+        var state = new SeedFoodTouchGestureState();
+        var context = Context();
+        var origin = new SeedFoodPoint(100, 200);
+        var lastPoint = new SeedFoodPoint(108, 204);
+
+        Assert.True(state.TryBegin(17, origin, 1000, context));
+        state.Observe(17, lastPoint, context, multiplePointers: false);
+
+        Assert.True(state.IsActive);
+        Assert.Equal(17, state.PointerId);
+        Assert.Equal(lastPoint, state.LastPosition);
+        Assert.Equal(
+            SeedFoodInputDevice.Touch,
+            state.ActiveCandidate!.Value.Device
+        );
+
+        var candidate = state.Release(17, state.LastPosition, 2000, context);
+        Assert.NotNull(candidate);
+    }
+
+    [Fact]
+    public void Double_short_touch_releases_preserve_the_non_consuming_contract()
+    {
+        var state = new SeedFoodTouchGestureState();
+        var context = Context();
+        var origin = new SeedFoodPoint(100, 200);
+
+        Assert.True(state.TryBegin(9, origin, 1000, context));
+        Assert.Null(state.Release(9, origin, 1500, context));
+
+        Assert.True(state.TryBegin(9, origin, 1600, context));
+        Assert.Null(state.Release(9, origin, 2100, context));
+    }
+
     private static SeedFoodInputContext Context()
     {
         return new SeedFoodInputContext(

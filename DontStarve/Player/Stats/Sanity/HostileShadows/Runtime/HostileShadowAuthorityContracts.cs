@@ -226,8 +226,9 @@ internal sealed class HostileShadowSpawnCommand
     internal ShadowMonsterRuntimeProfile Profile { get; }
     internal string Reason { get; }
     /// <summary>
-    /// The normal shared cap for the destination map, used only by cut-map fast compensation.
-    /// Ordinary, conversion, and debug commands leave this unset.
+    /// The destination-map cap for this request's player owner, used only by cut-map fast
+    /// compensation. It isn't shared across players. Ordinary, conversion, and debug commands
+    /// leave this unset.
     /// </summary>
     internal int? CurrentLocationCap { get; }
 }
@@ -243,6 +244,17 @@ internal readonly record struct HostileShadowSpawnResult(
 {
     internal bool Spawned => Status == HostileShadowSpawnStatus.Spawned;
 }
+
+/// <summary>
+/// DIAG-20260922: 外部模组抬高共享实体血量时，账本对该实体的网络生命上限向上棘轮的观察记录。
+/// 只描述"我们的上限从多少变成多少"，不代表外部模组的身份，也不用于任何判定。
+/// </summary>
+internal readonly record struct HostileShadowMaxHealthRatchet(
+    long EntityId,
+    string StateId,
+    int PreviousMaxHealth,
+    int CurrentMaxHealth
+);
 
 internal sealed class HostileShadowStateUpdate
 {

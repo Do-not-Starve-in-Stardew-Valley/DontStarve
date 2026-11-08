@@ -28,7 +28,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
         var harness = new Harness();
 
         var fifteen = harness.Observe(OwnerA, current: 15d, revision: 1);
-        Assert.Contains(fifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
+        Assert.DoesNotContain(fifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
         Assert.DoesNotContain(
             fifteen.Events,
             stateEvent => IsEntered(stateEvent, SanityTierIds.Terrorbeak)
@@ -40,13 +40,10 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             occupancy: 0,
             SanityShadowSpecies.Terrorbeak
         );
-        Assert.Equal(
-            SanityShadowBudgetEvaluationStatus.SpeciesIneligible,
-            rejected.Status
-        );
-        Assert.Equal("budget.terrorbeak-requires-hostile10", rejected.Reason);
-        Assert.Equal(SanityShadowPoolTier.Hostile15, rejected.PoolTier);
-        Assert.Equal(SanityShadowEligibleSpecies.CreeperFear, rejected.EligibleSpecies);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Inactive, rejected.Status);
+        Assert.Equal("budget.tier-inactive", rejected.Reason);
+        Assert.Equal(SanityShadowPoolTier.Inactive, rejected.PoolTier);
+        Assert.Equal(SanityShadowEligibleSpecies.None, rejected.EligibleSpecies);
         Assert.True(harness.Governor.TryGetOwnerState(OwnerA, out var untouched));
         Assert.Equal(0, untouched!.Cap);
         Assert.Null(untouched.NextDueMinute);
@@ -57,37 +54,61 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             occupancy: 0,
             SanityShadowSpecies.CreeperFear
         );
-        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, creeper.Status);
-        Assert.Equal(3, creeper.Cap);
-        Assert.Equal(60, creeper.NextDueMinute);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Inactive, creeper.Status);
+        Assert.Equal(0, creeper.Cap);
+        Assert.Null(creeper.NextDueMinute);
 
-        var ten = harness.Observe(OwnerA, current: 10d, revision: 2);
-        Assert.Contains(ten.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Terrorbeak));
+        var belowFifteen = harness.Observe(OwnerA, current: 14.9999d, revision: 2);
+        Assert.Contains(belowFifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
+        var belowFifteenCreeper = harness.Governor.EvaluateHostileSpawn(
+            OwnerA,
+            gameMinute: 1,
+            occupancy: 0,
+            SanityShadowSpecies.CreeperFear
+        );
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, belowFifteenCreeper.Status);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, belowFifteenCreeper.PoolTier);
+
+        var ten = harness.Observe(OwnerA, current: 10d, revision: 3);
+        Assert.DoesNotContain(ten.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Terrorbeak));
         var terrorbeak = harness.Governor.EvaluateHostileSpawn(
             OwnerA,
             gameMinute: 1,
             occupancy: 0,
             SanityShadowSpecies.Terrorbeak
         );
-        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, terrorbeak.Status);
-        Assert.Equal(SanityShadowPoolTier.Hostile10, terrorbeak.PoolTier);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.SpeciesIneligible, terrorbeak.Status);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, terrorbeak.PoolTier);
         Assert.Equal(3, terrorbeak.Cap);
+        Assert.Equal(SanityShadowEligibleSpecies.CreeperFear, terrorbeak.EligibleSpecies);
+
+        var belowTen = harness.Observe(OwnerA, current: 9.9999d, revision: 4);
+        Assert.Contains(belowTen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Terrorbeak));
+        var activeTerrorbeak = harness.Governor.EvaluateHostileSpawn(
+            OwnerA,
+            gameMinute: 2,
+            occupancy: 0,
+            SanityShadowSpecies.Terrorbeak
+        );
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, activeTerrorbeak.Status);
+        Assert.Equal(SanityShadowPoolTier.Hostile10, activeTerrorbeak.PoolTier);
+        Assert.Equal(3, activeTerrorbeak.Cap);
         Assert.Equal(
             SanityShadowEligibleSpecies.CreeperFear
                 | SanityShadowEligibleSpecies.Terrorbeak,
-            terrorbeak.EligibleSpecies
+            activeTerrorbeak.EligibleSpecies
         );
 
         var due = harness.Governor.EvaluateHostileSpawn(
             OwnerA,
-            gameMinute: 61,
+            gameMinute: 62,
             occupancy: 0,
             SanityShadowSpecies.Terrorbeak
         );
         Assert.Equal(SanityShadowBudgetEvaluationStatus.PermitGranted, due.Status);
         Assert.Equal(due.EligibleSpecies, due.Permit!.Value.EligibleSpecies);
 
-        var aboveTen = harness.Observe(OwnerA, current: 10.0001d, revision: 3);
+        var aboveTen = harness.Observe(OwnerA, current: 10.0001d, revision: 5);
         Assert.Contains(
             aboveTen.Events,
             stateEvent => IsExited(stateEvent, SanityTierIds.Terrorbeak)
@@ -114,7 +135,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     )
     {
         var hostile15 = new Harness(intensityId);
-        hostile15.Observe(OwnerA, current: 15d, revision: 1);
+        hostile15.Observe(OwnerA, current: 14.9999d, revision: 1);
         var creeper = hostile15.Governor.EvaluateHostileSpawn(
             OwnerA,
             gameMinute: 0,
@@ -123,7 +144,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
         );
 
         var hostile10 = new Harness(intensityId);
-        hostile10.Observe(OwnerA, current: 10d, revision: 1);
+        hostile10.Observe(OwnerA, current: 9.9999d, revision: 1);
         var terrorbeak = hostile10.Governor.EvaluateHostileSpawn(
             OwnerA,
             gameMinute: 0,
@@ -165,7 +186,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Fifteen_percent_rejects_new_terrorbeak_before_timer_or_conversion_epoch_is_consumed()
     {
         var harness = new Harness();
-        harness.Observe(OwnerA, current: 15d, revision: 1);
+        harness.Observe(OwnerA, current: 14.9999d, revision: 1);
 
         var rejected = harness.Spawn(
             "terrorbeak-at-fifteen",
@@ -201,7 +222,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Default_ten_percent_pool_competes_at_cap_and_one_vacancy_restarts_the_clock()
     {
         var harness = new Harness();
-        harness.Observe(OwnerA, current: 15d, revision: 1);
+        harness.Observe(OwnerA, current: 14.9999d, revision: 1);
         var creeper = harness.Spawn(
             "creeper-conversion",
             HostileShadowSpawnOrigin.OwnerProjectionConversion,
@@ -212,7 +233,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
         Assert.True(creeper.Spawned);
         harness.LockToPlayer(creeper, OwnerA);
 
-        harness.Observe(OwnerA, current: 10d, revision: 2);
+        harness.Observe(OwnerA, current: 9.9999d, revision: 2);
         var terrorbeak = harness.Spawn(
             "terrorbeak-cap-expansion",
             HostileShadowSpawnOrigin.Interval,
@@ -298,7 +319,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Leaving_ten_percent_keeps_existing_terrorbeak_but_rejects_new_terrorbeak_refreshes()
     {
         var harness = new Harness();
-        harness.Observe(OwnerA, current: 10d, revision: 1);
+        harness.Observe(OwnerA, current: 9.9999d, revision: 1);
         var existing = harness.Spawn(
             "existing-terrorbeak",
             HostileShadowSpawnOrigin.OwnerProjectionConversion,
@@ -348,8 +369,8 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Two_owners_have_independent_shared_pools_and_target_changes_never_move_owner()
     {
         var harness = new Harness();
-        harness.Observe(OwnerA, current: 10d, revision: 1);
-        harness.Observe(OwnerB, current: 10d, revision: 1);
+        harness.Observe(OwnerA, current: 9.9999d, revision: 1);
+        harness.Observe(OwnerB, current: 9.9999d, revision: 1);
 
         Assert.True(
             harness.Spawn(
@@ -426,7 +447,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     {
         var provider = new MutableIntensityProvider();
         var harness = new Harness(provider: provider);
-        harness.Observe(OwnerA, current: 10d, revision: 1);
+        harness.Observe(OwnerA, current: 9.9999d, revision: 1);
         var first = harness.Spawn(
             "default-first",
             HostileShadowSpawnOrigin.OwnerProjectionConversion,
@@ -509,7 +530,7 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
     public void Unknown_binding_fails_closed_before_budget_and_does_not_block_creeper_regression()
     {
         var harness = new Harness();
-        harness.Observe(OwnerA, current: 15d, revision: 1);
+        harness.Observe(OwnerA, current: 14.9999d, revision: 1);
 
         var unknown = harness.Spawn(
             "unknown-binding",
@@ -673,6 +694,10 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
                 );
                 Authority.ObserveStateEvent(stateEvent);
             }
+            Assert.True(
+                Governor.ObserveSanityRatio(owner, current, 100d, out var phaseReason),
+                phaseReason
+            );
             return result;
         }
 

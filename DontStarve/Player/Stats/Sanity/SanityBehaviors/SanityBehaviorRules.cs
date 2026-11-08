@@ -21,6 +21,14 @@ internal enum MineSanityLocationKind
     VolcanoDungeon,
 }
 
+internal enum SanitySeason
+{
+    Spring,
+    Summer,
+    Fall,
+    Winter,
+}
+
 internal readonly record struct EquipmentSanityLoadout(
     string? HatId,
     string? ShirtId,
@@ -122,6 +130,27 @@ internal static class SanityBehaviorRules
         return configuredLoss * GetDistancePercentage(distanceTiles);
     }
 
+    internal static int GetNightfallStartMinutes(SanitySeason season)
+    {
+        var hour = season switch
+        {
+            SanitySeason.Spring => 20,
+            SanitySeason.Summer => 20,
+            SanitySeason.Fall => 19,
+            SanitySeason.Winter => 17,
+            _ => throw new InvalidOperationException("unknown-season"),
+        };
+        return hour * 60;
+    }
+
+    internal static bool ShouldApplyNightLoss(
+        MineSanityLocationKind locationKind
+    )
+    {
+        // 矿井与火山有自己的基础损耗；Night 只负责普通地点的室内/室外夜间损耗。
+        return locationKind == MineSanityLocationKind.Other;
+    }
+
     internal static bool ShouldApplyMonsterSanityLoss(
         bool isHostileShadow,
         string? assetBindingId,
@@ -151,6 +180,20 @@ internal static class SanityBehaviorRules
                 ShadowMonsterAssetBindingIds.Terrorbeak,
                 StringComparison.Ordinal
             );
+    }
+
+    internal static string? ResolveMonsterSanityKey(
+        bool isHostileShadow,
+        string? assetBindingId,
+        string? monsterName
+    )
+    {
+        // Hostile-shadow display names are localized, so their stable asset binding ID must
+        // select the resource value. Ordinary Stardew monsters retain their existing name keys.
+        if (isHostileShadow)
+            return string.IsNullOrWhiteSpace(assetBindingId) ? null : assetBindingId;
+
+        return string.IsNullOrWhiteSpace(monsterName) ? null : monsterName;
     }
 
     internal static double CalculateEquipmentDelta(

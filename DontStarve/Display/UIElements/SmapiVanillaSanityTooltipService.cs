@@ -798,11 +798,20 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
 
     private void InstallPatch()
     {
-        if (!string.Equals(Game1.version, ExpectedGameVersion, StringComparison.Ordinal))
+        var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
+        var expectedGameVersion = StardewRuntimeVersionPolicy.ExpectedGameVersion(
+            isAndroidPlatform
+        );
+        if (
+            !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
+                Game1.version,
+                isAndroidPlatform
+            )
+        )
         {
             this.LogFailureOnce(
                 "version",
-                $"Sanity vanilla tooltip is unavailable (expected-game-version={ExpectedGameVersion}, actual={Game1.version})."
+                $"Sanity vanilla tooltip is unavailable (expected-game-version={expectedGameVersion}, actual={Game1.version})."
             );
             return;
         }

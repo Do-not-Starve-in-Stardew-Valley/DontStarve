@@ -24,6 +24,10 @@ internal static class DawnMusicService
     private static bool _isInDungeon;
     private static bool _bossMusicOverrideActive;
 
+    internal static bool IsPlaying =>
+        _dawnSound?.State == SoundState.Playing
+        || _islandDawnSound?.State == SoundState.Playing;
+
     internal static void Enable(IModHelper helper, IMonitor monitor, string manifestId)
     {
         if (_initialized)
@@ -32,8 +36,8 @@ internal static class DawnMusicService
         _initialized = true;
         _monitor = monitor;
         _harmony = new Harmony(manifestId);
-        _dawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "dawn.wav");
-        _islandDawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "sw_dawn.wav");
+        _dawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "dawn.ogg");
+        _islandDawnSound = MusicAudioLoader.LoadInstance(helper, monitor, "sw_dawn.ogg");
 
         // Dawn 需要同时响应时间、地点和日终：进洞要停止，日终要恢复原版音乐系统。
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;

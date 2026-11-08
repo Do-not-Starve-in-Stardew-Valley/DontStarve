@@ -49,8 +49,6 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
 
         internal bool RequiresFutureReverseResolution { get; set; }
 
-        internal int NextSpeciesIndex { get; set; }
-
         internal long? LastBudgetEvaluationMinute { get; set; }
 
         internal int LastBudgetEvaluationOccupancy { get; set; } = -1;
@@ -62,6 +60,7 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
     private readonly ShadowCreatureHarmlessProjectionIndex index;
     private readonly IShadowCreatureProjectionBudgetAuthority budgetAuthority;
     private readonly ISanityShadowRealTimeBudgetAuthority? realTimeBudgetAuthority;
+    private readonly IHarmlessProjectionRandom speciesSelectionRandom;
     private readonly IShadowProjectionConversionIntentSink conversionIntentSink;
     private readonly IShadowProjectionCorrelationSource correlationSource;
     private readonly List<ShadowCreatureHarmlessProjectionPolicy> policies = new();
@@ -86,13 +85,16 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         ShadowCreatureHarmlessProjectionIndex index,
         IShadowCreatureProjectionBudgetAuthority budgetAuthority,
         IShadowProjectionConversionIntentSink conversionIntentSink,
-        IShadowProjectionCorrelationSource correlationSource
+        IShadowProjectionCorrelationSource correlationSource,
+        IHarmlessProjectionRandom speciesSelectionRandom
     )
     {
         this.index = index ?? throw new ArgumentNullException(nameof(index));
         this.budgetAuthority = budgetAuthority
             ?? throw new ArgumentNullException(nameof(budgetAuthority));
         realTimeBudgetAuthority = budgetAuthority as ISanityShadowRealTimeBudgetAuthority;
+        this.speciesSelectionRandom = speciesSelectionRandom
+            ?? throw new ArgumentNullException(nameof(speciesSelectionRandom));
         this.conversionIntentSink = conversionIntentSink
             ?? throw new ArgumentNullException(nameof(conversionIntentSink));
         this.correlationSource = correlationSource
@@ -424,40 +426,36 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
             // index，由本次更新推进帧；已经进入静息态的实例才提交转换并从本地索引摘除。
             // Danger 退出后仍要推进未完成的生成动画，否则实例会在 future-resolution lock
             // 中永久停留在 Spawning；但只有 Danger 重新激活时才允许提交转换。
-            // DIAG-20260827: future-resolution lock 只冻结普通实例的转换/新刷调度。
-            // 已经代表隐藏危险实体的绑定投影仍是可见的无害行为实例；Danger 退出后必须
-            // 继续走 AdvanceBehavior，否则保护期、游荡、逃离和淡出都会永久停止。
-            var bindingCleanup = 0;
+            // DIAG-20260917: conversion/future-resolution lock 只冻结转换和新刷调度，不能
+            // 冻结现有无害实例的行为。明确失败/拒绝的转换会在 RecordDangerEntry 中恢复
+            // 原实例；本次更新随后必须让它继续游荡，避免“转化失败但原地卡死”。
+            // 绑定投影同样继续走 AdvanceBehavior；它代表隐藏实体的无害外观，不应被危险
+            // 阶段的转换锁误当成静态占位物。
+            var localCleanup = 0;
             if (index.CountForOwner(owner.PlayerKey) > 0)
             {
+                // Keep the spawn animation separate from behavior movement while the conversion
+                // lock is active. Otherwise a newly-created projection can jump from Spawning
+                // straight into Moving before it is eligible for conversion.
                 AdvanceSpawnAnimations(owner, elapsedMilliseconds);
                 if (phase.DangerTierActive)
                 {
-                    // 超限清理标记的绑定投影仍需在 Danger 档推进约 1 秒淡出；
-                    // 普通绑定投影不会进入 FadingOut，因此不会改变其既有保护/行为路径。
-                    bindingCleanup = UpdateLocalInstances(
-                        owner,
-                        ownerStandingWorldPixel,
-                        elapsedMilliseconds,
-                        advanceMovement: false,
-                        bindingOnly: true
-                    );
+                    // 先提交/恢复转换结果，再推进行为；失败/拒绝恢复的实例能在同一 tick
+                    // 继续移动，成功转换的实例已经从 index 摘除，不会再被推进。
                     RecordDangerEntry(owner.PlayerKey, gameMinute);
                 }
-                else
-                {
-                    bindingCleanup = UpdateLocalInstances(
-                        owner,
-                        ownerStandingWorldPixel,
-                        elapsedMilliseconds,
-                        advanceMovement,
-                        bindingOnly: true
-                    );
-                }
+                localCleanup = UpdateLocalInstances(
+                    owner,
+                    ownerStandingWorldPixel,
+                    elapsedMilliseconds,
+                    advanceMovement,
+                    bindingOnly: false,
+                    skipSpawningBehavior: true
+                );
             }
             return UpdateResult(
                 ShadowCreatureProjectionUpdateStatus.ConversionLocked,
-                bindingCleanup,
+                localCleanup,
                 owner.PlayerKey,
                 0,
                 "shadow-projection.future-reverse-resolution-required"
@@ -552,9 +550,20 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
             );
         }
 
-        var policy = policies[phase.NextSpeciesIndex % policies.Count];
-        phase.NextSpeciesIndex = (phase.NextSpeciesIndex + 1) % policies.Count;
         var permit = budget.Permit.Value;
+        // The random roll belongs after the shared permit is granted. Waiting or a full cap must
+        // not consume a roll, and this path deliberately carries no per-owner alternation state.
+        if (!TrySelectSpeciesPolicy(out var policy, out var selectionReason))
+        {
+            phase.LastBudgetStatus = ShadowCreatureProjectionUpdateStatus.Unavailable;
+            return UpdateResult(
+                ShadowCreatureProjectionUpdateStatus.Unavailable,
+                proximityCleanup,
+                owner.PlayerKey,
+                0,
+                selectionReason
+            );
+        }
         if (
             !ShadowCreatureProjectionPermitGate.TryAuthorize(
                 policy.SpeciesId,
@@ -686,10 +695,57 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         );
     }
 
+    private bool TrySelectSpeciesPolicy(
+        out ShadowCreatureHarmlessProjectionPolicy policy,
+        out string reason
+    )
+    {
+        policy = null!;
+        if (policies.Count == 0)
+        {
+            reason = "shadow-projection.no-species-registered";
+            return false;
+        }
+
+        if (policies.Count == 1)
+        {
+            policy = policies[0];
+            reason = "shadow-projection.species-selected-single-policy";
+            return true;
+        }
+
+        double roll;
+        try
+        {
+            roll = speciesSelectionRandom.NextUnitDouble();
+        }
+        catch (Exception exception)
+        {
+            reason = string.Concat(
+                "shadow-projection.species-random-threw-",
+                exception.GetType().Name
+            );
+            return false;
+        }
+
+        if (!double.IsFinite(roll) || roll < 0d || roll >= 1d)
+        {
+            reason = "shadow-projection.species-random-invalid";
+            return false;
+        }
+
+        // The catalog freezes the order as Creeper Fear then Terrorbeak. Keep the exact boundary
+        // explicit: values below 0.5 select Creeper Fear; 0.5 and above select Terrorbeak.
+        policy = policies[roll < 0.5d ? 0 : 1];
+        reason = "shadow-projection.species-selected-randomly";
+        return true;
+    }
+
     /// <summary>
     /// Registers a caller-selected position only after the same harmless-pool permit checks used
     /// by the normal refresh path. The debug command may choose the point, but it cannot bypass
-    /// tier state, the real-time interval, the shared cap, or the conversion lock.
+    /// tier state, the real-time interval, the current player's cap shared by the two species, or
+    /// the conversion lock. Other player owners have separate pools.
     /// </summary>
     internal bool TryRegisterAuthorizedProjection(
         HarmlessProjectionOwnerContext owner,
@@ -1066,7 +1122,8 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
         HarmlessProjectionWorldPoint ownerStandingWorldPixel,
         int elapsedMilliseconds,
         bool advanceMovement,
-        bool bindingOnly = false
+        bool bindingOnly = false,
+        bool skipSpawningBehavior = false
     )
     {
         if (!index.TryGetContextInstances(owner, out var instances) || instances is null)
@@ -1081,6 +1138,18 @@ internal sealed class ShadowCreatureHarmlessProjectionCoordinator
                 continue;
             if (bindingOnly && !instance.IsBindingProjection)
                 continue;
+            if (
+                skipSpawningBehavior
+                &&
+                instance.AnimationState
+                == ShadowCreatureHarmlessProjectionInstance
+                    .ShadowCreatureProjectionAnimationState.Spawning
+            )
+            {
+                // AdvanceSpawnAnimations already consumed this tick for the owner. Keep the
+                // behavior state machine out of the spawn transition until the next tick.
+                continue;
+            }
 
             var behaviorEvent = advanceMovement
                 ? instance.AdvanceBehavior(

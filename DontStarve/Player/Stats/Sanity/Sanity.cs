@@ -23,7 +23,7 @@ internal sealed class Sanity : IStat
 
     private readonly List<INonTimeRelatedBehavior> nonTimeRelatedBehaviors;
 
-    private readonly List<ITimeRelatedBehavior> timeRelatedBehaviors;
+    private readonly List<IPlayerTimeRelatedBehavior> timeRelatedBehaviors;
 
     private SanityPersistenceResult? persistenceSession;
     private SmapiSanityMultiplayerCoordinator multiplayer = null!;
@@ -55,24 +55,31 @@ internal sealed class Sanity : IStat
                 : new TypedConfigSanityMonsterIntensityProvider(configResolver)
         );
         lifecycle = new SanitySystemLifecycleCoordinator(changeService);
+        var mineShaft = new MineShaft();
+        mineShaft.BindLifecycle(lifecycle);
         timeRelatedBehaviors =
             new()
             {
                 new NearMonster(lifecycle),
-                new Night(),
-                new Wearing(),
-                new NearNpc(),
-                new MineShaft(),
+                new Night(lifecycle),
+                new Wearing(lifecycle),
+                new NearNpc(lifecycle),
+                mineShaft,
             };
         nonTimeRelatedBehaviors =
             new()
             {
                 new EatFood(),
-                new Sleep(passOutReasonLedger, lifecycle, reason =>
-                    monitor.Log(
-                        $"Sanity behavior failed closed (behavior=Sleep, source=Sleep, reason={reason}).",
-                        LogLevel.Error
-                    )
+                new DontStarve.Player.Stats.Sanity.SanityBehaviors.Sleep(
+                    passOutReasonLedger,
+                    lifecycle,
+                    reason =>
+                    {
+                        monitor.Log(
+                            $"Sanity behavior failed closed (behavior=Sleep, source=Sleep, reason={reason}).",
+                            LogLevel.Error
+                        );
+                    }
                 ),
             };
     }
@@ -127,30 +134,54 @@ internal sealed class Sanity : IStat
 
     private void Update(long time)
     {
-        foreach (var behavior in timeRelatedBehaviors)
+        if (changeService.Role != SanityAuthorityRole.Host)
+            return;
+
+        foreach (var player in Game1.getOnlineFarmers())
         {
-            try
+            if (!TryGetPlayerKey(player, out var playerKey))
             {
-                behavior.Update(time);
+                LogRuntimeErrorOnce("online-player-id-is-unavailable");
+                continue;
             }
-            catch (Exception ex)
+
+            foreach (var behavior in timeRelatedBehaviors)
             {
-                LogBehaviorFailureOnce("update", behavior, ex);
+                try
+                {
+                    behavior.Update(player, time);
+                }
+                catch (Exception ex)
+                {
+                    LogBehaviorFailureOnce("update", behavior, ex);
+                }
             }
         }
     }
 
     private void Sync(long time, long delta)
     {
-        foreach (var behavior in timeRelatedBehaviors)
+        if (changeService.Role != SanityAuthorityRole.Host)
+            return;
+
+        foreach (var player in Game1.getOnlineFarmers())
         {
-            try
+            if (!TryGetPlayerKey(player, out var playerKey))
             {
-                behavior.Sync(time, delta);
+                LogRuntimeErrorOnce("online-player-id-is-unavailable");
+                continue;
             }
-            catch (Exception ex)
+
+            foreach (var behavior in timeRelatedBehaviors)
             {
-                LogBehaviorFailureOnce("sync", behavior, ex);
+                try
+                {
+                    behavior.Sync(playerKey, time, delta);
+                }
+                catch (Exception ex)
+                {
+                    LogBehaviorFailureOnce("sync", behavior, ex);
+                }
             }
         }
     }
@@ -319,6 +350,9 @@ internal sealed class Sanity : IStat
         SanitySessionBoundary boundary = SanitySessionBoundary.WorldCleanup
     )
     {
+        foreach (var behavior in timeRelatedBehaviors)
+            behavior.Reset();
+
         persistenceSession = null;
         loadedSaveIdentity = string.Empty;
         loggedPersistenceReason = string.Empty;
@@ -413,7 +447,7 @@ internal sealed class Sanity : IStat
 
     private void LogBehaviorFailureOnce(
         string phase,
-        ITimeRelatedBehavior behavior,
+        IPlayerTimeRelatedBehavior behavior,
         Exception exception
     )
     {
@@ -527,6 +561,29 @@ public static class SanityExtensions
         if (!TryGetPlayerKey(farmer, out var playerKey))
             return SanityChangeResult.Rejected("player-key-is-unavailable");
         return changeService.Change(playerKey, delta, source, interactionId);
+    }
+
+    internal static SanityChangeResult ChangeGarbageSanity(
+        this Farmer farmer,
+        TrashCanSanityFacts facts
+    )
+    {
+        if (changeService is null)
+        {
+            return SanityChangeResult.Rejected(
+                "sanity-service-is-not-bound",
+                SanityChangeSource.Garbage
+            );
+        }
+        if (!TryGetPlayerKey(farmer, out var playerKey))
+        {
+            return SanityChangeResult.Rejected(
+                "player-key-is-unavailable",
+                SanityChangeSource.Garbage
+            );
+        }
+
+        return changeService.ChangeGarbage(playerKey, facts);
     }
 
     private static bool TryGetPlayerKey(Farmer? farmer, out string playerKey)

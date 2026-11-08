@@ -1,5 +1,5 @@
 ﻿{
     "Bug": 0.588,
-    "Creeper Fear": 1.1667,
-    "Terrorbeak": 1.1667
+    "sanity.binding.creeper-fear": 1.1667,
+    "sanity.binding.terrorbeak": 1.1667
 }

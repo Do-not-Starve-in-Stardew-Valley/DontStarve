@@ -6,7 +6,7 @@ namespace DontStarve.Tests.Config;
 public sealed class ConfigSchemaLoaderTests
 {
     [Fact]
-    public void ShippedSchemaPublishesFrozenFourteenOptionRegistry()
+    public void ShippedSchemaPublishesFrozenSeventeenOptionRegistry()
     {
         var result = ConfigSchemaLoader.LoadFromFile(ConfigTestData.ShippedSchemaPath);
 
@@ -15,9 +15,19 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Empty(result.Diagnostics);
         var registry = Assert.IsType<ConfigRegistry>(result.Registry);
         Assert.Equal(1, registry.SchemaVersion);
-        Assert.Equal(14, registry.Options.Count);
+        Assert.Equal(17, registry.Options.Count);
 
-        AssertBoolean(registry, ConfigKeys.EnableHungerSystem, false, false, true, 5);
+        AssertBoolean(registry, ConfigKeys.EnableHungerSystem, true, false, true, 5);
+        AssertEnum(
+            registry,
+            ConfigKeys.HungerDamageMode,
+            "Default",
+            new[] { "Default", "NonLethal", "Disabled" },
+            true,
+            true,
+            6
+        );
+        AssertBoolean(registry, ConfigKeys.SleepRecoveryBalance, true, true, true, 8);
         AssertBoolean(registry, ConfigKeys.EnableSeedEdibility, true, false, true, 7);
         AssertBoolean(registry, ConfigKeys.EnableSanitySystem, true, true, true, 10);
         AssertEnum(
@@ -112,22 +122,43 @@ public sealed class ConfigSchemaLoaderTests
             false,
             90
         );
+        AssertBoolean(registry, ConfigKeys.EnableActivityMusic, true, false, false, 95);
 
         Assert.Equal(
-            "config.hunger.section",
-            Get(registry, ConfigKeys.EnableHungerSystem).SectionI18n
+            "config.game-mechanics.page",
+            Get(registry, ConfigKeys.EnableHungerSystem).ParentPageI18n
         );
         Assert.Equal(
-            "config.hunger.section",
-            Get(registry, ConfigKeys.EnableSeedEdibility).SectionI18n
+            "config.hunger.page",
+            Get(registry, ConfigKeys.EnableHungerSystem).PageI18n
         );
         Assert.Equal(
-            "config.sanity.section",
-            Get(registry, ConfigKeys.EnableSanitySystem).SectionI18n
+            "config.detail-adjustments.page",
+            Get(registry, ConfigKeys.EnableSeedEdibility).PageI18n
         );
         Assert.Equal(
-            "config.music.section",
-            Get(registry, ConfigKeys.EnableDawnDuskMusic).SectionI18n
+            "config.game-mechanics.page",
+            Get(registry, ConfigKeys.EnableSanitySystem).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.sanity.page",
+            Get(registry, ConfigKeys.EnableSanitySystem).PageI18n
+        );
+        Assert.Equal(
+            "config.visuals-audio.page",
+            Get(registry, ConfigKeys.EnableDawnDuskMusic).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.audio-effects.page",
+            Get(registry, ConfigKeys.EnableDawnDuskMusic).PageI18n
+        );
+        Assert.Equal(
+            "config.visuals-audio.page",
+            Get(registry, ConfigKeys.EnableActivityMusic).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.audio-effects.page",
+            Get(registry, ConfigKeys.EnableActivityMusic).PageI18n
         );
         Assert.All(
             registry.Options,
@@ -135,13 +166,15 @@ public sealed class ConfigSchemaLoaderTests
             {
                 var kebab = ToKebabCase(option.Key);
                 Assert.Equal(
-                    option.Key == ConfigKeys.EnableHungerSystem
-                        || option.Key == ConfigKeys.EnableSeedEdibility
-                        ? "config.hunger.section"
-                        : option.Key == ConfigKeys.EnableDawnDuskMusic
-                            ? "config.music.section"
-                            : "config.sanity.section",
-                    option.SectionI18n
+                    option.Key == ConfigKeys.MonsterDifficultyProfile
+                        || option.Key == ConfigKeys.EnableJunimoBlessing
+                        ? "config.balance-compatibility.page"
+                        : option.Key == ConfigKeys.EnableSanityVignette
+                            || option.Key == ConfigKeys.EnableDawnDuskMusic
+                            || option.Key == ConfigKeys.EnableActivityMusic
+                            ? "config.visuals-audio.page"
+                            : "config.game-mechanics.page",
+                    option.ParentPageI18n
                 );
                 Assert.Equal($"config.{kebab}.name", option.NameI18n);
                 Assert.Equal($"config.{kebab}.tooltip", option.TooltipI18n);

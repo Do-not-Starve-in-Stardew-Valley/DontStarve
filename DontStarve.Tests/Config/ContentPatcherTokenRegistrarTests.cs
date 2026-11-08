@@ -7,6 +7,8 @@ public sealed class ContentPatcherTokenRegistrarTests
 {
     private static readonly string[] ExposedKeys =
     {
+        ConfigKeys.HungerDamageMode,
+        ConfigKeys.SleepRecoveryBalance,
         ConfigKeys.EnableSanitySystem,
         ConfigKeys.SanityMonsterIntensity,
         ConfigKeys.DarkHandMode,
@@ -17,7 +19,7 @@ public sealed class ContentPatcherTokenRegistrarTests
     };
 
     [Fact]
-    public void ShippedSchemaRegistersSevenBareKeysWithCanonicalValues()
+    public void ShippedSchemaRegistersNineBareKeysWithCanonicalValues()
     {
         var registry = ConfigTestData.LoadShippedRegistry();
         var resolver = CreateResolver(
@@ -48,6 +50,8 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.Equal(ExposedKeys, result.RegisteredKeys);
         Assert.Equal(ExposedKeys, api.TokenOrder);
         Assert.Equal("false", api.GetSingle(ConfigKeys.EnableSanitySystem));
+        Assert.Equal("Default", api.GetSingle(ConfigKeys.HungerDamageMode));
+        Assert.Equal("true", api.GetSingle(ConfigKeys.SleepRecoveryBalance));
         Assert.Equal("Many", api.GetSingle(ConfigKeys.SanityMonsterIntensity));
         Assert.Equal("Thief", api.GetSingle(ConfigKeys.DarkHandMode));
         Assert.Equal("false", api.GetSingle(ConfigKeys.EnableSanityVisualEffects));
@@ -57,6 +61,7 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.False(api.Contains(ConfigKeys.EnableSanityVignette));
         Assert.False(api.Contains(ConfigKeys.EnableLowSanityScreenDistortion));
         Assert.False(api.Contains(ConfigKeys.EnableDawnDuskMusic));
+        Assert.False(api.Contains(ConfigKeys.EnableActivityMusic));
         Assert.Null(api.Query("UnknownToken"));
         Assert.Empty(diagnostics);
     }
@@ -161,7 +166,7 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.Equal(ContentPatcherTokenRegistrationStatus.Degraded, result.Status);
         Assert.Equal("cp.tokens-registration-degraded", result.Reason);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, result.RegisteredKeys);
-        Assert.Equal(6, result.RegisteredKeys.Count);
+        Assert.Equal(8, result.RegisteredKeys.Count);
         Assert.Equal(
             new[] { $"cp.token-registration-failed:{ConfigKeys.DarkHandMode}" },
             diagnostics

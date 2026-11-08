@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -11,13 +13,13 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 /// <summary>
 /// 根据附近怪物降低理智：资源表给基础值，10 格内按距离平方反比衰减。
 /// </summary>
-internal class NearMonster : ITimeRelatedBehavior
+internal class NearMonster : IPlayerTimeRelatedBehavior
 {
     private const string SAVE_KEY = "DontStarve.Sanity.NearMonster";
     private const string EnabledModDataValue = "1";
     private readonly SanitySystemLifecycleCoordinator lifecycle;
+    private readonly PlayerTimeBehaviorState state = new();
     private Dictionary<string, double> monsterSanity = null!;
-    private long wait;
 
     internal NearMonster(SanitySystemLifecycleCoordinator lifecycle)
     {
@@ -26,22 +28,18 @@ internal class NearMonster : ITimeRelatedBehavior
 
     public void Init(IModHelper helper)
     {
-        // key 使用 Stardew 怪物 Name；扩表前要先确认游戏内实际名称。
+        // 普通怪物使用 Stardew Name；有害影怪在结算时改用稳定 AssetBindingId，避免本地化名称失配。
         monsterSanity = helper.ModContent.Load<Dictionary<string, double>>(
             "Asset/Sanity/monster.json"
         );
     }
 
-    public void Update(long _)
+    public void Update(Farmer player, long time)
     {
-        if (wait > 0)
-        {
-            wait--;
-            return;
-        }
-
-        var player = Game1.player;
-        if (player == null)
+        if (
+            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
+            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
+        )
             return;
 
         var location = player.currentLocation;
@@ -103,8 +101,13 @@ internal class NearMonster : ITimeRelatedBehavior
             // falloff rule expects tile distance (64 world pixels per tile).
             var distanceTiles = Util.Distance(playerPosition, monsterPosition)
                 / Game1.tileSize;
+            var sanityKey = SanityBehaviorRules.ResolveMonsterSanityKey(
+                isHostileShadow,
+                assetBindingId,
+                monster.Name
+            );
             value += SanityBehaviorRules.CalculateMonsterLoss(
-                monsterSanity.GetValueOrDefault(monster.Name, 0),
+                sanityKey is null ? 0 : monsterSanity.GetValueOrDefault(sanityKey, 0),
                 distanceTiles
             );
         }
@@ -137,25 +140,38 @@ internal class NearMonster : ITimeRelatedBehavior
         return false;
     }
 
-    public void Sync(long _, long delta)
+    public void Sync(string playerKey, long time, long delta)
     {
         if (delta < 0)
-            wait += -delta;
+            state.AddRewindWait(playerKey, delta);
     }
 
     public void Load(IModHelper helper)
     {
         var data = helper.Data.ReadSaveData<NearMonsterData>(SAVE_KEY);
-        wait = data?.Wait ?? 0;
+        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
+            Game1.MasterPlayer,
+            out var playerKey
+        )
+            ? playerKey
+            : null;
+        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
     }
 
     public void Save(IModHelper helper)
     {
-        helper.Data.WriteSaveData(SAVE_KEY, new NearMonsterData { Wait = wait });
+        helper.Data.WriteSaveData(
+            SAVE_KEY,
+            new NearMonsterData { Players = state.CaptureWaits() }
+        );
     }
+
+    public void Reset() => state.Clear();
 }
 
 internal class NearMonsterData
 {
     public long Wait { get; init; }
+
+    public Dictionary<string, long>? Players { get; init; }
 }

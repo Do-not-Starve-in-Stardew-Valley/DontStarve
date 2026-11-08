@@ -430,6 +430,85 @@ public sealed class HostileShadowSettlementTests
         Assert.Equal(HostileShadowSettlementService.MaximumReceipts, fixture.Random.Calls);
     }
 
+    [Fact]
+    public void Settlement_still_settles_when_the_live_physical_health_was_reinflated()
+    {
+        // DIAG-20260922: the settlement qualification is keyed on the receipt plus the health the
+        // host ledger published (0). An external mod rewriting the live monster health must not be
+        // able to invalidate an already-confirmed death, so the request carries the ledger value.
+        var fixture = Fixture(5000);
+        var request = Request();
+        Assert.Equal(0, request.Health);
+
+        var result = fixture.Service.Resolve(request);
+
+        Assert.Equal(HostileShadowSettlementStatus.Settled, result.Status);
+        Assert.Equal(1, fixture.Drop.Calls);
+        Assert.Equal(1, fixture.Sanity.Calls);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(175)]
+    [InlineData(525)]
+    public void Settlement_rejects_a_positive_published_health_even_when_the_receipt_is_valid(
+        int publishedHealth
+    )
+    {
+        // A valid Dying receipt is not enough on its own: the ledger must have published true zero.
+        // A positive published health means the death was never actually confirmed.
+        var fixture = Fixture(5000);
+        var request = Request() with { Health = publishedHealth };
+
+        var result = fixture.Service.Resolve(request);
+
+        // TryValidate failures surface as InvalidIntent. Note Transient() prefixes every suffix
+        // with "hostile-shadow.settlement-", so the validation reason (which already carries that
+        // prefix) appears concatenated. Assert on the stable part so the test documents the
+        // behaviour without depending on the doubled prefix.
+        Assert.Equal(HostileShadowSettlementStatus.InvalidIntent, result.Status);
+        Assert.Contains(
+            "state-is-not-true-dying",
+            result.Reason,
+            StringComparison.Ordinal
+        );
+        AssertNoEffects(fixture);
+    }
+
+    [Fact]
+    public void Dying_settlement_receipt_kind_revision_and_reason_remain_the_sole_qualification()
+    {
+        // Freeze the contract: the qualification comes from the receipt, never from any physical
+        // number. A non-Dying receipt must be rejected even if the request claims Dying + 0.
+        var fixture = Fixture(5000);
+        Assert.True(
+            HostileShadowLifecycleReceipt.TryCreate(
+                HostileAttackTestFactory.SessionId,
+                HostileAttackTestFactory.EntityId,
+                30,
+                HostileShadowLifecycleTransitionKind.HitTeleport,
+                "hostile-shadow.hit-teleport-arrived",
+                12345,
+                HostileAttackTestFactory.PlayerOne,
+                out var teleportReceipt
+            )
+        );
+        var request = RequestFromReceipt(
+            teleportReceipt,
+            HostileShadowStateIds.Dying,
+            0
+        );
+
+        var result = fixture.Service.Resolve(request);
+
+        // A HitTeleport receipt has DeathRevision == 0 by contract, so the settlement key is
+        // already invalid. The important part is that a Dying state + 0 health in the request can
+        // never manufacture a settlement on its own: the qualification is the receipt.
+        Assert.Equal(HostileShadowSettlementStatus.InvalidIntent, result.Status);
+        Assert.Contains("settlement-key-invalid", result.Reason, StringComparison.Ordinal);
+        AssertNoEffects(fixture);
+    }
+
     private const string OtherSession = "22222222222222222222222222222222";
 
     private static HostileShadowSettlementRequest Request(

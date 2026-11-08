@@ -94,9 +94,14 @@ internal static class ModConfigMenuRegistrar
             api.Register(manifest, reset, save);
         }
 
-        public void AddSection(string sectionId, Func<string> getText)
+        public void AddPage(string pageId, Func<string> getTitle)
         {
-            api.AddSectionTitle(manifest, getText);
+            api.AddPage(manifest, pageId, getTitle);
+        }
+
+        public void AddPageLink(string pageId, Func<string> getText)
+        {
+            api.AddPageLink(manifest, pageId, getText);
         }
 
         public void AddBoolean(

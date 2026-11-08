@@ -43,9 +43,12 @@ internal static class ConfigTestData
             + $"  \"Default\": {defaultValue.ToString().ToLowerInvariant()},\n"
             + $"  \"ExposeToContentPatcher\": {exposeToContentPatcher.ToString().ToLowerInvariant()},\n"
             + $"  \"AffectsWorldState\": {affectsWorldState.ToString().ToLowerInvariant()},\n"
-            + "  \"SectionI18n\": \"config.test.section\",\n"
+            + "  \"ParentPageI18n\": \"config.test.parent-page\",\n"
+            + "  \"PageI18n\": \"config.test.page\",\n"
             + "  \"NameI18n\": \"config.test.name\",\n"
             + "  \"TooltipI18n\": \"config.test.tooltip\",\n"
+            + "  \"ParentPageOrder\": 10,\n"
+            + "  \"PageOrder\": 10,\n"
             + $"  \"Order\": {order}{extra}\n"
             + "}";
     }
@@ -69,9 +72,12 @@ internal static class ConfigTestData
             + $"  \"AllowedValues\": [{allowed}],\n"
             + $"  \"ExposeToContentPatcher\": {exposeToContentPatcher.ToString().ToLowerInvariant()},\n"
             + $"  \"AffectsWorldState\": {affectsWorldState.ToString().ToLowerInvariant()},\n"
-            + "  \"SectionI18n\": \"config.test.section\",\n"
+            + "  \"ParentPageI18n\": \"config.test.parent-page\",\n"
+            + "  \"PageI18n\": \"config.test.page\",\n"
             + "  \"NameI18n\": \"config.test.name\",\n"
             + "  \"TooltipI18n\": \"config.test.tooltip\",\n"
+            + "  \"ParentPageOrder\": 10,\n"
+            + "  \"PageOrder\": 10,\n"
             + $"  \"Order\": {order}{extra}\n"
             + "}";
     }

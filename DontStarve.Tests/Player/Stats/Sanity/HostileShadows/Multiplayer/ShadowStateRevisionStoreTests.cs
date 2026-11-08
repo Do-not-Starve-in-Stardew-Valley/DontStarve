@@ -549,6 +549,53 @@ public sealed class ShadowStateRevisionStoreTests
         return store;
     }
 
+    [Fact]
+    public void Externally_inflated_max_health_travels_through_full_snapshot_and_delta()
+    {
+        // DIAG-20260922: an external mod inflates the physical monster from our canonical 100 to
+        // 175 (x1.75). The host ledger ratchets MaxHealth up, so the synced snapshot carries
+        // 175/175. The protocol invariant (Health <= MaxHealth) stays satisfied and the client
+        // mirror must accept both the full snapshot and the following ratchet delta.
+        var store = new ShadowStateRevisionStore();
+        var inflated = State(10, revision: 1, health: 175);
+        inflated.MaxHealth = 175;
+
+        Assert.Equal(
+            ShadowRevisionApplyStatus.Applied,
+            store.ApplyFull(Full(SessionA, 1, inflated)).Status
+        );
+        Assert.True(store.TryGet(10, out var afterFull));
+        Assert.Equal(175, afterFull!.Health);
+        Assert.Equal(175, afterFull.MaxHealth);
+
+        var ratchetedAgain = State(10, revision: 2, health: 350);
+        ratchetedAgain.MaxHealth = 350;
+        Assert.Equal(
+            ShadowRevisionApplyStatus.Applied,
+            store.ApplyDelta(
+                Delta(SessionA, 1, 2, ShadowStateDeltaKind.Updated, 10, ratchetedAgain)
+            ).Status
+        );
+        Assert.True(store.TryGet(10, out var afterDelta));
+        Assert.Equal(350, afterDelta!.Health);
+        Assert.Equal(350, afterDelta.MaxHealth);
+    }
+
+    [Fact]
+    public void Protocol_still_rejects_health_above_its_own_max_health()
+    {
+        // The invariant itself must not be relaxed while adopting external inflation: a state
+        // whose health exceeds its own synced max health is still invalid.
+        var invalid = State(10, revision: 1, health: 200);
+        invalid.MaxHealth = 175;
+        var message = Full(SessionA, 1, invalid);
+
+        Assert.False(
+            HostileShadowProtocol.IsValidSnapshotMessage(message, out var reason)
+        );
+        Assert.Equal("hostile-shadow.state-invalid", reason);
+    }
+
     private static ShadowStateSnapshotMessage Full(
         string session,
         long revision,

@@ -50,6 +50,7 @@ internal sealed class SanitySystemLifecycleCoordinator
     private readonly HashSet<SanityEventCoverageKey> eventCoverage = new();
     private readonly Dictionary<string, int> eventCoverageCountByPlayer =
         new(StringComparer.Ordinal);
+    private Func<string, bool>? sleepContextResolver;
     private bool initialized;
 
     internal SanitySystemLifecycleCoordinator(SanityChangeService service)
@@ -70,6 +71,32 @@ internal sealed class SanitySystemLifecycleCoordinator
     internal string SessionId => service.SessionId;
 
     internal SanityAuthorityRole AuthorityRole => service.Role;
+
+    internal bool IsPlayerInSleepContext(string playerKey)
+    {
+        if (string.IsNullOrWhiteSpace(playerKey))
+            return false;
+        try
+        {
+            return sleepContextResolver?.Invoke(playerKey) == true;
+        }
+        catch
+        {
+            // A sleep gate must never make ordinary Sanity dispatch fail closed for the whole
+            // host. The lifecycle adapter logs its own registration/cleanup failures.
+            return false;
+        }
+    }
+
+    internal void BindSleepContext(Func<string, bool>? resolver)
+    {
+        sleepContextResolver = resolver;
+    }
+
+    internal bool IsCustomSleepOwned(string playerKey)
+    {
+        return IsPlayerInSleepContext(playerKey);
+    }
 
     internal event Action<SanityStateEvent>? StateEventPublished
     {

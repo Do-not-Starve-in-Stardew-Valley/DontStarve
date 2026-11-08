@@ -200,7 +200,10 @@ internal sealed class SmapiNpcFlashlightService : IDisposable
             if (
                 !NpcFlashlightPolicy.IsEligibleNpc(
                     npc.Name,
-                    npc is Monster
+                    npc.IsVillager,
+                    npc.SimpleNonVillagerNPC,
+                    npc is Monster,
+                    location.NameOrUniqueName
                 )
             )
             {

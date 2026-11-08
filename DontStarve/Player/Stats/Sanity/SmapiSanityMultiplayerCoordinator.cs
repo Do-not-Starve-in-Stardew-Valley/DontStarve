@@ -67,6 +67,13 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
         long senderPlayerId
     )
     {
+        if (request.Source == SanityChangeSource.Garbage)
+        {
+            return SmapiTrashCanSanityService.ResolveHostRequest(
+                request,
+                senderPlayerId
+            );
+        }
         if (request.Source != SanityChangeSource.Food)
             return SanityRequestTruth.Rejected("request-source-has-no-runtime-resolver");
 

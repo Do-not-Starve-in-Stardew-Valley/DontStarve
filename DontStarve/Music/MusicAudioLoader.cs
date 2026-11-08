@@ -7,7 +7,8 @@ namespace DontStarve.Music;
 
 internal static class MusicAudioLoader
 {
-    // WAV 由本 mod 自带资源目录加载；失败只记录日志并返回 null，调用方负责跳过播放。
+    // OGG 由本 mod 自带资源目录加载；第二个参数告知 MonoGame 按 Vorbis 解码。
+    // 失败只记录日志并返回 null，调用方负责跳过播放。
     internal static SoundEffectInstance LoadInstance(
         IModHelper helper,
         IMonitor monitor,
@@ -23,7 +24,7 @@ internal static class MusicAudioLoader
         try
         {
             using var stream = File.OpenRead(path);
-            var soundEffect = SoundEffect.FromStream(stream);
+            var soundEffect = SoundEffect.FromStream(stream, true);
             return soundEffect.CreateInstance();
         }
         catch (Exception ex)

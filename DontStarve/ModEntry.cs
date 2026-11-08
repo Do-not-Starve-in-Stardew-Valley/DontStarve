@@ -8,8 +8,10 @@ using DontStarve.Display;
 using DontStarve.Display.UIElements;
 using DontStarve.Music;
 using DontStarve.Player;
+using DontStarve.Player.Death;
 using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Hunger;
+using DontStarve.Player.Sleep;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.Darkness;
@@ -581,8 +583,8 @@ internal sealed class ShadowCreatureSmapiSfxService
                 : DontStarve.Player.Stats.Sanity.Audio.ShadowCreatureSfxPlaybackState.Playing;
         public float Volume { get => instance.Volume; set => instance.Volume = value; }
         public float Pan { get => instance.Pan; set => instance.Pan = value; }
-        private bool isLooped;
-        public bool IsLooped { get => isLooped; set => isLooped = value; }
+        // This MonoGame version exposes a repeat count; 255 is its infinite-loop sentinel.
+        public bool IsLooped { get => instance.LoopCount != 0; set => instance.LoopCount = value ? 255u : 0u; }
         public void Play() => instance.Play();
         public void Stop() => instance.Stop();
         public void Dispose() => instance.Dispose();
@@ -622,12 +624,19 @@ internal class ModEntry : Mod, IDisposable
         _environmentLightMultiplayer;
     private SmapiDarknessAttackService _darknessAttack;
     private SmapiDarknessAttackResolutionService _darknessAttackResolution;
+    private PlayerDeathCauseLedger _playerDeathCauseLedger;
     private PassOutReasonLedger _passOutReasonLedger;
     private SmapiPassOutReasonService _passOutReasonService;
+    private SmapiSleepLifecycleAdapter _sleepLifecycle;
     private SmapiSanityTwoAmSpecialDeathService _sanityTwoAmPassOut;
     private SmapiEnvironmentLightDebugOverlay _environmentLightDebugOverlay;
     private SeedEdibilityInteractionService _seedEdibilityInteraction;
-    private bool _hungerSystemEnabled;
+    private SmapiTrashCanSanityService _trashCanSanity;
+    private SmapiFlowerCollectionSanityService _flowerCollectionSanity;
+    private bool _hungerSystemEnabled = true;
+    private HungerDamageMode _hungerDamageMode = HungerDamageMode.Default;
+    private bool _sleepRecoveryBalanceEnabled = true;
+    private bool _activityMusicEnabled = true;
     private bool _seedEdibilityEnabled = true;
     private bool _sanitySystemEnabled = true;
     private bool _sanityVisualEffectsEnabled = true;
@@ -660,23 +669,41 @@ internal class ModEntry : Mod, IDisposable
         // 后续模块不要再从外部 mod 获取 MinuteTimeHelper；本项目的时间契约由内部 TimeApi 提供。
         _timeApi.Initialize(helper);
         TextureLoader.Initialize(helper);
-        MusicManager.Initialize(helper, Monitor, ModManifest.UniqueID, _config.EnableDawnDuskMusic);
+        MusicManager.Initialize(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _config.EnableDawnDuskMusic,
+            _activityMusicEnabled
+        );
         // SMAPI 只允许在所有 mod 初始化完成后获取其它 mod API，GMCM 注册必须延后到 GameLaunched。
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         RecipeCategoryDisplayService.Initialize(helper, Monitor, ModManifest.UniqueID);
-        BuffManager.Initialize(helper, _timeApi);
+        BuffManager.Initialize(helper, _timeApi, ModManifest.UniqueID);
+        _playerDeathCauseLedger = new PlayerDeathCauseLedger(Monitor);
         _passOutReasonLedger = new PassOutReasonLedger();
+        _taggedHudMessages = new TaggedHudMessageService(helper);
         _sanityLifecycle = StatManager.Initialize(
             helper,
             _timeApi,
             Monitor,
             ModManifest.UniqueID,
+            _taggedHudMessages,
             _canWriteConfig ? _configurationRuntime.Resolver : null,
-            _passOutReasonLedger
+            _passOutReasonLedger,
+            _playerDeathCauseLedger,
+            () => _hungerDamageMode,
+            out var hungerDebugController
+        );
+        _trashCanSanity = new SmapiTrashCanSanityService(
+            Monitor,
+            ModManifest.UniqueID
+        );
+        _flowerCollectionSanity = new SmapiFlowerCollectionSanityService(
+            helper, Monitor, ModManifest.UniqueID, _sanityLifecycle
         );
         HungerExtensions.SetEnabled(_hungerSystemEnabled);
         DisplayManager.Initialize(helper, _timeApi, _sanityLifecycle);
-        _taggedHudMessages = new TaggedHudMessageService(helper);
         // EatFood/Wearing have already loaded their unique data tables through StatManager.
         // The menu adapter consumes those exact values and never mutates state while drawing.
         _vanillaSanityTooltip = new SmapiVanillaSanityTooltipService(
@@ -717,7 +744,8 @@ internal class ModEntry : Mod, IDisposable
             Monitor,
             ModManifest.UniqueID,
             _sanityLifecycle,
-            _sanityResources
+            _sanityResources,
+            MusicManager.NotifySanityInsaneEntered
         );
         // 视觉服务只消费既有 tier/effective/resource seam。版本受控 adapter 复用各
         // Game1.instanceId 的 screen/uiScreen 最终合成，idle 只持有可撤销负 token。
@@ -732,7 +760,8 @@ internal class ModEntry : Mod, IDisposable
             _lowSanityScreenDistortionEnabled
         );
         // 暗角是 HUD 覆盖层，独立于 world-only 低理智滤镜。即使滤镜关闭，它仍可依据
-        // 专用配置显示 basic；只有滤镜开启且低于 15% 时才改为 insane 动画。
+        // 专用配置显示 basic；滤镜开启后由 Danger tier 的 <15% / >17.5% 滞回决定
+        // insane 动画的进入与退出。
         _sanityVignette = new SanityVignetteOverlayService(
             helper,
             Monitor,
@@ -843,7 +872,8 @@ internal class ModEntry : Mod, IDisposable
             _sanityLifecycle,
             _darknessAttack,
             darknessDamageModeResolver,
-            _sanityResources
+            _sanityResources,
+            _playerDeathCauseLedger.MarkDarkness
         );
         // Ordinary committed sleep and confirmed kill-screen recovery have their own narrow
         // engine adapters. They only capture a reason or settle 50% of the current Sanity max;
@@ -853,6 +883,17 @@ internal class ModEntry : Mod, IDisposable
             ModManifest.UniqueID,
             _sanityLifecycle,
             _passOutReasonLedger
+        );
+        _sleepLifecycle = new SmapiSleepLifecycleAdapter(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _timeApi,
+            _sanityLifecycle,
+            _passOutReasonService,
+            () => _sleepRecoveryBalanceEnabled,
+            () => _hungerDamageMode,
+            _playerDeathCauseLedger.MarkHunger
         );
         // The 2:00 adapter consumes the same typed mode, location result, lifecycle authority,
         // event overlay, audio coordinator and 10-03 Reduce receipt seam. It owns no duplicate
@@ -1086,72 +1127,12 @@ internal class ModEntry : Mod, IDisposable
             Monitor,
             _hostileShadowHost,
             _harmlessProjectionHost,
-            _sanityLifecycle
+            _sanityLifecycle,
+            hungerDebugController
         ).Register(helper);
         // DIAG-20260807: LookupAnything 显示欺骗——影怪攻击力显示跟随配置档位
         // （Lookup 读 DamageToFarmer 实例字段；该字段本体置 0 禁接触伤害）。
         DontStarve.Debug.LookupAnythingDisplayFake.TryPatch(Monitor);
-        // DIAG-20260812: 守卫影怪（恐吓/脱战隐藏）受击跳字拦截——1.6.15 原版
-        // damageMonster 在 takeDamage 返回 0 时仍飘出“0”伤害数字（守卫只挡扣血、
-        // 挡不住跳字）。prefix 检测攻击范围：全部命中目标都是守卫影怪时直接跳过
-        // 整个受击处理（不扣血、不跳字、无命中音效/反馈）。
-        try
-        {
-            var combatHarmony = new HarmonyLib.Harmony(
-                ModManifest.UniqueID + ".combat"
-            );
-            var damagePrefix = HarmonyLib.AccessTools.Method(
-                typeof(HostileShadowDamageMonsterPatch),
-                nameof(HostileShadowDamageMonsterPatch.Prefix)
-            );
-            // DIAG-20260812: 同样遍历全部 damageMonster 重载逐个 patch——固定
-            // 4 参签名若与 1.6.15 实际签名不一致会导致 target not found、跳字 0
-            // 拦截完全未生效（用户实测脱战无敌状态下仍飘 0）。
-            var combatPatched = 0;
-            foreach (
-                var candidate in HarmonyLib.AccessTools.GetDeclaredMethods(
-                    typeof(GameLocation)
-                )
-            )
-            {
-                if (
-                    !string.Equals(
-                        candidate.Name,
-                        nameof(GameLocation.damageMonster),
-                        StringComparison.Ordinal
-                    )
-                )
-                {
-                    continue;
-                }
-                combatHarmony.Patch(
-                    candidate,
-                    prefix: new HarmonyLib.HarmonyMethod(damagePrefix)
-                );
-                combatPatched++;
-            }
-            if (combatPatched == 0)
-            {
-                Monitor.Log(
-                    "Hostile shadow damage patch target not found; guarded hit numbers remain.",
-                    LogLevel.Warn
-                );
-            }
-            else
-            {
-                Monitor.Log(
-                    $"Hostile shadow damage patch applied to {combatPatched} overload(s).",
-                    LogLevel.Trace
-                );
-            }
-        }
-        catch (Exception exception)
-        {
-            Monitor.Log(
-                $"Hostile shadow damage patch failed ({exception.GetType().Name}: {exception.Message}).",
-                LogLevel.Warn
-            );
-        }
         DarknessVanillaHurtSoundBridge.TryInstall(
             ModManifest.UniqueID + ".darkness-audio",
             Monitor
@@ -1189,6 +1170,9 @@ internal class ModEntry : Mod, IDisposable
 
     void IDisposable.Dispose()
     {
+        // MusicManager owns Dawn/Dusk and activity audio instances. Stop it before releasing
+        // other world resources so owner-local SoundEffectInstances cannot outlive the mod.
+        MusicManager.DisableAll();
         _minigameFishingInterruption?.Dispose();
         _minigameFishingInterruption = null;
         _minigameDangerGate?.Dispose();
@@ -1199,6 +1183,12 @@ internal class ModEntry : Mod, IDisposable
         _taggedHudMessages = null;
         _seedEdibilityInteraction?.Dispose();
         _seedEdibilityInteraction = null;
+        _trashCanSanity?.Dispose();
+        _trashCanSanity = null;
+        _flowerCollectionSanity?.Dispose();
+        _flowerCollectionSanity = null;
+        _sleepLifecycle?.Dispose();
+        _sleepLifecycle = null;
         SeedEdibilityRuntime.Dispose();
         ActiveShadowCreatureSfx = null;
     }
@@ -1270,6 +1260,21 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
 
+            var activityMusic = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableActivityMusic
+            );
+            if (activityMusic.HasValue)
+            {
+                _activityMusicEnabled = activityMusic.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableActivityMusic is unavailable ({activityMusic.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
             var sanitySystem = _configurationRuntime.Resolver.GetBoolean(
                 ConfigKeys.EnableSanitySystem
             );
@@ -1296,6 +1301,42 @@ internal class ModEntry : Mod, IDisposable
             {
                 Monitor.Log(
                     $"EnableHungerSystem is unavailable ({hungerSystem.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var hungerDamageMode = _configurationRuntime.Resolver.GetEnum(
+                ConfigKeys.HungerDamageMode
+            );
+            if (
+                hungerDamageMode.HasValue
+                && HungerRules.TryParseDamageMode(
+                    hungerDamageMode.Value,
+                    out var parsedHungerDamageMode
+                )
+            )
+            {
+                _hungerDamageMode = parsedHungerDamageMode;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"HungerDamageMode is unavailable ({hungerDamageMode.Reason}); using Default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var sleepRecoveryBalance = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.SleepRecoveryBalance
+            );
+            if (sleepRecoveryBalance.HasValue)
+            {
+                _sleepRecoveryBalanceEnabled = sleepRecoveryBalance.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"SleepRecoveryBalance is unavailable ({sleepRecoveryBalance.Reason}); using its safe runtime default without overwriting the raw value.",
                     LogLevel.Warn
                 );
             }
@@ -1475,12 +1516,28 @@ internal class ModEntry : Mod, IDisposable
         if (savedMusic.HasValue)
         {
             _config.LoadEnableDawnDuskMusic(savedMusic.Value);
-            MusicManager.SetEnabled(savedMusic.Value);
+            MusicManager.SetDawnDuskEnabled(savedMusic.Value);
         }
         else
         {
             Monitor.Log(
                 $"EnableDawnDuskMusic remains unavailable after GMCM save ({savedMusic.Reason}); the active music state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedActivityMusic = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableActivityMusic
+        );
+        if (savedActivityMusic.HasValue)
+        {
+            _activityMusicEnabled = savedActivityMusic.Value;
+            MusicManager.SetActivityMusicEnabled(savedActivityMusic.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableActivityMusic remains unavailable after GMCM save ({savedActivityMusic.Reason}); the active activity-music state was left unchanged.",
                 LogLevel.Warn
             );
         }
@@ -1497,6 +1554,42 @@ internal class ModEntry : Mod, IDisposable
         {
             Monitor.Log(
                 $"EnableHungerSystem remains unavailable after GMCM save ({savedHungerSystem.Reason}); the active Hunger system state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedHungerDamageMode = _configurationRuntime.Resolver.GetEnum(
+            ConfigKeys.HungerDamageMode
+        );
+        if (
+            savedHungerDamageMode.HasValue
+            && HungerRules.TryParseDamageMode(
+                savedHungerDamageMode.Value,
+                out var parsedHungerDamageMode
+            )
+        )
+        {
+            _hungerDamageMode = parsedHungerDamageMode;
+        }
+        else
+        {
+            Monitor.Log(
+                $"HungerDamageMode remains unavailable after GMCM save ({savedHungerDamageMode.Reason}); the active damage mode was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedSleepRecoveryBalance = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.SleepRecoveryBalance
+        );
+        if (savedSleepRecoveryBalance.HasValue)
+        {
+            _sleepRecoveryBalanceEnabled = savedSleepRecoveryBalance.Value;
+        }
+        else
+        {
+            Monitor.Log(
+                $"SleepRecoveryBalance remains unavailable after GMCM save ({savedSleepRecoveryBalance.Reason}); the active sleep balance state was left unchanged.",
                 LogLevel.Warn
             );
         }

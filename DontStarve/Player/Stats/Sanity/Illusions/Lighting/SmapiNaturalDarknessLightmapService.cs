@@ -365,17 +365,20 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             if (!Context.IsWorldReady)
                 return NaturalDarknessScenePlan.None;
 
+            var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
+            var expectedGameVersion = StardewRuntimeVersionPolicy.ExpectedGameVersion(
+                isAndroidPlatform
+            );
             if (
-                !string.Equals(
+                !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
                     Game1.version,
-                    EnvironmentLightProductionContract.SupportedGameVersion,
-                    StringComparison.Ordinal
+                    isAndroidPlatform
                 )
             )
             {
                 LogOnce(
                     "natural-darkness.game-version-unsupported",
-                    $"Natural darkness is disabled because Stardew version '{Game1.version}' is not the verified {EnvironmentLightProductionContract.SupportedGameVersion} lightmap contract.",
+                    $"Natural darkness is disabled because Stardew version '{Game1.version}' is not the verified {expectedGameVersion} lightmap contract.",
                     LogLevel.Warn
                 );
                 return NaturalDarknessScenePlan.None;

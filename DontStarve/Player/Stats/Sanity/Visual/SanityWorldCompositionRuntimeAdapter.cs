@@ -70,6 +70,7 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
         var gameVersion = Game1.version;
         var frameworkVersion =
             frameworkAssembly.GetName().Version?.ToString() ?? string.Empty;
+        var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
         var openGlBackend =
             frameworkAssembly.GetType("MonoGame.OpenGL.GL", throwOnError: false)
             is not null;
@@ -83,7 +84,8 @@ internal sealed class SanityWorldCompositionRuntimeAdapter : IDisposable
                 typeof(void),
                 new[] { typeof(RenderTarget2D) }
             ),
-            Shape(splitCompositionMethod, typeof(void), Type.EmptyTypes)
+            Shape(splitCompositionMethod, typeof(void), Type.EmptyTypes),
+            isAndroidPlatform
         );
         if (gateReason is not null)
         {

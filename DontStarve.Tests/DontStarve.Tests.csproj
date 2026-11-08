@@ -32,6 +32,36 @@
     <Compile Include="..\DontStarve\Player\Stats\Food\SeedEdibilityRules.cs" Link="Player\Stats\Food\SeedEdibilityRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\SeedFoodInputRules.cs" Link="Player\Stats\Food\SeedFoodInputRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\StarfruitFoodRules.cs" Link="Player\Stats\Food\StarfruitFoodRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerRules.cs" Link="Player\Stats\Hunger\HungerRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerStarvationRules.cs" Link="Player\Stats\Hunger\HungerStarvationRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerWarningRules.cs" Link="Player\Stats\Hunger\HungerWarningRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerEquipmentRules.cs" Link="Player\Stats\Hunger\HungerEquipmentRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDebugController.cs" Link="Player\Stats\Hunger\HungerDebugController.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerEquipmentData.cs" Link="Player\Stats\Hunger\HungerEquipmentData.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerSaveData.cs" Link="Player\Stats\Hunger\HungerSaveData.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerPersistenceStore.cs" Link="Player\Stats\Hunger\HungerPersistenceStore.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerMultiplayerProtocol.cs" Link="Player\Stats\Hunger\HungerMultiplayerProtocol.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" Link="Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageCalculator.cs" Link="Player\Stats\Hunger\HungerDamage\HungerDamageCalculator.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageService.cs" Link="Player\Stats\Hunger\HungerDamage\HungerDamageService.cs" />
+    <Compile Include="..\DontStarve\Debug\DebugCommandValueParser.cs" Link="Debug\DebugCommandValueParser.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepContracts.cs" Link="Player\Sleep\SleepContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepRules.cs" Link="Player\Sleep\SleepRules.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepOvernightSettlement.cs" Link="Player\Sleep\SleepOvernightSettlement.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepOwnerHealthState.cs" Link="Player\Sleep\SleepOwnerHealthState.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepLifecycleProtocol.cs" Link="Player\Sleep\SleepLifecycleProtocol.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepLifecycleState.cs" Link="Player\Sleep\SleepLifecycleState.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsData.cs" Link="Player\Sleep\SleepWakeEffectsData.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsPolicy.cs" Link="Player\Sleep\SleepWakeEffectsPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Death\PlayerDeathCausePolicy.cs" Link="Player\Death\PlayerDeathCausePolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\PlayerTimeBehaviorState.cs" Link="Player\Stats\PlayerTimeBehaviorState.cs" />
+    <Compile Include="..\DontStarve\Music\ActivityMusicArbitration.cs" Link="Music\ActivityMusicArbitration.cs" />
+    <Compile Include="..\DontStarve\Music\ActivityMusicPhasePolicy.cs" Link="Music\ActivityMusicPhasePolicy.cs" />
+    <Compile Include="..\DontStarve\Music\ActivityMusicSuppressionStateStore.cs" Link="Music\ActivityMusicSuppressionStateStore.cs" />
+    <Compile Include="..\DontStarve\Music\ActivityMusicFadePolicy.cs" Link="Music\ActivityMusicFadePolicy.cs" />
+    <Compile Include="..\DontStarve\Music\ActivityMusicResourceCatalog.cs" Link="Music\ActivityMusicResourceCatalog.cs" />
+    <Compile Include="..\DontStarve\Music\MusicFeatureSwitchboard.cs" Link="Music\MusicFeatureSwitchboard.cs" />
+    <Compile Include="..\DontStarve\Static\StardewRuntimeVersionPolicy.cs" Link="Static\StardewRuntimeVersionPolicy.cs" />
     <Compile Include="..\DontStarve\Buff\Buffs\FixedRestoreBuffTiming.cs" Link="Buff\FixedRestoreBuffTiming.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityAssetContracts.cs" Link="Resource\Sanity\SanityAssetContracts.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityAssetFileInspector.cs" Link="Resource\Sanity\SanityAssetFileInspector.cs" />
@@ -41,7 +71,7 @@
     <Compile Include="..\DontStarve\Resource\Sanity\SanityHostileVisualContractValidator.cs" Link="Resource\Sanity\SanityHostileVisualContractValidator.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityHostilePushBoxContracts.cs" Link="Resource\Sanity\SanityHostilePushBoxContracts.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityHostileAttackMetadataCatalog.cs" Link="Resource\Sanity\SanityHostileAttackMetadataCatalog.cs" />
-    <Compile Include="..\DontStarve\Resource\Sanity\SanityWavInspector.cs" Link="Resource\Sanity\SanityWavInspector.cs" />
+    <Compile Include="..\DontStarve\Resource\Sanity\SanityOggInspector.cs" Link="Resource\Sanity\SanityOggInspector.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityAudioContract.cs" Link="Resource\Sanity\SanityAudioContract.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityAudioContractValidator.cs" Link="Resource\Sanity\SanityAudioContractValidator.cs" />
     <Compile Include="..\DontStarve\Resource\Sanity\SanityRuntimeResourceContracts.cs" Link="Resource\Sanity\SanityRuntimeResourceContracts.cs" />
@@ -55,8 +85,12 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanitySaveDataCodec.cs" Link="Player\Stats\Sanity\SanitySaveDataCodec.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityPersistenceStore.cs" Link="Player\Stats\Sanity\SanityPersistenceStore.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityMultiplayerProtocol.cs" Link="Player\Stats\Sanity\SanityMultiplayerProtocol.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\TrashCanSanityPolicy.cs" Link="Player\Stats\Sanity\TrashCanSanityPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\FlowerCollectionSanityPolicy.cs" Link="Player\Stats\Sanity\FlowerCollectionSanityPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityRuntimeState.cs" Link="Player\Stats\Sanity\SanityRuntimeState.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityTierCatalog.cs" Link="Player\Stats\Sanity\SanityTierCatalog.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityGameplayPhase.cs" Link="Player\Stats\Sanity\SanityGameplayPhase.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityInsanityEdgePolicy.cs" Link="Player\Stats\Sanity\Audio\SanityInsanityEdgePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityTierStateMachine.cs" Link="Player\Stats\Sanity\SanityTierStateMachine.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityShadowBudgetPolicy.cs" Link="Player\Stats\Sanity\SanityShadowBudgetPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityShadowBudgetGovernor.cs" Link="Player\Stats\Sanity\SanityShadowBudgetGovernor.cs" />
@@ -94,6 +128,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowSettlementService.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowSettlementService.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityChangeService.cs" Link="Player\Stats\Sanity\SanityChangeService.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanitySystemLifecycleCoordinator.cs" Link="Player\Stats\Sanity\SanitySystemLifecycleCoordinator.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVignetteViewportPolicy.cs" Link="Player\Stats\Sanity\Visual\SanityVignetteViewportPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Damage\NonLethalDamageContracts.cs" Link="Player\Stats\Sanity\Damage\NonLethalDamageContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Damage\NonLethalDamageCalculator.cs" Link="Player\Stats\Sanity\Damage\NonLethalDamageCalculator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Damage\ControlledPhysicalDamage.cs" Link="Player\Stats\Sanity\Damage\ControlledPhysicalDamage.cs" />
@@ -345,6 +380,9 @@
     <None Include="..\DontStarve\Buff\Buffs\FixedRestoreBuff.cs" Link="Contracts\OnlinePersistence\FixedRestoreBuff.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Buff\BuffMultiplayerCoordinator.cs" Link="Contracts\OnlinePersistence\BuffMultiplayerCoordinator.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Buff\Buffs\HealthRestoreBuff.cs" Link="Contracts\OnlinePersistence\HealthRestoreBuff.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -354,19 +392,64 @@
     <None Include="..\DontStarve\Buff\Buffs\SanityRestoreBuff.cs" Link="Contracts\OnlinePersistence\SanityRestoreBuff.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Buff\Buffs\ElectricityAppendBuff.cs" Link="Contracts\OnlinePersistence\ElectricityAppendBuff.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Buff\BuffManager.cs" Link="Contracts\OnlinePersistence\BuffManager.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Hunger\Hunger.cs" Link="Contracts\OnlinePersistence\Hunger.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\DontStarve\Player\Stats\Hunger\HungerCycle.cs" Link="Contracts\OnlinePersistence\HungerCycle.cs">
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerMultiplayerProtocol.cs" Link="Contracts\OnlinePersistence\HungerMultiplayerProtocol.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerRuntimeState.cs" Link="Contracts\OnlinePersistence\HungerRuntimeState.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerSaveData.cs" Link="Contracts\OnlinePersistence\HungerSaveData.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerPersistenceStore.cs" Link="Contracts\OnlinePersistence\HungerPersistenceStore.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\SmapiHungerSaveDataAccess.cs" Link="Contracts\OnlinePersistence\SmapiHungerSaveDataAccess.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageCalculator.cs" Link="Contracts\OnlinePersistence\HungerDamageCalculator.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageService.cs" Link="Contracts\OnlinePersistence\HungerDamageService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\SmapiHungerDamageExecutor.cs" Link="Contracts\OnlinePersistence\SmapiHungerDamageExecutor.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerDeathDialogueService.cs" Link="Contracts\OnlinePersistence\HungerDeathDialogueService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\SmapiHungerMultiplayerCoordinator.cs" Link="Contracts\OnlinePersistence\SmapiHungerMultiplayerCoordinator.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Hunger\HungerFoodCompletionPatch.cs" Link="Contracts\OnlinePersistence\HungerFoodCompletionPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  <None Include="..\DontStarve\Player\Stats\Hunger\HungerCycle.cs" Link="Contracts\OnlinePersistence\HungerCycle.cs">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
+    <None Include="..\DontStarve\Player\Sleep\SmapiSleepLifecycleAdapter.cs" Link="Contracts\SleepLifecycle\SmapiSleepLifecycleAdapter.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Hunger\HungerBehaviors\EatFood.cs" Link="Contracts\OnlinePersistence\EatFood.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Food\FoodRuleRuntime.cs" Link="Contracts\OnlinePersistence\FoodRuleRuntime.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Food\SeedEdibilityRuntime.cs" Link="Contracts\SeedEdibility\SeedEdibilityRuntime.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Food\SeedEdibilityInteractionService.cs" Link="Contracts\SeedInput\SeedEdibilityInteractionService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Asset\Hunger\food.json" Link="Contracts\OnlinePersistence\food.json">
@@ -478,6 +561,34 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- 05-01 只复制当前源码作静态事实 probe；不编译/引用 SMAPI 或 Stardew 程序集，也不播放任何音频。 -->
+    <!-- 08 活动音乐基础框架：只复制运行时源码供契约测试读取，测试项目不引用游戏程序集。 -->
+    <None Include="..\DontStarve\Music\ActivityMusicContracts.cs" Link="Contracts\ActivityMusic\ActivityMusicContracts.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicStateStore.cs" Link="Contracts\ActivityMusic\ActivityMusicStateStore.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicService.cs" Link="Contracts\ActivityMusic\ActivityMusicService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicActionBridge.cs" Link="Contracts\ActivityMusic\ActivityMusicActionBridge.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicResourceCatalog.cs" Link="Contracts\ActivityMusic\ActivityMusicResourceCatalog.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicResourceRuntime.cs" Link="Contracts\ActivityMusic\ActivityMusicResourceRuntime.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicAudioService.cs" Link="Contracts\ActivityMusic\ActivityMusicAudioService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicVanillaMusicLease.cs" Link="Contracts\ActivityMusic\ActivityMusicVanillaMusicLease.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Music\ActivityMusicFadePolicy.cs" Link="Contracts\ActivityMusic\ActivityMusicFadePolicy.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Music\MusicManager.cs" Link="Contracts\AudioVisualFact\MusicManager.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

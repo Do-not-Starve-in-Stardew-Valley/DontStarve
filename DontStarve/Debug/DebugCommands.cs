@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using DontStarve.Player.Stats.Sanity.Illusions.Projection;
@@ -21,6 +23,7 @@ namespace DontStarve.Debug;
 internal sealed class DebugCommands
 {
     private const string SanityCommand = "ds_sanity";
+    private const string HungerCommand = "ds_hunger";
     private const string SpawnCommand = "ds_spawn";
     private const string BoxesCommand = "ds_boxes";
     private const string AttackDiagnosticsCommand = "ds_attacklog";
@@ -29,6 +32,7 @@ internal sealed class DebugCommands
     private readonly SmapiHostileShadowHost hostileShadowHost;
     private readonly SmapiHarmlessProjectionHost projectionHost;
     private readonly SanitySystemLifecycleCoordinator sanityLifecycle;
+    private readonly HungerDebugController hungerDebugController;
 
     // DIAG-20260804: 测试用碰撞箱高亮开关，默认开启（用户要求测试阶段默认显示）。
     private static bool boxesVisible = true;
@@ -39,7 +43,8 @@ internal sealed class DebugCommands
         IMonitor monitor,
         SmapiHostileShadowHost hostileShadowHost,
         SmapiHarmlessProjectionHost projectionHost,
-        SanitySystemLifecycleCoordinator sanityLifecycle
+        SanitySystemLifecycleCoordinator sanityLifecycle,
+        HungerDebugController hungerDebugController
     )
     {
         this.monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
@@ -49,6 +54,8 @@ internal sealed class DebugCommands
             ?? throw new ArgumentNullException(nameof(projectionHost));
         this.sanityLifecycle = sanityLifecycle
             ?? throw new ArgumentNullException(nameof(sanityLifecycle));
+        this.hungerDebugController = hungerDebugController
+            ?? throw new ArgumentNullException(nameof(hungerDebugController));
     }
 
     internal void Register(IModHelper helper)
@@ -57,6 +64,11 @@ internal sealed class DebugCommands
             SanityCommand,
             "测试：设置精神值。用法：ds_sanity set <数值> | ds_sanity set <百分比>% | ds_sanity max | ds_sanity min | ds_sanity lock | ds_sanity unlock",
             OnSanityCommand
+        );
+        helper.ConsoleCommands.Add(
+            HungerCommand,
+            "测试：设置饥饿值。用法：ds_hunger set <数值> | ds_hunger set <百分比>% | ds_hunger max | ds_hunger min | ds_hunger lock | ds_hunger unlock",
+            OnHungerCommand
         );
         helper.ConsoleCommands.Add(
             SpawnCommand,
@@ -100,12 +112,19 @@ internal sealed class DebugCommands
         switch (args[0].ToLowerInvariant())
         {
             case "max":
-                player.SetSanity(player.GetMaxSanity());
-                monitor.Log("精神值已设为 100%。", LogLevel.Info);
+                LogSanityResult(
+                    "精神值设为最大值",
+                    player.SetSanity(
+                        player.GetMaxSanity(),
+                        SanityChangeSource.Administration
+                    )
+                );
                 return;
             case "min":
-                player.SetSanity(0d);
-                monitor.Log("精神值已设为 0%。", LogLevel.Info);
+                LogSanityResult(
+                    "精神值设为 0",
+                    player.SetSanity(0d, SanityChangeSource.Administration)
+                );
                 return;
             case "lock":
                 sanityLifecycle.SetDebugSanityLocked(true);
@@ -121,36 +140,25 @@ internal sealed class DebugCommands
                     monitor.Log("用法：ds_sanity set <数值> 或 ds_sanity set <百分比>%", LogLevel.Warn);
                     return;
                 }
-                var raw = args[1];
+                var parsed = DebugCommandValueParser.Parse(args[1]);
+                if (!parsed.Success)
+                {
+                    monitor.Log($"数值无效：{args[1]}（{parsed.Reason}）", LogLevel.Warn);
+                    return;
+                }
                 var maximumValue = player.GetMaxSanity();
-                if (raw.EndsWith("%", StringComparison.Ordinal))
-                {
-                    if (
-                        !double.TryParse(
-                            raw.Substring(0, raw.Length - 1),
-                            out var percent
-                        )
-                        || percent < 0d
-                        || percent > 100d
+                var requestedValue = parsed.IsPercentage
+                    ? maximumValue * parsed.Value / 100d
+                    : parsed.Value;
+                LogSanityResult(
+                    parsed.IsPercentage
+                        ? $"精神值设为 {parsed.Value:F0}%"
+                        : "精神值设为指定值",
+                    player.SetSanity(
+                        requestedValue,
+                        SanityChangeSource.Administration
                     )
-                    {
-                        monitor.Log($"百分比无效：{raw}（需 0~100）", LogLevel.Warn);
-                        return;
-                    }
-                    player.SetSanity(maximumValue * percent / 100d);
-                    monitor.Log($"精神值已设为 {percent:F0}%（{maximumValue * percent / 100d:F0}）。", LogLevel.Info);
-                    return;
-                }
-                if (
-                    !double.TryParse(raw, out var value)
-                    || value < 0d
-                )
-                {
-                    monitor.Log($"数值无效：{raw}（需 ≥0）", LogLevel.Warn);
-                    return;
-                }
-                player.SetSanity(value);
-                monitor.Log($"精神值已设为 {value:F0}。", LogLevel.Info);
+                );
                 return;
             default:
                 monitor.Log(
@@ -160,6 +168,149 @@ internal sealed class DebugCommands
                 return;
         }
     }
+
+    private void OnHungerCommand(string command, string[] args)
+    {
+        if (!Context.IsWorldReady || Game1.player is null)
+        {
+            monitor.Log("世界尚未就绪，无法设置饥饿值。", LogLevel.Warn);
+            return;
+        }
+        if (!Context.IsMainPlayer)
+        {
+            monitor.Log("ds_hunger 只能由 host 执行；客户端不会本地修改饥饿值。", LogLevel.Warn);
+            return;
+        }
+
+        var playerKey = Game1.player.UniqueMultiplayerID.ToString(
+            CultureInfo.InvariantCulture
+        );
+        if (args.Length == 0)
+        {
+            LogHungerResult(hungerDebugController.Query(playerKey));
+            monitor.Log(
+                $"饥饿值普通变化锁定：{(hungerDebugController.IsLocked ? "是" : "否")}。",
+                LogLevel.Info
+            );
+            return;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "max":
+                LogHungerResult(hungerDebugController.SetMaximum(playerKey));
+                return;
+            case "min":
+                LogHungerResult(hungerDebugController.SetMinimum(playerKey));
+                return;
+            case "lock":
+                LogHungerResult(hungerDebugController.SetLocked(true));
+                return;
+            case "unlock":
+                LogHungerResult(hungerDebugController.SetLocked(false));
+                return;
+            case "set":
+                if (args.Length < 2)
+                {
+                    monitor.Log(
+                        "用法：ds_hunger set <数值> 或 ds_hunger set <百分比>%",
+                        LogLevel.Warn
+                    );
+                    return;
+                }
+                var parsed = DebugCommandValueParser.Parse(args[1]);
+                if (!parsed.Success)
+                {
+                    monitor.Log($"数值无效：{args[1]}（{parsed.Reason}）", LogLevel.Warn);
+                    return;
+                }
+                LogHungerResult(
+                    parsed.IsPercentage
+                        ? hungerDebugController.SetPercentage(playerKey, parsed.Value)
+                        : hungerDebugController.SetAbsolute(playerKey, parsed.Value)
+                );
+                return;
+            default:
+                monitor.Log(
+                    "未知子命令。用法：ds_hunger set <数值> | set <百分比>% | max | min | lock | unlock",
+                    LogLevel.Warn
+                );
+                return;
+        }
+    }
+
+    private void LogSanityResult(string action, SanityChangeResult result)
+    {
+        var current = result.Snapshot?.Current;
+        var maximum = result.Snapshot?.Maximum;
+        switch (result.Status)
+        {
+            case SanityChangeStatus.Applied:
+                monitor.Log(
+                    $"{action}成功：{current:F0} / {maximum:F0}。",
+                    LogLevel.Info
+                );
+                return;
+            case SanityChangeStatus.NoChange:
+                monitor.Log(
+                    result.Reason == "sanity-system-disabled"
+                        ? "精神值系统已关闭，未修改。"
+                        : $"精神值未变化：{result.Reason}（当前 {current:F0} / {maximum:F0}）。",
+                    LogLevel.Warn
+                );
+                return;
+            case SanityChangeStatus.RequestQueued:
+                monitor.Log("精神值命令未执行：调试命令不接受客户端排队。", LogLevel.Warn);
+                return;
+            case SanityChangeStatus.Rejected:
+                monitor.Log($"{action}失败：{result.Reason}。", LogLevel.Warn);
+                return;
+            default:
+                monitor.Log($"{action}失败：{result.Reason}。", LogLevel.Warn);
+                return;
+        }
+    }
+
+    private void LogHungerResult(HungerDebugResult result)
+    {
+        switch (result.Status)
+        {
+            case HungerDebugResultStatus.Applied:
+                if (result.Reason == "hunger-debug-locked")
+                {
+                    monitor.Log("饥饿值已锁定：普通消耗、恢复、睡眠成本和伤害均暂停。", LogLevel.Info);
+                    return;
+                }
+                if (result.Reason == "hunger-debug-unlocked")
+                {
+                    monitor.Log("饥饿值已解锁。", LogLevel.Info);
+                    return;
+                }
+                monitor.Log(
+                    $"饥饿值操作成功：{result.Current:F2} / {result.Maximum:F2}（{GetPercent(result):F0}%）。",
+                    LogLevel.Info
+                );
+                return;
+            case HungerDebugResultStatus.NoChange:
+                monitor.Log(
+                    $"饥饿值未变化：{result.Reason}（当前 {result.Current:F2} / {result.Maximum:F2}）。",
+                    LogLevel.Warn
+                );
+                return;
+            case HungerDebugResultStatus.Disabled:
+                monitor.Log("饥饿值系统已关闭，未修改。", LogLevel.Warn);
+                return;
+            case HungerDebugResultStatus.HostOnly:
+                monitor.Log("ds_hunger 只能由 host 执行，客户端未修改。", LogLevel.Warn);
+                return;
+            default:
+                monitor.Log($"饥饿值操作失败：{result.Reason}。", LogLevel.Warn);
+                return;
+        }
+    }
+
+    private static double GetPercent(HungerDebugResult result) =>
+        result.Maximum > 0d ? result.Current / result.Maximum * 100d : 0d;
 
     private void OnSpawnCommand(string command, string[] args)
     {

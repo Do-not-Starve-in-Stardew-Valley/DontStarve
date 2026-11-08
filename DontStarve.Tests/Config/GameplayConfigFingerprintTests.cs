@@ -15,6 +15,8 @@ public sealed class GameplayConfigFingerprintTests
             + "\"EnableSanitySystem\":true,"
             + "\"SanityMonsterIntensity\":\"Default\","
             + "\"DarkHandMode\":\"FireThief\","
+            + "\"HungerDamageMode\":\"Default\","
+            + "\"SleepRecoveryBalance\":true,"
             + "\"EnableNaturalDarkness\":true,"
             + "\"DarknessDamageMode\":\"Default\","
             + "\"MonsterDifficultyProfile\":\"Compatible\","
@@ -31,6 +33,8 @@ public sealed class GameplayConfigFingerprintTests
             + "\"DarknessDamageMode\":\"Default\","
             + "\"EnableNaturalDarkness\":true,"
             + "\"DarkHandMode\":\"FireThief\","
+            + "\"SleepRecoveryBalance\":true,"
+            + "\"HungerDamageMode\":\"Default\","
             + "\"SanityMonsterIntensity\":\"Default\","
             + "\"EnableSanitySystem\":true}";
 
@@ -44,7 +48,7 @@ public sealed class GameplayConfigFingerprintTests
         Assert.Equal(left.FullHash[..12], left.PublicIdentifier);
         Assert.Equal(64, left.FullHash.Length);
         Assert.Equal(
-            "9E1EFC6ED5D94DA8D0D4929D4212C209D0D033177E363A7BE983584A65F61748",
+            "D2F784D6775A74182996870089CACCB0E69DF65068E49C219F66C7A13EF4C6A5",
             left.FullHash
         );
         Assert.Equal(
@@ -56,8 +60,10 @@ public sealed class GameplayConfigFingerprintTests
                 + "EnableNaturalDarkness=true\n"
                 + "EnableSanitySystem=true\n"
                 + "EnableSeedEdibility=true\n"
+                + "HungerDamageMode=Default\n"
                 + "MonsterDifficultyProfile=Compatible\n"
-                + "SanityMonsterIntensity=Default\n",
+                + "SanityMonsterIntensity=Default\n"
+                + "SleepRecoveryBalance=true\n",
             left.CanonicalText
         );
     }
@@ -81,6 +87,7 @@ public sealed class GameplayConfigFingerprintTests
     [InlineData("{\"EnableLowSanityScreenDistortion\":false}")]
     [InlineData("{\"EnableSanityVignette\":false}")]
     [InlineData("{\"EnableDawnDuskMusic\":false}")]
+    [InlineData("{\"EnableActivityMusic\":false}")]
     [InlineData("{\"UnknownLegacy\":123}")]
     public void LocalOrUnknownValueDoesNotChangeFingerprint(string changedJson)
     {

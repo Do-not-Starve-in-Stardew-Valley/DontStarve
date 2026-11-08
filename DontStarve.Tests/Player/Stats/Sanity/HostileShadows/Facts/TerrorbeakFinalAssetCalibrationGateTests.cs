@@ -220,7 +220,7 @@ public sealed class TerrorbeakFinalAssetCalibrationGateTests
                     clip.GetProperty("Path").GetString(),
                     StringComparison.Ordinal
                 );
-                Assert.Equal("sanity.wav.pcm-s16-stereo-48000-v1", clip.GetProperty("FormatId").GetString());
+                Assert.Equal("sanity.ogg.vorbis-stereo-48000-v1", clip.GetProperty("FormatId").GetString());
                 Assert.False(clip.GetProperty("IsPlaceholder").GetBoolean());
                 Assert.Equal("AvailableReadOnlyEvidence", clip.GetProperty("SourceEvidence").GetProperty("Status").GetString());
                 Assert.Equal("PendingRealMachine", clip.GetProperty("ListeningEvidence").GetProperty("OverallStatus").GetString());

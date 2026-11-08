@@ -1,7 +1,7 @@
 {
     "Name": "Do not starve in Stardew Valley",
     "Author": "Yurin",
-    "Version": "1.0.0",
+    "Version": "1.5.0-beta.1",
     "Description": "Do not starve in Stardew Valley",
     "UniqueID": "Yurin.DontStarve",
     "EntryDll": "DontStarve.dll",

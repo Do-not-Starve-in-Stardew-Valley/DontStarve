@@ -14,7 +14,9 @@ internal interface IConfigMenuRegistrationApi
 {
     void Register(Action reset, Action save);
 
-    void AddSection(string sectionId, Func<string> getText);
+    void AddPage(string pageId, Func<string> getTitle);
+
+    void AddPageLink(string pageId, Func<string> getText);
 
     void AddBoolean(
         string fieldId,
@@ -167,10 +169,117 @@ internal static class SchemaDrivenConfigMenuRegistrar
         }
 
         var registeredKeys = new List<string>();
-        string? currentSection = null;
+        var parentPageIds = new List<string>();
+        var seenParentPageIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var option in registry.Options)
         {
-            var section = string.Empty;
+            if (seenParentPageIds.Add(option.ParentPageI18n))
+                parentPageIds.Add(option.ParentPageI18n);
+        }
+        SortParentPageIds(parentPageIds, registry.Options);
+
+        // The root menu links to top-level pages. Each top-level page then links to its child pages.
+        foreach (var parentPageId in parentPageIds)
+        {
+            try
+            {
+                menu.AddPageLink(
+                    GetPageId(parentPageId),
+                    CreateTranslationGetter(
+                        translations,
+                        parentPageId,
+                        parentPageId
+                    )
+                );
+            }
+            catch (Exception)
+            {
+                Report($"gmcm.page-link-registration-failed:{parentPageId}");
+            }
+        }
+
+        foreach (var parentPageId in parentPageIds)
+        {
+            try
+            {
+                menu.AddPage(
+                    GetPageId(parentPageId),
+                    CreateTranslationGetter(
+                        translations,
+                        parentPageId,
+                        parentPageId
+                    )
+                );
+            }
+            catch (Exception)
+            {
+                Report($"gmcm.page-registration-failed:{parentPageId}");
+                continue;
+            }
+
+            var childPageIds = new List<string>();
+            var seenChildPageIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var option in registry.Options)
+            {
+                if (
+                    !string.Equals(
+                        option.ParentPageI18n,
+                        parentPageId,
+                        StringComparison.Ordinal
+                    )
+                    || !seenChildPageIds.Add(option.PageI18n)
+                )
+                {
+                    continue;
+                }
+
+                childPageIds.Add(option.PageI18n);
+            }
+            SortChildPageIds(childPageIds, parentPageId, registry.Options);
+
+            foreach (var childPageId in childPageIds)
+            {
+                try
+                {
+                    menu.AddPageLink(
+                        GetPageId(childPageId),
+                        CreateTranslationGetter(
+                            translations,
+                            childPageId,
+                            childPageId
+                        )
+                    );
+                }
+                catch (Exception)
+                {
+                    Report($"gmcm.page-link-registration-failed:{childPageId}");
+                }
+            }
+
+            foreach (var childPageId in childPageIds)
+            {
+                try
+                {
+                    menu.AddPage(
+                        GetPageId(childPageId),
+                        CreateTranslationGetter(
+                            translations,
+                            childPageId,
+                            childPageId
+                        )
+                    );
+                }
+                catch (Exception)
+                {
+                    Report($"gmcm.page-registration-failed:{childPageId}");
+                }
+            }
+        }
+
+        string? currentPage = null;
+        foreach (var option in registry.Options)
+        {
+            var page = string.Empty;
             var name = string.Empty;
             var tooltip = string.Empty;
             IReadOnlyDictionary<string, string> enumDisplayValues =
@@ -183,7 +292,8 @@ internal static class SchemaDrivenConfigMenuRegistrar
                     !TryResolveTranslations(
                         option,
                         translations,
-                        out section,
+                        out _,
+                        out page,
                         out name,
                         out tooltip,
                         out enumDisplayValues
@@ -200,23 +310,24 @@ internal static class SchemaDrivenConfigMenuRegistrar
                 continue;
             }
 
-            if (!string.Equals(currentSection, option.SectionI18n, StringComparison.Ordinal))
+            if (!string.Equals(currentPage, option.PageI18n, StringComparison.Ordinal))
             {
-                currentSection = option.SectionI18n;
                 try
                 {
-                    menu.AddSection(
-                        option.SectionI18n,
+                    menu.AddPage(
+                        GetPageId(option.PageI18n),
                         CreateTranslationGetter(
                             translations,
-                            option.SectionI18n,
-                            section
+                            option.PageI18n,
+                            page
                         )
                     );
+                    currentPage = option.PageI18n;
                 }
                 catch (Exception)
                 {
-                    Report($"gmcm.section-registration-failed:{option.SectionI18n}");
+                    Report($"gmcm.page-registration-failed:{option.PageI18n}");
+                    continue;
                 }
             }
 
@@ -310,6 +421,82 @@ internal static class SchemaDrivenConfigMenuRegistrar
         );
     }
 
+    private static string GetPageId(string pageI18n)
+    {
+        return $"dontstarve.config.{pageI18n}";
+    }
+
+    private static void SortParentPageIds(
+        List<string> pageIds,
+        IReadOnlyList<ConfigOptionDefinition> options
+    )
+    {
+        pageIds.Sort(
+            (left, right) =>
+            {
+                var order = GetParentPageOrder(options, left).CompareTo(
+                    GetParentPageOrder(options, right)
+                );
+                return order != 0
+                    ? order
+                    : StringComparer.Ordinal.Compare(left, right);
+            }
+        );
+    }
+
+    private static void SortChildPageIds(
+        List<string> pageIds,
+        string parentPageId,
+        IReadOnlyList<ConfigOptionDefinition> options
+    )
+    {
+        pageIds.Sort(
+            (left, right) =>
+            {
+                var order = GetPageOrder(options, parentPageId, left).CompareTo(
+                    GetPageOrder(options, parentPageId, right)
+                );
+                return order != 0
+                    ? order
+                    : StringComparer.Ordinal.Compare(left, right);
+            }
+        );
+    }
+
+    private static int GetParentPageOrder(
+        IReadOnlyList<ConfigOptionDefinition> options,
+        string pageId
+    )
+    {
+        foreach (var option in options)
+        {
+            if (string.Equals(option.ParentPageI18n, pageId, StringComparison.Ordinal))
+                return option.ParentPageOrder;
+        }
+
+        return int.MaxValue;
+    }
+
+    private static int GetPageOrder(
+        IReadOnlyList<ConfigOptionDefinition> options,
+        string parentPageId,
+        string pageId
+    )
+    {
+        foreach (var option in options)
+        {
+            if (
+                string.Equals(option.ParentPageI18n, parentPageId, StringComparison.Ordinal)
+                && string.Equals(option.PageI18n, pageId, StringComparison.Ordinal)
+            )
+            {
+                return option.PageOrder;
+            }
+        }
+
+        return int.MaxValue;
+    }
+
     internal static string GetEnumValueI18nKey(
         ConfigOptionDefinition option,
         string rawValue
@@ -325,20 +512,23 @@ internal static class SchemaDrivenConfigMenuRegistrar
     private static bool TryResolveTranslations(
         ConfigOptionDefinition option,
         IConfigMenuTranslationProvider translations,
-        out string section,
+        out string parentPage,
+        out string page,
         out string name,
         out string tooltip,
         out IReadOnlyDictionary<string, string> enumDisplayValues
     )
     {
-        section = string.Empty;
+        parentPage = string.Empty;
+        page = string.Empty;
         name = string.Empty;
         tooltip = string.Empty;
         enumDisplayValues = new ReadOnlyDictionary<string, string>(
             new Dictionary<string, string>(StringComparer.Ordinal)
         );
         if (
-            !translations.TryGet(option.SectionI18n, out section)
+            !translations.TryGet(option.ParentPageI18n, out parentPage)
+            || !translations.TryGet(option.PageI18n, out page)
             || !translations.TryGet(option.NameI18n, out name)
             || !translations.TryGet(option.TooltipI18n, out tooltip)
         )

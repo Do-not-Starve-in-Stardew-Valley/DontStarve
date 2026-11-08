@@ -375,6 +375,33 @@ public sealed class SanityRuntimeStateTests
         Assert.Null(typeof(SanityChangeRequest).GetProperty("Value"));
     }
 
+    [Fact]
+    public void Client_garbage_change_queues_facts_without_optimistic_state_write()
+    {
+        var client = ClientWithSnapshot(Player(FarmhandKey, 90d, 180d, 4));
+        SanityChangeRequest? emitted = null;
+        client.ClientRequestCreated += request => emitted = request;
+
+        var result = client.ChangeGarbage(
+            FarmhandKey,
+            new TrashCanSanityFacts
+            {
+                LocationNameOrUniqueName = "Farm",
+                TileX = 10,
+                TileY = 10,
+                GarbageCanId = "Mayor",
+            }
+        );
+
+        Assert.Equal(SanityChangeStatus.RequestQueued, result.Status);
+        Assert.NotNull(emitted);
+        Assert.Equal(SanityChangeSource.Garbage, emitted!.Source);
+        Assert.Equal(4, emitted.ExpectedRevision);
+        Assert.NotNull(emitted.Garbage);
+        Assert.Equal("Mayor", emitted.Garbage!.GarbageCanId);
+        Assert.Equal(90d, client.GetCurrent(FarmhandKey));
+    }
+
     [Theory]
     [InlineData((int)SanityChangeSource.Equipment)]
     [InlineData((int)SanityChangeSource.Npc)]
@@ -392,6 +419,7 @@ public sealed class SanityRuntimeStateTests
     [InlineData((int)SanityChangeSource.ExhaustionPassOut)]
     [InlineData((int)SanityChangeSource.HealthDeath)]
     [InlineData((int)SanityChangeSource.SanityDarknessSpecialDeath)]
+    [InlineData((int)SanityChangeSource.FlowerCollection)]
     public void Client_cannot_submit_host_observable_or_host_owned_sources(
         int sourceValue
     )

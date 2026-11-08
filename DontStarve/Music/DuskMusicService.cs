@@ -19,6 +19,10 @@ internal static class DuskMusicService
     private static bool _bossMusicOverrideActive;
     private static int _previousTime;
 
+    internal static bool IsPlaying =>
+        _duskSound?.State == SoundState.Playing
+        || _islandDuskSound?.State == SoundState.Playing;
+
     internal static void Enable(IModHelper helper, IMonitor monitor)
     {
         if (_initialized)
@@ -27,8 +31,8 @@ internal static class DuskMusicService
         _initialized = true;
         _monitor = monitor;
         _previousTime = Game1.timeOfDay;
-        _duskSound = MusicAudioLoader.LoadInstance(helper, monitor, "dusk.wav");
-        _islandDuskSound = MusicAudioLoader.LoadInstance(helper, monitor, "sw_dusk.wav");
+        _duskSound = MusicAudioLoader.LoadInstance(helper, monitor, "dusk.ogg");
+        _islandDuskSound = MusicAudioLoader.LoadInstance(helper, monitor, "sw_dusk.ogg");
 
         if (_duskSound == null || _islandDuskSound == null)
             return;
@@ -90,6 +94,9 @@ internal static class DuskMusicService
                 && oldTime < triggerTime
                 && newTime >= triggerTime
                 && !IsInDungeon()
+                // Dusk is the only phase edge that skips an already active Combat/Boss lane.
+                // Dawn deliberately keeps its legacy start/release behavior unchanged.
+                && !ActivityMusicService.IsLocalCombatOrBossActive()
             )
                 PlayDuskMusic(IsIslandArea());
 
@@ -111,6 +118,12 @@ internal static class DuskMusicService
             var targetSound = island ? _islandDuskSound : _duskSound;
             if (targetSound == null)
                 return;
+
+            // Dusk owns only the cue that was already playing at the phase edge. Unlike Dawn,
+            // it does not keep a tick-level suppression lease and does not run Dawn's native
+            // restore path; vanilla may naturally select a later cue (such as
+            // a night-market track).
+            Game1.currentSong?.Stop(AudioStopOptions.Immediate);
 
             if (targetSound.State == SoundState.Playing)
                 targetSound.Stop();

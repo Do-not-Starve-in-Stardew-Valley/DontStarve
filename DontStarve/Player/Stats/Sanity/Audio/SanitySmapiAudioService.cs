@@ -26,8 +26,10 @@ internal sealed class SanitySmapiAudioService : IDisposable
     private readonly IMonitor monitor;
     private readonly SanitySystemLifecycleCoordinator lifecycle;
     private readonly SanitySmapiResourceService resources;
+    private readonly SmapiSanityProcessAudioOutput output;
     private readonly SanityProcessAudioCoordinator coordinator;
     private readonly SanityGameMusicCoordinator gameMusicCoordinator;
+    private readonly Action<string> requestActivityInsaneCooldown;
     private readonly Dictionary<int, OwnerBinding> ownersByScreen = new();
     private readonly HashSet<SanityAudioClaimKey> initializedClaims = new();
     private readonly HashSet<SanityAudioClaimKey> dirtyClaims = new();
@@ -36,6 +38,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
     private readonly HashSet<int> miniJukeboxScreens = new();
     private readonly HashSet<int> miniJukeboxUnknownScreens = new();
     private readonly HashSet<int> islandScreens = new();
+    private readonly Dictionary<SanityAudioClaimKey, bool> activityInsaneStates = new();
     private readonly HashSet<string> loggedDiagnostics = new(StringComparer.Ordinal);
     private Game? focusGame;
     private bool windowInactive;
@@ -48,18 +51,23 @@ internal sealed class SanitySmapiAudioService : IDisposable
         IMonitor monitor,
         string manifestId,
         SanitySystemLifecycleCoordinator lifecycle,
-        SanitySmapiResourceService resources
+        SanitySmapiResourceService resources,
+        Action<string> requestActivityInsaneCooldown
     )
     {
         this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
         this.monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
+        this.requestActivityInsaneCooldown =
+            requestActivityInsaneCooldown
+            ?? throw new ArgumentNullException(nameof(requestActivityInsaneCooldown));
 
-        var output = new SmapiSanityProcessAudioOutput(
+        output = new SmapiSanityProcessAudioOutput(
             resources,
             Environment.CurrentManagedThreadId,
-            LogDiagnostic
+            LogDiagnostic,
+            message => monitor.Log(message, LogLevel.Debug)
         );
         coordinator = new SanityProcessAudioCoordinator(output, LogDiagnostic);
         gameMusicCoordinator = new SanityGameMusicCoordinator(
@@ -76,7 +84,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
         TryAttachWindowFocusEvents();
-        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive);
+        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive, "initial");
     }
 
     internal SanityProcessAudioSnapshot Snapshot() => coordinator.Snapshot();
@@ -146,6 +154,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         miniJukeboxScreens.Clear();
         miniJukeboxUnknownScreens.Clear();
         islandScreens.Clear();
+        activityInsaneStates.Clear();
         gameMusicCoordinator.Dispose();
         coordinator.Dispose();
     }
@@ -376,6 +385,8 @@ internal sealed class SanitySmapiAudioService : IDisposable
             return;
         }
 
+        UpdateActivityInsaneEdge(key, snapshot);
+
         var flags = SanityAudioTierClaimPolicy.Evaluate(snapshot.ActiveTierIds);
 
         coordinator.SubmitClaim(
@@ -397,6 +408,26 @@ internal sealed class SanitySmapiAudioService : IDisposable
             localMinigameScreens.Contains(screenId)
         );
         ReconcileGameMusic();
+    }
+
+    private void UpdateActivityInsaneEdge(
+        SanityAudioClaimKey key,
+        SanityTierOwnerStateSnapshot snapshot
+    )
+    {
+        var currentlyInsane = activityInsaneStates.TryGetValue(key, out var active) && active;
+        var ratio = snapshot.Current / snapshot.Maximum;
+        var transition = SanityInsanityEdgePolicy.Observe(currentlyInsane, ratio);
+        switch (transition)
+        {
+            case SanityInsanityTransition.Entered:
+                activityInsaneStates[key] = true;
+                requestActivityInsaneCooldown(snapshot.PlayerKey);
+                break;
+            case SanityInsanityTransition.Exited:
+                activityInsaneStates[key] = false;
+                break;
+        }
     }
 
     private bool TryBindCurrentOwner(out int screenId, out OwnerBinding binding)
@@ -491,7 +522,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         // Window focus pauses the continuous pools and the warning lane. Threshold one-shots and
         // the dedicated darkness-attack lane are deliberately left playing.
         SetMembership(processPausedScreens, screenId, present: false);
-        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive);
+        SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive, "poll");
 
         var location = Game1.currentLocation;
         SetMembership(islandScreens, screenId, IsIslandContext(location));
@@ -567,7 +598,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         );
     }
 
-    // DIAG-20260806: <=50% music request 活跃但原版音乐未被抑制时，记录一次去重诊断（Warn），
+    // DIAG-20260806: <50% music request 活跃但原版音乐未被抑制时，记录一次去重诊断（Warn），
     // 用于定位“切地图/事件后原版音乐仍响起”的精确原因（winner 为空 / request 丢失 / 点唱机等）。
     private void LogMusicDecisionMismatch()
     {
@@ -691,6 +722,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
             var key = new SanityAudioClaimKey(binding.PlayerKey, screenId);
             initializedClaims.Remove(key);
             dirtyClaims.Remove(key);
+            activityInsaneStates.Remove(key);
         }
         localMinigameScreens.Remove(screenId);
         processPausedScreens.Remove(screenId);
@@ -717,6 +749,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
         miniJukeboxScreens.Clear();
         miniJukeboxUnknownScreens.Clear();
         islandScreens.Clear();
+        activityInsaneStates.Clear();
         windowInactive = false;
         wasEventActive = false;
         eventTransitionDiagnosticsLogged = 0;
@@ -735,17 +768,32 @@ internal sealed class SanitySmapiAudioService : IDisposable
         );
     }
 
-    private void OnWindowDeactivated(object? sender, EventArgs e) => SetWindowInactive(true);
+    private void OnWindowDeactivated(object? sender, EventArgs e) =>
+        SetWindowInactive(true, "Game.Deactivated");
 
-    private void OnWindowActivated(object? sender, EventArgs e) => SetWindowInactive(false);
+    private void OnWindowActivated(object? sender, EventArgs e) =>
+        SetWindowInactive(false, "Game.Activated");
 
-    private void SetWindowInactive(bool inactive)
+    private void SetWindowInactive(bool inactive, string reason)
     {
         if (disposed)
             return;
 
+        var changed = windowInactive != inactive;
         windowInactive = inactive;
+        var shouldLog = changed || reason != "poll";
+        var lanesBefore = shouldLog ? output.FocusPlaybackSummary : string.Empty;
+        if (shouldLog)
+            output.ArmFocusDiagnostics();
         coordinator.SetProcessPaused(inactive);
+        if (shouldLog)
+        {
+            var snapshot = coordinator.Snapshot();
+            monitor.Log(
+                $"Sanity audio focus transition (reason={reason}, inactive={inactive}, changed={changed}, claims={snapshot.Claims.Count}, physical={snapshot.PhysicalInstanceCount}, process-paused={snapshot.ProcessPaused}, lanes-before={lanesBefore}, lanes-after={output.FocusPlaybackSummary}).",
+                LogLevel.Debug
+            );
+        }
     }
 
     private void TryAttachWindowFocusEvents()
@@ -845,7 +893,9 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
     private readonly CapturedSanityAudioThreadContext threadContext;
     private readonly ISanityAudioRandom random = new SystemSanityAudioRandom();
     private readonly Action<SanityAudioDiagnostic> diagnosticSink;
+    private readonly Action<string> focusDiagnostic;
     private readonly HashSet<SanityAudioLaneKind> unavailableLanes = new();
+    private int focusDiagnosticTicksRemaining;
     private SanityAudioInstanceLane? ambienceLane;
     private SanityAudioInstanceLane? whispersLane;
     private SanityAudioInstanceLane? dangerLane;
@@ -872,13 +922,16 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
     internal SmapiSanityProcessAudioOutput(
         SanitySmapiResourceService resources,
         int owningThreadId,
-        Action<SanityAudioDiagnostic> diagnosticSink
+        Action<SanityAudioDiagnostic> diagnosticSink,
+        Action<string> focusDiagnostic
     )
     {
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
         threadContext = new CapturedSanityAudioThreadContext(owningThreadId);
         this.diagnosticSink = diagnosticSink
             ?? throw new ArgumentNullException(nameof(diagnosticSink));
+        this.focusDiagnostic = focusDiagnostic
+            ?? throw new ArgumentNullException(nameof(focusDiagnostic));
         RefreshVolume();
     }
 
@@ -888,6 +941,11 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         + (dangerLane?.PhysicalInstanceCount ?? 0)
         + (darknessWarningLane?.PhysicalInstanceCount ?? 0)
         + (darknessAttackLane?.PhysicalInstanceCount ?? 0);
+
+    internal string FocusPlaybackSummary =>
+        $"ambience={ambienceLane?.DiagnosticState ?? "none"}, whispers={whispersLane?.DiagnosticState ?? "none"}, danger={dangerLane?.DiagnosticState ?? "none"}, warning={darknessWarningLane?.DiagnosticState ?? "none"}, attack={darknessAttackLane?.DiagnosticState ?? "none"}";
+
+    internal void ArmFocusDiagnostics() => focusDiagnosticTicksRemaining = 6;
 
     public void SetPoolActive(SanityAudioLaneKind lane, bool active)
     {
@@ -1104,12 +1162,25 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
         if (disposed)
             return;
 
+        var captureFocusState = focusDiagnosticTicksRemaining > 0;
+        var before = captureFocusState ? FocusPlaybackSummary : string.Empty;
         RefreshVolume();
         ambienceLane?.Tick();
         whispersLane?.Tick();
         dangerLane?.Tick();
         darknessWarningLane?.Tick();
         darknessAttackLane?.Tick();
+        if (captureFocusState)
+        {
+            var after = FocusPlaybackSummary;
+            if (!string.Equals(before, after, StringComparison.Ordinal))
+            {
+                focusDiagnostic(
+                    $"Sanity audio lane state changed (paused={paused}, focus-paused={continuousPoolsPaused}, suspended={suspended}, before={before}, after={after})."
+                );
+            }
+            focusDiagnosticTicksRemaining--;
+        }
         if (!paused && (!suspended || specialEventAudioAllowed))
         {
             if (!suspended)

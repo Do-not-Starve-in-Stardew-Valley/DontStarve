@@ -210,6 +210,29 @@ public sealed class SanityWorldCompositionTests
                 zero
             )
         );
+        Assert.Null(
+            SanityRendererCapabilityGate.Validate(
+                "1.6.15.3",
+                SanityRendererCapabilityGate.ExpectedAndroidFrameworkVersion,
+                openGlBackend: true,
+                zero,
+                one,
+                zero,
+                isAndroidPlatform: true
+            )
+        );
+        Assert.Equal(
+            "visual.renderer.framework-version-mismatch",
+            SanityRendererCapabilityGate.Validate(
+                "1.6.15.3",
+                SanityRendererCapabilityGate.ExpectedFrameworkVersion,
+                openGlBackend: true,
+                zero,
+                one,
+                zero,
+                isAndroidPlatform: true
+            )
+        );
         Assert.Equal(
             "visual.renderer.game-version-mismatch",
             SanityRendererCapabilityGate.Validate(

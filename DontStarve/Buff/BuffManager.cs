@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Generic;
 using DontStarve.Buff.Buffs;
 using DontStarve.Interface;
@@ -7,15 +9,10 @@ namespace DontStarve.Buff;
 
 internal static class BuffManager
 {
+    private static BuffMultiplayerCoordinator? multiplayer;
+
     // 非 TimeApi 驱动的 Buff 仍可能自己注册 SMAPI 事件，例如每秒恢复或监听存档读写。
-    private static readonly List<INonTimeRelatedBuff> nonTimeRelatedBuffs =
-        new List<INonTimeRelatedBuff>
-        {
-            new ElectricityAppendBuff(),
-            new HealthRestoreBuff(),
-            new StaminaRestoreBuff(),
-            new SanityRestoreBuff(),
-        };
+    private static readonly List<INonTimeRelatedBuff> nonTimeRelatedBuffs = new();
 
     // 只有确实依赖内部分钟 tick 的 Buff 才放这里，避免恢复类 Buff 被游戏内时间速度影响总量。
     private static readonly List<ITimeRelatedBuff> timeRelatedBuffs = new();
@@ -23,8 +20,15 @@ internal static class BuffManager
     /// <summary>
     /// 初始化 Buff 模块，并按 TimeApi 驱动和自管事件两类分开注册。
     /// </summary>
-    internal static void Initialize(IModHelper helper, ITimeAPI timeApi)
+    internal static void Initialize(IModHelper helper, ITimeAPI timeApi, string modId)
     {
+        multiplayer = new BuffMultiplayerCoordinator(helper, modId);
+        multiplayer.Initialize();
+        nonTimeRelatedBuffs.Add(new ElectricityAppendBuff(multiplayer));
+        nonTimeRelatedBuffs.Add(new HealthRestoreBuff(multiplayer));
+        nonTimeRelatedBuffs.Add(new StaminaRestoreBuff(multiplayer));
+        nonTimeRelatedBuffs.Add(new SanityRestoreBuff(multiplayer));
+
         if (timeRelatedBuffs.Count > 0)
         {
             timeApi.OnUpdate.Add(Update);

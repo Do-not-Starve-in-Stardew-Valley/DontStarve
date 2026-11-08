@@ -78,6 +78,40 @@ internal sealed class SanityRuntimeResourceLoader : IDisposable
         }
     }
 
+    /// <summary>
+    /// Decodes every declared audio CueSet during startup. Playback instances remain lazy and
+    /// owner-local; this only moves physical file reads/Vorbis decoding out of first-use gameplay.
+    /// </summary>
+    internal (int Loaded, int Failed) PrimeAudioCueSets()
+    {
+        lock (syncRoot)
+        {
+            if (disposed || !enabled || !EnsureCatalog())
+                return (0, 0);
+            if (!EnsureAudioMetadata(out _ ) || audioMetadata is null)
+                return (0, 1);
+
+            var loaded = 0;
+            var failed = 0;
+            foreach (var cueSetId in audioMetadata.CueSetIds)
+            {
+                if (!audioMetadata.TryGetCueSet(cueSetId, out var definition) || definition is null)
+                {
+                    failed++;
+                    continue;
+                }
+
+                var result = LoadCueSetCore(definition, requestedSlot: null, requestedCue: null);
+                if (result.Success)
+                    loaded++;
+                else
+                    failed++;
+            }
+
+            return (loaded, failed);
+        }
+    }
+
     internal SanitySlotResourceResult LoadSlot(string slotId, int frameIndex = 0)
     {
         lock (syncRoot)

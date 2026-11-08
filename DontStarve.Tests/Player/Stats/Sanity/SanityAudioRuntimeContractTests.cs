@@ -18,6 +18,21 @@ public sealed class SanityAudioRuntimeContractTests
     }
 
     [Fact]
+    public void Activity_music_uses_insane_edge_request_instead_of_native_music_suppression()
+    {
+        var source = ReadSource("AudioPool", "SanitySmapiAudioService.cs");
+
+        Assert.DoesNotContain(
+            "setActivityWorkMusicSuppressed(gameMusicCoordinator.Snapshot().WantsSuppression)",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("SanityInsanityEdgePolicy", source, StringComparison.Ordinal);
+        Assert.Contains("requestActivityInsaneCooldown", source, StringComparison.Ordinal);
+        Assert.Contains("SanityInsanityTransition.Entered", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Resource_invalidation_notifies_instance_owners_before_loader_release()
     {
         var source = ReadSource("AudioVisualFact", "SanitySmapiResourceService.cs");
@@ -96,7 +111,12 @@ public sealed class SanityAudioRuntimeContractTests
         Assert.Contains("game.Deactivated += OnWindowDeactivated", source, StringComparison.Ordinal);
         Assert.Contains("game.Activated += OnWindowActivated", source, StringComparison.Ordinal);
         Assert.Contains("TryAttachWindowFocusEvents();", source, StringComparison.Ordinal);
-        Assert.Contains("SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "SetWindowInactive(Game1.game1 is null || !Game1.game1.IsActive, \"poll\")",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("Sanity audio focus transition", source, StringComparison.Ordinal);
 
         var start = source.IndexOf(
             "public void SetContinuousPoolsPaused",

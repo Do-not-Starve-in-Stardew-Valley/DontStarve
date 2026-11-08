@@ -17,7 +17,7 @@ internal enum SanityAssetKind
 {
     Png,
     Json,
-    Wav,
+    Ogg,
 }
 
 internal enum SanityAssetIssueSeverity

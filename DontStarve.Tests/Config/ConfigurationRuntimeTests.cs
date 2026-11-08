@@ -69,6 +69,42 @@ public sealed class ConfigurationRuntimeTests
     }
 
     [Fact]
+    public void MissingActivityMusicSettingDefaultsOnAndIsPersistedWithoutChangingDawnDusk()
+    {
+        WithTemporaryConfig(
+            "{\"EnableDawnDuskMusic\":false}",
+            path =>
+            {
+                var loaded = ConfigurationRuntime.Load(
+                    ConfigTestData.ShippedSchemaPath,
+                    path
+                );
+                var runtime = Assert.IsType<ConfigurationRuntime>(loaded.Runtime);
+
+                Assert.False(
+                    runtime.Resolver.GetBoolean(ConfigKeys.EnableDawnDuskMusic).Value
+                );
+                Assert.True(
+                    runtime.Resolver.GetBoolean(ConfigKeys.EnableActivityMusic).Value
+                );
+
+                var saved = runtime.TrySave(new Dictionary<string, ConfigValue>());
+                Assert.True(saved.Success, saved.Reason);
+
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                Assert.False(
+                    document.RootElement.GetProperty(ConfigKeys.EnableDawnDuskMusic).GetBoolean()
+                );
+                Assert.True(
+                    document.RootElement
+                        .GetProperty(ConfigKeys.EnableActivityMusic)
+                        .GetBoolean()
+                );
+            }
+        );
+    }
+
+    [Fact]
     public void InvalidConfigRootLeavesOriginalFileAndRuntimeUnavailable()
     {
         WithTemporaryConfig(

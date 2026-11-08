@@ -36,19 +36,88 @@ public sealed class NpcFlashlightPolicyTests
     }
 
     [Fact]
-    public void KrobusAndMonstersAreNotEligibleForNpcFlashlights()
+    public void OnlyVillagersAreEligibleAndKnownSpecialNpcsAreExcluded()
     {
         Assert.False(
             NpcFlashlightPolicy.IsEligibleNpc(
                 NpcFlashlightPolicy.KrobusName,
-                isMonster: false
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "Town"
             )
         );
         Assert.False(
-            NpcFlashlightPolicy.IsEligibleNpc("Green Slime", isMonster: true)
+            NpcFlashlightPolicy.IsEligibleNpc(
+                "Green Slime",
+                isVillager: false,
+                isSimpleNonVillagerNpc: false,
+                isMonster: true,
+                locationName: "Town"
+            )
+        );
+        Assert.False(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                "Cat",
+                isVillager: false,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "Farm"
+            )
+        );
+        Assert.False(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                "TemporaryActor",
+                isVillager: true,
+                isSimpleNonVillagerNpc: true,
+                isMonster: false,
+                locationName: "Town"
+            )
+        );
+        Assert.False(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                NpcFlashlightPolicy.BouncerName,
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "SandyHouse"
+            )
+        );
+        Assert.False(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                NpcFlashlightPolicy.WitchSwampHenchmanName,
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: NpcFlashlightPolicy.WitchSwampLocationName
+            )
         );
         Assert.True(
-            NpcFlashlightPolicy.IsEligibleNpc("Abigail", isMonster: false)
+            NpcFlashlightPolicy.IsEligibleNpc(
+                "Abigail",
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "Town"
+            )
+        );
+        Assert.True(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                "CustomNpcFromAnotherMod",
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "CustomMap"
+            )
+        );
+        Assert.True(
+            NpcFlashlightPolicy.IsEligibleNpc(
+                NpcFlashlightPolicy.WitchSwampHenchmanName,
+                isVillager: true,
+                isSimpleNonVillagerNpc: false,
+                isMonster: false,
+                locationName: "CustomMap"
+            )
         );
     }
 

@@ -147,9 +147,9 @@ public sealed class HostileShadowMonster : Monster
 
     public override bool isInvincible()
     {
-        // BindingHidden/Retreating must stay invulnerable even when a mixed area attack also
-        // contains a normal shadow. The damageMonster prefix skips an all-guarded area, while
-        // this per-entity seam prevents vanilla from showing a zero hit for mixed areas.
+        // BindingHidden/Retreating are per-entity immunity states. Stardew's damageMonster checks
+        // this before calling takeDamage or adding hit debris, so other monsters in the same area
+        // attack still follow the vanilla damage path.
         if (
             HasImmunity(BindingHiddenModDataKey)
             || HasImmunity(RetreatingModDataKey)

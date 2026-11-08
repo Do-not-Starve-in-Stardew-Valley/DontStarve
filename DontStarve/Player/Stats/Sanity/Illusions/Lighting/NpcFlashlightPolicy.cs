@@ -11,6 +11,9 @@ namespace DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 internal static class NpcFlashlightPolicy
 {
     internal const string KrobusName = "Krobus";
+    internal const string BouncerName = "Bouncer";
+    internal const string WitchSwampHenchmanName = "Henchman";
+    internal const string WitchSwampLocationName = "WitchSwamp";
     internal const float BodyLightRadiusTiles = 1f;
     internal const float ConeRangeTiles = 5f;
     internal const int TileSizePixels = 64;
@@ -35,10 +38,23 @@ internal static class NpcFlashlightPolicy
         };
     }
 
-    internal static bool IsEligibleNpc(string? name, bool isMonster)
+    internal static bool IsEligibleNpc(
+        string? name,
+        bool isVillager,
+        bool isSimpleNonVillagerNpc,
+        bool isMonster,
+        string? locationName
+    )
     {
-        return !isMonster
-            && !string.Equals(name, KrobusName, StringComparison.Ordinal);
+        return isVillager
+            && !isSimpleNonVillagerNpc
+            && !isMonster
+            && !string.Equals(name, KrobusName, StringComparison.Ordinal)
+            && !string.Equals(name, BouncerName, StringComparison.Ordinal)
+            && !(
+                string.Equals(name, WitchSwampHenchmanName, StringComparison.Ordinal)
+                && string.Equals(locationName, WitchSwampLocationName, StringComparison.Ordinal)
+            );
     }
 
     /// <summary>Maps Stardew's standard 0=up, 1=right, 2=down, 3=left directions to radians.</summary>

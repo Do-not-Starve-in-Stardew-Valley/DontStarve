@@ -597,6 +597,8 @@ public sealed class DarkHandLeaseCoordinatorProtocolTests
         Assert.Contains("machine.heldObject.Value = null", source, StringComparison.Ordinal);
         Assert.Contains("machine.lastInputItem.Value = null", source, StringComparison.Ordinal);
         Assert.Contains("dark-hand.harassment-eject-disabled-no-atomic-landing", source, StringComparison.Ordinal);
+        Assert.Contains("ResolveAndroid", source, StringComparison.Ordinal);
+        Assert.Contains("HasInstanceMember", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Objects.Remove", source, StringComparison.Ordinal);
         Assert.DoesNotContain("objects.Remove", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Debris(", source, StringComparison.Ordinal);
@@ -604,7 +606,6 @@ public sealed class DarkHandLeaseCoordinatorProtocolTests
         Assert.DoesNotContain("Chest", source, StringComparison.Ordinal);
         Assert.DoesNotContain("File.", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Json", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Reflection", source, StringComparison.Ordinal);
         Assert.DoesNotContain("monitor.Log", source, StringComparison.Ordinal);
     }
 

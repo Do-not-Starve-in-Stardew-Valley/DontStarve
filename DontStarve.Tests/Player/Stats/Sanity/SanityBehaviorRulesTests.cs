@@ -115,6 +115,38 @@ public sealed class SanityBehaviorRulesTests
     }
 
     [Theory]
+    [InlineData(
+        true,
+        ShadowMonsterAssetBindingIds.CreeperFear,
+        "爬行恐惧",
+        ShadowMonsterAssetBindingIds.CreeperFear
+    )]
+    [InlineData(
+        true,
+        ShadowMonsterAssetBindingIds.Terrorbeak,
+        "恐怖尖喙",
+        ShadowMonsterAssetBindingIds.Terrorbeak
+    )]
+    [InlineData(false, null, "Bug", "Bug")]
+    [InlineData(true, null, "Creeper Fear", null)]
+    public void MonsterSanityKeyUsesStableShadowIdentityAndKeepsOrdinaryNames(
+        bool isHostileShadow,
+        string? assetBindingId,
+        string? monsterName,
+        string? expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            SanityBehaviorRules.ResolveMonsterSanityKey(
+                isHostileShadow,
+                assetBindingId,
+                monsterName
+            )
+        );
+    }
+
+    [Theory]
     [InlineData(0, 1.1667)]
     [InlineData(1, 1.1667)]
     [InlineData(2, 0.291675)]
@@ -216,6 +248,39 @@ public sealed class SanityBehaviorRulesTests
                 !indoors
             ),
             10
+        );
+    }
+
+    [Theory]
+    [InlineData((int)SanitySeason.Spring, 20 * 60)]
+    [InlineData((int)SanitySeason.Summer, 20 * 60)]
+    [InlineData((int)SanitySeason.Fall, 19 * 60)]
+    [InlineData((int)SanitySeason.Winter, 17 * 60)]
+    public void NightfallStartUsesTheFrozenSeasonBoundary(
+        int season,
+        int expectedMinutes
+    )
+    {
+        Assert.Equal(
+            expectedMinutes,
+            SanityBehaviorRules.GetNightfallStartMinutes((SanitySeason)season)
+        );
+    }
+
+    [Theory]
+    [InlineData((int)MineSanityLocationKind.Other, true)]
+    [InlineData((int)MineSanityLocationKind.MineShaft, false)]
+    [InlineData((int)MineSanityLocationKind.VolcanoDungeon, false)]
+    public void NightLossIsExclusiveFromMineAndVolcanoBaseLoss(
+        int locationKind,
+        bool expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            SanityBehaviorRules.ShouldApplyNightLoss(
+                (MineSanityLocationKind)locationKind
+            )
         );
     }
 
@@ -364,6 +429,7 @@ public sealed class SanityBehaviorRulesTests
     public void ExistingBehaviorSourcesRemainHostOnlyExceptFoodInteraction()
     {
         Assert.True(SanityRequestPolicy.For(SanityChangeSource.Food).ClientRequestAllowed);
+        Assert.True(SanityRequestPolicy.For(SanityChangeSource.Garbage).ClientRequestAllowed);
         foreach (
             var source in new[]
             {

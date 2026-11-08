@@ -663,6 +663,8 @@ internal sealed class SanityAudioMetadataCatalog
         return sets.TryGetValue(cueSetId, out cueSet);
     }
 
+    internal IEnumerable<string> CueSetIds => sets.Keys;
+
     private static readonly JsonSerializerOptions SerializerOptions =
         new()
         {

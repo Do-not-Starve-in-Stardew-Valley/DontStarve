@@ -79,6 +79,12 @@ internal sealed class HostileShadowAuthority
 
     internal event Action<ShadowStateDeltaMessage>? DeltaProduced;
 
+    /// <summary>
+    /// DIAG-20260922: 外部模组抬高物理怪物 MaxHealth 时，账本向上棘轮上限并发布此观察。
+    /// 消费者只能用于诊断日志，不得用它把上限调低或对抗外部强化。
+    /// </summary>
+    internal event Action<HostileShadowMaxHealthRatchet>? MaxHealthRatcheted;
+
     internal bool BeginHostSession(
         string sessionId,
         bool systemEnabled,
@@ -289,7 +295,7 @@ internal sealed class HostileShadowAuthority
             command.Origin == HostileShadowSpawnOrigin.Interval
             || isWarpFastCompensation;
         var occupancy = isCurrentMapRefresh
-            ? GetLockedOwnerOccupancyAtLocation(
+            ? GetOwnerOccupancyOnCurrentMap(
                 command.OwnerPlayerKey,
                 command.LocationId
             )
@@ -581,6 +587,20 @@ internal sealed class HostileShadowAuthority
         );
     }
 
+    /// <summary>
+    /// Adopts one authoritative state update and advances the shared revision when it changes
+    /// anything.
+    /// </summary>
+    /// <remarks>
+    /// DIAG-20260922 external-health compatibility: third-party difficulty/health mods rewrite the
+    /// physical monster's MaxHealth right after materialization (observed exactly x1.75: our
+    /// canonical 300/400 became 525/700). The previous gate
+    /// <c>update.Health &gt; current.MaxHealth</c> rejected every such update, so the ledger and the
+    /// live monster stayed permanently out of sync and every frame logged
+    /// "hostile-shadow.routine-sync-rejected". The ledger is now a follower: an upward observation
+    /// ratchets <c>MaxHealth</c> up (below, before the write) instead of being rejected. The ratchet
+    /// is monotonic and never lowers a value, so external inflation is preserved, never pulled back.
+    /// </remarks>
     internal bool TryUpdate(
         HostileShadowStateUpdate? update,
         out string reason
@@ -604,7 +624,6 @@ internal sealed class HostileShadowAuthority
             || !double.IsFinite(update.PositionY)
             || !entities.TryGetValue(update.EntityId, out var current)
             || update.Health < 0
-            || update.Health > current.MaxHealth
             || !HostileShadowStateIds.IsKnown(update.StateId)
             || !HostileShadowProtocol.IsValidHitTeleportVisualPhase(
                 update.StateId,
@@ -675,6 +694,24 @@ internal sealed class HostileShadowAuthority
         {
             reason = "hostile-shadow.attack-instance-revision-invalid";
             return false;
+        }
+
+        // DIAG-20260922: 向上棘轮。观察到的血量高于账本上限，说明外部模组抬高了物理怪物
+        // 的 MaxHealth；账本跟随（follower）而不是拒绝。只升不降：绝不把已存在的上限调低，
+        // 因此外部强化被完整保留。棘轮不额外消耗 revision（与本次状态更新共用 nextRevision），
+        // 也不会产生"只改上限"的 delta（此时 Health 必然也变了，重复检查已在上方失败）。
+        if (update.Health > current.MaxHealth)
+        {
+            var previousMaxHealth = current.MaxHealth;
+            current.MaxHealth = update.Health;
+            MaxHealthRatcheted?.Invoke(
+                new HostileShadowMaxHealthRatchet(
+                    current.EntityId,
+                    update.StateId,
+                    previousMaxHealth,
+                    current.MaxHealth
+                )
+            );
         }
 
         current.LocationId = update.LocationId;
@@ -917,7 +954,19 @@ internal sealed class HostileShadowAuthority
         return count;
     }
 
-    private int GetLockedOwnerOccupancyAtLocation(
+    /// <summary>
+    /// DIAG-20260922: 当前地图上属于该 owner 的影怪数量（刷新上限的占用口径）。
+    /// </summary>
+    /// <remarks>
+    /// 判据只有**归属**（<c>OwnerPlayerKey</c>）、**地点**（<c>LocationId</c>）和"不是 Despawn"。
+    /// 这里刻意**不看** <c>TargetPlayerKey</c>：那是"当前在打谁"的实时仇恨目标，会被受击拉仇恨、
+    /// 仇恨传播和脱战反复改写，因此刚出生（未索敌）或刚刚把仇恨交给别人的影怪会从计数中消失。
+    /// 那条判据曾让上限形同虚设（实测日志：occupancy 恒为 0、cap = 2，却每 84 秒都批准一只），
+    /// 也就是粉丝报告的"无限制刷新大量影怪"。
+    /// 未索敌的影怪现在**会**占用上限，这是正确的：它们仍然活着，并由自己的无目标倒计时
+    /// （<c>NoTargetSinceGameMinute</c>）与自然 TTL 生命周期自行清理。
+    /// </remarks>
+    private int GetOwnerOccupancyOnCurrentMap(
         string ownerPlayerKey,
         string locationId
     )
@@ -936,11 +985,6 @@ internal sealed class HostileShadowAuthority
             if (
                 entities.TryGetValue(entityId, out var state)
                 && string.Equals(state.LocationId, locationId, StringComparison.Ordinal)
-                && string.Equals(
-                    state.TargetPlayerKey,
-                    ownerPlayerKey,
-                    StringComparison.Ordinal
-                )
                 && !string.Equals(
                     state.StateId,
                     HostileShadowStateIds.Despawn,

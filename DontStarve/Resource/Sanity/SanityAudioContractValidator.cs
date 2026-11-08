@@ -43,13 +43,13 @@ public sealed class SanityAudioContractValidationResult
 }
 
 /// <summary>
-/// Validates stage-05 cue metadata and canonical WAV files without loading audio or owning a
+/// Validates stage-05 cue metadata and canonical OGG files without loading audio or owning a
 /// playback coordinator. Runtime code may reuse this fail-closed seam in stage 06.
 /// </summary>
 public static class SanityAudioContractValidator
 {
     public const string MetadataDeploymentPath = "Asset/Sanity/Audio/audio-cues.json";
-    public const string RuntimeFormatId = SanityWavFormatCatalog.PcmS16Stereo44100V1;
+    public const string RuntimeFormatId = SanityOggFormatCatalog.VorbisStereo44100V1;
 
     private const int ExpectedCueSetCount = 9;
     private const int ExpectedCueCount = 23;
@@ -225,7 +225,7 @@ public static class SanityAudioContractValidator
         ExpectString(
             root,
             "TemplateVersion",
-            "sanity-audio-cues-v1",
+            "sanity-audio-cues-v2",
             "audio.metadata.template-mismatch",
             issues
         );
@@ -238,16 +238,12 @@ public static class SanityAudioContractValidator
     {
         if (!TryObject(root, "RuntimeFormat", "audio.format.missing", issues, out var format))
             return;
-        SanityWavFormatCatalog.TryGet(RuntimeFormatId, out var runtimeFormat);
+        SanityOggFormatCatalog.TryGet(RuntimeFormatId, out var runtimeFormat);
         ExpectString(format, "FormatId", RuntimeFormatId, "audio.format.id-mismatch", issues);
-        ExpectString(format, "Container", "RIFF", "audio.format.container-mismatch", issues);
-        ExpectString(format, "Codec", "PCM", "audio.format.codec-mismatch", issues);
-        ExpectInt(format, "FormatCode", runtimeFormat.FormatCode, "audio.format.code-mismatch", issues);
+        ExpectString(format, "Container", "Ogg", "audio.format.container-mismatch", issues);
+        ExpectString(format, "Codec", "Vorbis", "audio.format.codec-mismatch", issues);
         ExpectInt(format, "Channels", runtimeFormat.Channels, "audio.format.channels-mismatch", issues);
         ExpectInt(format, "SampleRateHz", runtimeFormat.SampleRateHz, "audio.format.sample-rate-mismatch", issues);
-        ExpectInt(format, "BitsPerSample", runtimeFormat.BitsPerSample, "audio.format.bit-depth-mismatch", issues);
-        ExpectInt(format, "BlockAlign", runtimeFormat.BlockAlign, "audio.format.block-align-mismatch", issues);
-        ExpectInt(format, "ByteRate", runtimeFormat.ByteRate, "audio.format.byte-rate-mismatch", issues);
     }
 
     private static void ValidateManifest(
@@ -529,8 +525,8 @@ public static class SanityAudioContractValidator
         var path = RequiredString(clip, "Path", "audio.clip.path-missing", issues);
         if (!paths.Add(path))
             issues.Add(new("audio.clip.duplicate-path", $"Clip path '{path}' is duplicated case-insensitively."));
-        if (!path.StartsWith("Asset/Sanity/Audio/", StringComparison.Ordinal) || !path.EndsWith(".wav", StringComparison.Ordinal))
-            issues.Add(new("audio.clip.path-outside-root", $"Clip path '{path}' must be an ASCII WAV path below Asset/Sanity/Audio/."));
+        if (!path.StartsWith("Asset/Sanity/Audio/", StringComparison.Ordinal) || !path.EndsWith(".ogg", StringComparison.Ordinal))
+            issues.Add(new("audio.clip.path-outside-root", $"Clip path '{path}' must be an ASCII OGG path below Asset/Sanity/Audio/."));
         if (!IsAscii(path))
             issues.Add(new("audio.clip.path-non-ascii", $"Clip path '{path}' must contain ASCII characters only."));
         if (!SanityAssetPathPolicy.TryResolveFromDeploymentRoot(deploymentRoot, path, out var absolutePath, out var reason))
@@ -539,10 +535,10 @@ public static class SanityAudioContractValidator
             return;
         }
         var formatId = RequiredString(clip, "FormatId", "audio.clip.format-id-missing", issues);
-        SanityWavFormatDescriptor? expectedFormat = null;
+        SanityOggFormatDescriptor? expectedFormat = null;
         if (!string.IsNullOrWhiteSpace(formatId))
         {
-            if (!SanityWavFormatCatalog.TryGet(formatId, out var descriptor))
+            if (!SanityOggFormatCatalog.TryGet(formatId, out var descriptor))
             {
                 issues.Add(new("audio.clip.unknown-format-id", $"Clip '{path}' declares unsupported format id '{formatId}'."));
             }
@@ -561,7 +557,7 @@ public static class SanityAudioContractValidator
             return;
         }
 
-        var inspection = SanityWavInspector.InspectFile(absolutePath);
+        var inspection = SanityOggInspector.InspectFile(absolutePath);
         foreach (var issue in inspection.Issues)
             issues.Add(new($"audio.clip.{issue.Code}", $"{path}: {issue.Reason}"));
         if (!inspection.Success)

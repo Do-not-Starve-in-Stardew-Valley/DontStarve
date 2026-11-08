@@ -1181,11 +1181,20 @@ internal sealed class SmapiForagePickupReplacementService : IDisposable
 
     private void InstallPickupPatch()
     {
-        if (!string.Equals(Game1.version, ExpectedGameVersion, StringComparison.Ordinal))
+        var isAndroidPlatform = Constants.TargetPlatform == GamePlatform.Android;
+        var expectedGameVersion = StardewRuntimeVersionPolicy.ExpectedGameVersion(
+            isAndroidPlatform
+        );
+        if (
+            !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
+                Game1.version,
+                isAndroidPlatform
+            )
+        )
         {
             LogFailureOnce(
                 "patch-version",
-                $"Forage pickup is unavailable (expected-game-version={ExpectedGameVersion}, actual={Game1.version})."
+                $"Forage pickup is unavailable (expected-game-version={expectedGameVersion}, actual={Game1.version})."
             );
             return;
         }

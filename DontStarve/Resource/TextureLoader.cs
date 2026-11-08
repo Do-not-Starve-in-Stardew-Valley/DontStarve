@@ -47,7 +47,7 @@ internal static class TextureLoader
     }
 
     /// <summary>
-    /// 获取饥饿条 1x1 填充纹理；颜色随当前饥饿值变化但按颜色缓存。
+    /// 获取固定颜色的饥饿条 1x1 填充纹理；每次初始化后只上传一次颜色。
     /// </summary>
     internal static Texture2D HungerFiller
     {

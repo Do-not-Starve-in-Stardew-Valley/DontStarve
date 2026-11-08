@@ -41,6 +41,7 @@ internal static class SanityRendererCapabilityGate
 {
     internal const string ExpectedGameVersion = "1.6.15";
     internal const string ExpectedFrameworkVersion = "3.8.0.1641";
+    internal const string ExpectedAndroidFrameworkVersion = "1.0.0.0";
     internal const string ExpectedBackend = "OpenGL";
     internal const string ExpectedShouldDrawSignature =
         "Game1.ShouldDrawOnBuffer():System.Boolean";
@@ -58,12 +59,41 @@ internal static class SanityRendererCapabilityGate
         SanityRendererMethodShape splitComposition
     )
     {
-        if (!string.Equals(gameVersion, ExpectedGameVersion, StringComparison.Ordinal))
+        return Validate(
+            gameVersion,
+            frameworkVersion,
+            openGlBackend,
+            shouldDraw,
+            singleComposition,
+            splitComposition,
+            isAndroidPlatform: false
+        );
+    }
+
+    internal static string? Validate(
+        string? gameVersion,
+        string? frameworkVersion,
+        bool openGlBackend,
+        SanityRendererMethodShape shouldDraw,
+        SanityRendererMethodShape singleComposition,
+        SanityRendererMethodShape splitComposition,
+        bool isAndroidPlatform
+    )
+    {
+        if (
+            !StardewRuntimeVersionPolicy.IsSupportedGameVersion(
+                gameVersion,
+                isAndroidPlatform
+            )
+        )
             return "visual.renderer.game-version-mismatch";
+        var expectedFrameworkVersion = isAndroidPlatform
+            ? ExpectedAndroidFrameworkVersion
+            : ExpectedFrameworkVersion;
         if (
             !string.Equals(
                 frameworkVersion,
-                ExpectedFrameworkVersion,
+                expectedFrameworkVersion,
                 StringComparison.Ordinal
             )
         )

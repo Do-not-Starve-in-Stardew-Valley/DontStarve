@@ -213,6 +213,17 @@ internal sealed class SmapiHarmlessProjectionHost
             reason = "projection.host-disposed";
             return false;
         }
+        // 【占位素材停用门 2026-11-10】四种普通物种（eyes/dark-watcher/dark-hand/mr-skitts）
+        // 在画师素材定稿前整体停用，清单即单一事实来源（OwnerLocalProjectionDisableList）。
+        // 这里是普通物种唯一的注册 seam，兜底拦截任何调用路径；ModEntry 在调用前已主动跳过
+        // 并记录 Info。只拦普通物种 seam，creeper-fear/terrorbeak 走 RegisterShadowCreatureSpecies
+        // 不受影响；低理智音频、vignette、待机惊恐循环、tier 状态机均不在本 seam 上。
+        // 恢复方法见 文档/当前在做计划/san值系统当前缺少的内容.md 条目 c)。
+        if (OwnerLocalProjectionDisableList.IsDisabled(policy.SpeciesId))
+        {
+            reason = OwnerLocalProjectionDisableList.DisabledReason;
+            return false;
+        }
         if (renderersBySpecies.ContainsKey(policy.SpeciesId))
         {
             reason = "projection.species-duplicate";

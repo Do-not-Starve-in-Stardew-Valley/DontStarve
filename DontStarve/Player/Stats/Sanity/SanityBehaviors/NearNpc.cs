@@ -1,10 +1,7 @@
 #nullable enable
 
-using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Characters;
-using System.Collections.Generic;
-using System;
 
 namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 
@@ -13,24 +10,8 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 /// </summary>
 internal class NearNpc : IPlayerTimeRelatedBehavior
 {
-    private const string SAVE_KEY = "DontStarve.Sanity.NearNpc";
-    private readonly SanitySystemLifecycleCoordinator lifecycle;
-    private readonly PlayerTimeBehaviorState state = new();
-
-    internal NearNpc(SanitySystemLifecycleCoordinator lifecycle)
+    public void Update(Farmer player, string playerKey, long time)
     {
-        this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
-    }
-
-    public void Update(Farmer player, long time)
-    {
-        if (
-            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
-            || lifecycle.IsPlayerInSleepContext(playerKey)
-            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
-        )
-            return;
-
         var location = player.currentLocation;
         if (location == null)
             return;
@@ -87,38 +68,4 @@ internal class NearNpc : IPlayerTimeRelatedBehavior
             player.ChangeSanity(junimoValue, SanityChangeSource.Junimo);
     }
 
-    public void Sync(string playerKey, long time, long delta)
-    {
-        if (delta < 0)
-            state.AddRewindWait(playerKey, delta);
-    }
-
-    public void Load(IModHelper helper)
-    {
-        var data = helper.Data.ReadSaveData<NearNpcData>(SAVE_KEY);
-        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
-            Game1.MasterPlayer,
-            out var playerKey
-        )
-            ? playerKey
-            : null;
-        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
-    }
-
-    public void Save(IModHelper helper)
-    {
-        helper.Data.WriteSaveData(
-            SAVE_KEY,
-            new NearNpcData { Players = state.CaptureWaits() }
-        );
-    }
-
-    public void Reset() => state.Clear();
-}
-
-internal class NearNpcData
-{
-    public long Wait { get; init; }
-
-    public Dictionary<string, long>? Players { get; init; }
 }

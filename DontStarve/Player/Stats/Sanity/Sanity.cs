@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using DontStarve.Config;
-using DontStarve.Interface;
+using DontStarve.Player.Stats;
 using DontStarve.Player.Stats.Sanity.PassOut;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
 using StardewModdingAPI;
@@ -13,7 +13,7 @@ using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity;
 
-internal sealed class Sanity : IStat
+internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
 {
     private readonly SanityPersistenceStore persistenceStore = new();
     private readonly SanityChangeService changeService;
@@ -56,14 +56,14 @@ internal sealed class Sanity : IStat
         );
         lifecycle = new SanitySystemLifecycleCoordinator(changeService);
         var mineShaft = new MineShaft();
-        mineShaft.BindLifecycle(lifecycle);
         timeRelatedBehaviors =
             new()
             {
                 new NearMonster(lifecycle),
-                new Night(lifecycle),
-                new Wearing(lifecycle),
-                new NearNpc(lifecycle),
+                new Night(),
+                new Wearing(),
+                new NearNpc(),
+                new BathHouse(),
                 mineShaft,
             };
         nonTimeRelatedBehaviors =
@@ -86,8 +86,12 @@ internal sealed class Sanity : IStat
 
     internal SanitySystemLifecycleCoordinator Lifecycle => lifecycle;
 
-    public void Init(IModHelper helper, ITimeAPI timeApi)
+    public void Init(
+        IModHelper helper,
+        SurvivalStateTimeOwner<Farmer> survivalTime
+    )
     {
+        survivalTime.Register(this);
         SanityExtensions.Bind(changeService);
         changeService.TierStateDiagnosticRaised += LogTierDiagnosticOnce;
         changeService.ShadowBudgetDiagnosticRaised +=
@@ -97,9 +101,6 @@ internal sealed class Sanity : IStat
             behavior.Init(helper);
         foreach (var behavior in timeRelatedBehaviors)
             behavior.Init(helper);
-
-        timeApi.OnUpdate.Add(Update);
-        timeApi.OnSync.Add(Sync);
 
         multiplayer = new SmapiSanityMultiplayerCoordinator(
             helper,
@@ -132,56 +133,29 @@ internal sealed class Sanity : IStat
             lifecycle.HandleWorldBoundary(SanityWorldBoundary.Warp);
     }
 
-    private void Update(long time)
+    public void OnMinute(
+        Farmer player,
+        string playerKey,
+        long time,
+        SurvivalStateTimePhase phase
+    )
     {
-        if (changeService.Role != SanityAuthorityRole.Host)
+        if (
+            changeService.Role != SanityAuthorityRole.Host
+            || phase != SurvivalStateTimePhase.Ordinary
+            || player.isInBed.Value
+        )
             return;
 
-        foreach (var player in Game1.getOnlineFarmers())
+        foreach (var behavior in timeRelatedBehaviors)
         {
-            if (!TryGetPlayerKey(player, out var playerKey))
+            try
             {
-                LogRuntimeErrorOnce("online-player-id-is-unavailable");
-                continue;
+                behavior.Update(player, playerKey, time);
             }
-
-            foreach (var behavior in timeRelatedBehaviors)
+            catch (Exception ex)
             {
-                try
-                {
-                    behavior.Update(player, time);
-                }
-                catch (Exception ex)
-                {
-                    LogBehaviorFailureOnce("update", behavior, ex);
-                }
-            }
-        }
-    }
-
-    private void Sync(long time, long delta)
-    {
-        if (changeService.Role != SanityAuthorityRole.Host)
-            return;
-
-        foreach (var player in Game1.getOnlineFarmers())
-        {
-            if (!TryGetPlayerKey(player, out var playerKey))
-            {
-                LogRuntimeErrorOnce("online-player-id-is-unavailable");
-                continue;
-            }
-
-            foreach (var behavior in timeRelatedBehaviors)
-            {
-                try
-                {
-                    behavior.Sync(playerKey, time, delta);
-                }
-                catch (Exception ex)
-                {
-                    LogBehaviorFailureOnce("sync", behavior, ex);
-                }
+                LogBehaviorFailureOnce("update", behavior, ex);
             }
         }
     }
@@ -258,8 +232,6 @@ internal sealed class Sanity : IStat
             }
 
             EnsureOnlineHostPlayers();
-            foreach (var behavior in timeRelatedBehaviors)
-                behavior.Load(helper);
         }
         else
         {
@@ -317,8 +289,6 @@ internal sealed class Sanity : IStat
         }
 
         LogPersistenceErrorOnce(persistenceSession);
-        foreach (var behavior in timeRelatedBehaviors)
-            behavior.Save(helper);
     }
 
     private void EnsureOnlineHostPlayers()
@@ -350,9 +320,6 @@ internal sealed class Sanity : IStat
         SanitySessionBoundary boundary = SanitySessionBoundary.WorldCleanup
     )
     {
-        foreach (var behavior in timeRelatedBehaviors)
-            behavior.Reset();
-
         persistenceSession = null;
         loadedSaveIdentity = string.Empty;
         loggedPersistenceReason = string.Empty;
@@ -458,6 +425,7 @@ internal sealed class Sanity : IStat
             nameof(Night) => nameof(SanityChangeSource.Night),
             nameof(Wearing) => nameof(SanityChangeSource.Equipment),
             nameof(NearNpc) => "Npc/Junimo",
+            nameof(BathHouse) => nameof(SanityChangeSource.BathHouse),
             nameof(MineShaft) => nameof(SanityChangeSource.Mine),
             _ when behaviorName.StartsWith("Spawn", StringComparison.Ordinal) =>
                 "LegacySpawn",

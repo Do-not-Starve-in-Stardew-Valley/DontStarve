@@ -19,6 +19,15 @@ internal static class DarknessAttackContract
     internal const int MaximumOwnerStates = 16;
     internal const int MaximumRequestIdLength = 128;
     internal const string PlayerHasNoHealthReason = "darkness.mode.player-has-no-health";
+
+    // 【2026-11-10 原版口径对齐】DST grue.lua：警告音在倒计时已流逝 40%~80%（每轮随机
+    // nextSoundTime = nextHitTime * (.4 + math.random()*.4)）时响起，提前量与音效文件时长
+    // 无关；警告音响起 warndelay=1 秒后弹出警告提示；袭击仍在倒计时归零时结算。
+    // 比例随机用千分位整数离散化 [0,1)，复用既有 IDarknessAttackRandom 整数接口。
+    internal const double WarningSoundMinimumFraction = 0.4d;
+    internal const double WarningSoundFractionSpan = 0.4d;
+    internal const int WarningFractionRandomMax = 999;
+    internal const double WarningPromptDelaySeconds = 1d;
 }
 
 internal enum DarknessAttackOwnerState

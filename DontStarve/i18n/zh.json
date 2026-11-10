@@ -26,7 +26,7 @@
     "sanity.shadow-monster.terrorbeak.name": "恐怖尖喙",
     "sanity-tooltip": "{{value}} 理智",
     "sanity-tooltip.food-once": "食用时 {{value}} 理智",
-    "sanity-tooltip.equipment-per-minute": "装备时每分钟 {{value}} 理智",
+    "sanity-tooltip.equipment-per-minute": "理智光环：{{value}}/分钟",
     "darkness-attack.prompt.entered": "你正处于黑暗之中！",
     "darkness-attack.prompt.warning": "黑暗中有什么东西在向你快速靠近！",
     "darkness-attack.prompt.resolved": "你被黑暗袭击了！",

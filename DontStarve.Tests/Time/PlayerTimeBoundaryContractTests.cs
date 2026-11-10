@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Xunit;
@@ -52,68 +51,85 @@ public sealed class PlayerTimeBoundaryContractTests
                 StringComparison.Ordinal
             );
             Assert.Contains(
-                "Update(Farmer player, long time)",
+                "Update(Farmer player, string playerKey, long time)",
                 source,
                 StringComparison.Ordinal
             );
-            Assert.Contains(
-                "Sync(string playerKey, long time, long delta)",
-                source,
-                StringComparison.Ordinal
-            );
+            Assert.DoesNotContain("TryEnterMinute", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRewindWait", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IsPlayerInSleepContext", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Game1.player", source, StringComparison.Ordinal);
         }
     }
 
     [Fact]
-    public void SanitySchedulerEnumeratesOnlineFarmersBeforeRunningTimeBehaviors()
+    public void SurvivalTimeOwnerDispatchesEachOnlinePlayerToRegisteredBehaviors()
+    {
+        var source = ReadSource("DontStarve", "Player", "Stats", "SurvivalStateTimeOwner.cs");
+        var sanity = ReadSource("DontStarve", "Player", "Stats", "Sanity", "Sanity.cs");
+
+        Assert.Contains("getOnlinePlayers()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "DispatchMinute(player, playerKey, minute, SurvivalStateTimePhase.Ordinary)",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "survivalTime.Register(this)",
+            sanity,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("behavior.Update(player, playerKey, time)", sanity, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanityDeclaresItsExistingSleepAndBedPolicyAtTheStatusBoundary()
+    {
+        var source = ReadSource("DontStarve", "Player", "Stats", "Sanity", "Sanity.cs");
+        Assert.Contains("phase != SurvivalStateTimePhase.Ordinary", source, StringComparison.Ordinal);
+        Assert.Contains("player.isInBed.Value", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SleepAdapterRoutesIntervalsAndCleansTheSharedOwnerAtLifecycleBoundaries()
     {
         var source = ReadSource(
             "DontStarve",
             "Player",
-            "Stats",
-            "Sanity",
-            "Sanity.cs"
+            "Sleep",
+            "SmapiSleepLifecycleAdapter.cs"
         );
 
-        Assert.Contains("Game1.getOnlineFarmers()", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "behavior.Update(player, time)",
-            source,
-            StringComparison.Ordinal
-        );
-        Assert.Contains(
-            "behavior.Sync(playerKey, time, delta)",
-            source,
-            StringComparison.Ordinal
-        );
-    }
+        Assert.Contains("survivalTime.AdvanceSleepInterval(", source, StringComparison.Ordinal);
+        Assert.Contains("SurvivalStateTimePhase.RealtimeSleep", source, StringComparison.Ordinal);
+        Assert.Contains("SurvivalStateTimePhase.BlackoutSleep", source, StringComparison.Ordinal);
+        Assert.Contains("survivalTime.EndAllSleepContexts()", source, StringComparison.Ordinal);
+        Assert.Contains("survivalTime.ForgetPlayer(playerKey)", source, StringComparison.Ordinal);
+        Assert.Contains("survivalTime.EndSleep(playerKey, entry.Context.SessionId)", source, StringComparison.Ordinal);
+        Assert.Contains("survivalTime.EndSleep(snapshot.PlayerKey, snapshot.SessionId)", source, StringComparison.Ordinal);
+        Assert.Contains("survivalTime.ClearSession()", source, StringComparison.Ordinal);
 
-    [Fact]
-    public void OrdinarySanityBehaviorsExposeSleepingAsAnExplicitBoundary()
-    {
-        var sources = new List<string>();
-        foreach (var fileName in OrdinarySanityBehaviors)
-        {
-            sources.Add(
-                ReadSource(
-                    "DontStarve",
-                    "Player",
-                    "Stats",
-                    "Sanity",
-                    "SanityBehaviors",
-                    fileName
-                )
+        var savePreflight = source.IndexOf(
+            "survivalTime.CanAdvanceSleepInterval(",
+            StringComparison.Ordinal
+        );
+        var finalValueCommit = savePreflight < 0
+            ? -1
+            : source.IndexOf(
+                "ApplyFinalHealth(farmer, result);",
+                savePreflight,
+                StringComparison.Ordinal
             );
-        }
-
-        var combined = string.Join(Environment.NewLine, sources);
-        Assert.Contains("isInBed.Value", combined, StringComparison.Ordinal);
-        Assert.Contains(
-            "Dictionary<string, long>",
-            combined,
-            StringComparison.Ordinal
-        );
+        var saveIntervalDispatch = savePreflight < 0
+            ? -1
+            : source.IndexOf(
+                "survivalTime.AdvanceSleepInterval(",
+                savePreflight + 1,
+                StringComparison.Ordinal
+            );
+        Assert.True(savePreflight >= 0);
+        Assert.True(finalValueCommit > savePreflight);
+        Assert.True(saveIntervalDispatch > finalValueCommit);
     }
 
     private static string ReadSource(params string[] segments)

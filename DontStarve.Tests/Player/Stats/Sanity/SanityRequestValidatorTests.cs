@@ -243,6 +243,7 @@ public sealed class SanityRequestValidatorTests
     [InlineData((int)SanityChangeSource.ExhaustionPassOut)]
     [InlineData((int)SanityChangeSource.HealthDeath)]
     [InlineData((int)SanityChangeSource.SanityDarknessSpecialDeath)]
+    [InlineData((int)SanityChangeSource.BathHouse)]
     public void Host_only_sources_are_rejected_from_clients(
         int sourceValue
     )

@@ -57,7 +57,8 @@ public sealed class DarknessAttackStateMachineTests
         Assert.Equal(sampled, snapshot.RemainingSeconds);
         Assert.Equal("initial-inclusive-5-10", snapshot.RngBranch);
         Assert.Equal("request-1", snapshot.RequestId);
-        Assert.Equal(1, fixture.Random.CallCount);
+        // 每轮消耗两次随机：倒计时采样 + 警告音比例（DST 原版 40%~80% 口径）。
+        Assert.Equal(2, fixture.Random.CallCount);
         Assert.Equal(1, fixture.RequestIds.CallCount);
     }
 
@@ -95,33 +96,63 @@ public sealed class DarknessAttackStateMachineTests
     }
 
     [Fact]
-    public void Warning_uses_metadata_lead_and_repeated_revisions_never_replay()
+    public void Warning_sound_fires_at_fraction_and_prompt_follows_one_second_delay()
     {
+        // 【2026-11-10 原版口径对齐】SequenceRandom 恒返 5 → 比例 = 0.4 + 5/999*0.4 ≈ 0.402，
+        // 音阈值 ≈ 2.010s、提示阈值 ≈ 1.010s（音后 1 秒）。clip 时长 0.48s 只作播放/显示元数据。
         var fixture = new Fixture(5);
         fixture.Machine.Observe(Observation(Owner, 1));
-        fixture.Clock.ElapsedGameTime = TimeSpan.FromSeconds(4.5d);
-        Assert.Equal(
-            DarknessWarningClaimAction.None,
-            fixture.Machine.Observe(Observation(Owner, 2)).WarningClaimAction
-        );
 
-        fixture.Clock.ElapsedGameTime = TimeSpan.FromSeconds(0.03d);
-        var warning = fixture.Machine.Observe(Observation(Owner, 3));
-        Assert.Equal(DarknessAttackPromptKind.Warning, warning.Prompt);
-        Assert.Equal(DarknessWarningClaimAction.Activate, warning.WarningClaimAction);
-        Assert.Equal("request-1", warning.WarningRequestId);
-        Assert.Null(warning.ExpiryIntent);
+        fixture.Clock.ElapsedGameTime = TimeSpan.FromSeconds(3d);
+        var sound = fixture.Machine.Observe(Observation(Owner, 2));
+        Assert.Equal(DarknessAttackMutationStatus.Applied, sound.Status);
+        Assert.Equal("darkness.state.warning-emitted", sound.Reason);
+        Assert.Equal(DarknessWarningClaimAction.Activate, sound.WarningClaimAction);
+        Assert.Equal(DarknessAttackPromptKind.None, sound.Prompt);
+        Assert.Equal("request-1", sound.WarningRequestId);
+        Assert.Equal("sanity.clip.darkness.warning", sound.WarningClipId);
+        Assert.Equal(0.48d, sound.WarningDurationSeconds, 6);
+        Assert.Null(sound.ExpiryIntent);
+
+        // 音响起 1 秒后（剩余 1.0s ≤ 1.010s）弹出警告提示，且不再重复提交 claim。
+        fixture.Clock.ElapsedGameTime = TimeSpan.FromSeconds(1d);
+        var prompt = fixture.Machine.Observe(Observation(Owner, 3));
+        Assert.Equal(DarknessAttackMutationStatus.Applied, prompt.Status);
+        Assert.Equal("darkness.state.warning-prompt-shown", prompt.Reason);
+        Assert.Equal(DarknessAttackPromptKind.Warning, prompt.Prompt);
+        Assert.Equal(DarknessWarningClaimAction.None, prompt.WarningClaimAction);
+        Assert.Equal("sanity.clip.darkness.warning", prompt.WarningClipId);
+        Assert.Equal(0.48d, prompt.WarningDurationSeconds, 6);
 
         var duplicate = fixture.Machine.Observe(Observation(Owner, 3));
         Assert.Equal(DarknessAttackMutationStatus.IgnoredDuplicate, duplicate.Status);
         Assert.Equal(DarknessWarningClaimAction.None, duplicate.WarningClaimAction);
+
         fixture.Clock.ElapsedGameTime = TimeSpan.FromSeconds(0.01d);
         var later = fixture.Machine.Observe(Observation(Owner, 4));
-        Assert.Equal(DarknessWarningClaimAction.None, later.WarningClaimAction);
+        Assert.Equal(DarknessAttackMutationStatus.NoChange, later.Status);
+        Assert.Equal(DarknessAttackPromptKind.None, later.Prompt);
+
         Assert.True(fixture.Machine.TryGetSnapshot(Owner, out var snapshot));
         Assert.Equal(DarknessAttackOwnerState.Warned, snapshot.State);
         Assert.True(snapshot.WarningClaimActive);
         Assert.Equal(0.48d, snapshot.WarningLeadSeconds, 6);
+        Assert.Equal(2, fixture.Random.CallCount);
+    }
+
+    [Fact]
+    public void Warning_fraction_out_of_range_fails_closed_before_request_id()
+    {
+        var fixture = new Fixture(5, 1000);
+
+        var result = fixture.Machine.Observe(Observation(Owner, 1));
+
+        Assert.Equal(DarknessAttackMutationStatus.Invalid, result.Status);
+        Assert.Equal("darkness.warning-rng.out-of-range", result.Reason);
+        Assert.Equal(2, fixture.Random.CallCount);
+        Assert.Equal(0, fixture.RequestIds.CallCount);
+        Assert.True(fixture.Machine.TryGetSnapshot(Owner, out var snapshot));
+        Assert.Equal(DarknessAttackOwnerState.Inactive, snapshot.State);
     }
 
     [Fact]
@@ -145,7 +176,7 @@ public sealed class DarknessAttackStateMachineTests
         var waiting = fixture.Machine.Observe(Observation(Owner, 3));
         Assert.Equal(DarknessAttackMutationStatus.NoChange, waiting.Status);
         Assert.Null(waiting.ExpiryIntent);
-        Assert.Equal(1, fixture.Random.CallCount);
+        Assert.Equal(2, fixture.Random.CallCount);
         Assert.Equal(1, fixture.RequestIds.CallCount);
     }
 
@@ -174,11 +205,11 @@ public sealed class DarknessAttackStateMachineTests
         Assert.Equal(repeatSeconds, snapshot.SampledSeconds);
         Assert.Equal("repeat-inclusive-5-11", snapshot.RngBranch);
         Assert.Equal("request-2", snapshot.RequestId);
-        Assert.Equal(2, fixture.Random.CallCount);
+        Assert.Equal(4, fixture.Random.CallCount);
 
         var duplicate = fixture.Machine.CompleteReceipt(Observation(Owner, 4), receipt);
         Assert.Equal(DarknessAttackMutationStatus.NoChange, duplicate.Status);
-        Assert.Equal(2, fixture.Random.CallCount);
+        Assert.Equal(4, fixture.Random.CallCount);
     }
 
     [Fact]
@@ -200,7 +231,7 @@ public sealed class DarknessAttackStateMachineTests
         Assert.Equal(DarknessAttackMutationStatus.Invalid, result.Status);
         Assert.True(fixture.Machine.TryGetSnapshot(Owner, out var snapshot));
         Assert.Equal(DarknessAttackOwnerState.ExpiredAwaitingReceipt, snapshot.State);
-        Assert.Equal(1, fixture.Random.CallCount);
+        Assert.Equal(2, fixture.Random.CallCount);
     }
 
     [Fact]

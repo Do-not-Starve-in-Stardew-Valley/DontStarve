@@ -15,10 +15,8 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 /// </summary>
 internal class NearMonster : IPlayerTimeRelatedBehavior
 {
-    private const string SAVE_KEY = "DontStarve.Sanity.NearMonster";
     private const string EnabledModDataValue = "1";
     private readonly SanitySystemLifecycleCoordinator lifecycle;
-    private readonly PlayerTimeBehaviorState state = new();
     private Dictionary<string, double> monsterSanity = null!;
 
     internal NearMonster(SanitySystemLifecycleCoordinator lifecycle)
@@ -34,21 +32,15 @@ internal class NearMonster : IPlayerTimeRelatedBehavior
         );
     }
 
-    public void Update(Farmer player, long time)
+    public void Update(Farmer player, string playerKey, long time)
     {
-        if (
-            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
-            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
-        )
-            return;
-
         var location = player.currentLocation;
         if (location == null)
             return;
 
         var playerCenter = player.GetBoundingBox().Center;
         var value = 0.0;
-        var dangerTierActive = IsDangerTierActive(player);
+        var dangerTierActive = IsDangerTierActive(playerKey);
 
         // 每分钟只扫当前地点 characters，避免跨地点或全局 NPC 扫描进入高频路径。
         foreach (var npc in location.characters)
@@ -116,11 +108,8 @@ internal class NearMonster : IPlayerTimeRelatedBehavior
             player.ChangeSanity(-value, SanityChangeSource.Monster);
     }
 
-    private bool IsDangerTierActive(Farmer player)
+    private bool IsDangerTierActive(string playerKey)
     {
-        var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(
-            player.UniqueMultiplayerID
-        );
         if (
             !SanityPlayerKey.IsCanonical(playerKey)
             || !lifecycle.TryGetTierState(playerKey, out var tier)
@@ -140,38 +129,4 @@ internal class NearMonster : IPlayerTimeRelatedBehavior
         return false;
     }
 
-    public void Sync(string playerKey, long time, long delta)
-    {
-        if (delta < 0)
-            state.AddRewindWait(playerKey, delta);
-    }
-
-    public void Load(IModHelper helper)
-    {
-        var data = helper.Data.ReadSaveData<NearMonsterData>(SAVE_KEY);
-        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
-            Game1.MasterPlayer,
-            out var playerKey
-        )
-            ? playerKey
-            : null;
-        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
-    }
-
-    public void Save(IModHelper helper)
-    {
-        helper.Data.WriteSaveData(
-            SAVE_KEY,
-            new NearMonsterData { Players = state.CaptureWaits() }
-        );
-    }
-
-    public void Reset() => state.Clear();
-}
-
-internal class NearMonsterData
-{
-    public long Wait { get; init; }
-
-    public Dictionary<string, long>? Players { get; init; }
 }

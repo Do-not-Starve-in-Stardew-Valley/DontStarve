@@ -13,21 +13,12 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 /// </summary>
 internal class Wearing : IPlayerTimeRelatedBehavior
 {
-    private const string SAVE_KEY = "DontStarve.Sanity.Wearing";
     private static Dictionary<string, double> hatSanity = new();
     private static Dictionary<string, double> shirtSanity = new();
     private static Dictionary<string, double> pantsSanity = new();
     private static Dictionary<string, double> bootsSanity = new();
     private static Dictionary<string, double> ringSanity = new();
     private static Dictionary<string, double> trinketSanity = new();
-    private readonly SanitySystemLifecycleCoordinator lifecycle;
-    private readonly PlayerTimeBehaviorState state = new();
-
-    internal Wearing(SanitySystemLifecycleCoordinator lifecycle)
-    {
-        this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
-    }
-
     public void Init(IModHelper helper)
     {
         // 表内仍按 ItemId 配置；运行时先按 QualifiedItemId 前缀路由，再读取对应表。
@@ -72,15 +63,8 @@ internal class Wearing : IPlayerTimeRelatedBehavior
         return values is not null && values.TryGetValue(item.ItemId, out value);
     }
 
-    public void Update(Farmer player, long time)
+    public void Update(Farmer player, string playerKey, long time)
     {
-        if (
-            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
-            || lifecycle.IsPlayerInSleepContext(playerKey)
-            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
-        )
-            return;
-
         // 每分钟重新读取当前穿戴状态，不缓存装备对象，避免换装后继续沿用旧效果。
         var hat = player.hat.Value;
         var shirt = player.shirtItem.Value;
@@ -113,38 +97,4 @@ internal class Wearing : IPlayerTimeRelatedBehavior
         player.ChangeSanity(sanity, SanityChangeSource.Equipment);
     }
 
-    public void Sync(string playerKey, long time, long delta)
-    {
-        if (delta < 0)
-            state.AddRewindWait(playerKey, delta);
-    }
-
-    public void Load(IModHelper helper)
-    {
-        var data = helper.Data.ReadSaveData<WearingData>(SAVE_KEY);
-        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
-            Game1.MasterPlayer,
-            out var playerKey
-        )
-            ? playerKey
-            : null;
-        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
-    }
-
-    public void Save(IModHelper helper)
-    {
-        helper.Data.WriteSaveData(
-            SAVE_KEY,
-            new WearingData { Players = state.CaptureWaits() }
-        );
-    }
-
-    public void Reset() => state.Clear();
-}
-
-internal class WearingData
-{
-    public long Wait { get; init; }
-
-    public Dictionary<string, long>? Players { get; init; }
 }

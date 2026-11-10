@@ -12,10 +12,10 @@ using StardewValley;
 namespace DontStarve.Player.Stats.Hunger;
 
 /// <summary>
-/// 按内部分钟 tick 消耗饥饿；饥饿归零后按玩家自己的节奏扣生命。
-/// 只有主机运行结算，客户端只显示主机快照。
+/// 按统一生存状态时间 owner 的普通分钟消耗饥饿；饥饿归零后按玩家自己的节奏扣生命。
+/// 睡眠分钟由 SleepSystem 联动结算，重复区间由 owner 去重。
 /// </summary>
-internal sealed class HungerCycle : ITimeRelatedBehavior
+internal sealed class HungerCycle : ISurvivalStateTimeBehavior<Farmer>
 {
     private const string SAVE_KEY = "DontStarve.Hunger.HungerCycle";
 
@@ -23,7 +23,6 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
     private readonly IMonitor monitor;
     private readonly HungerEquipmentRuntime equipmentRuntime;
     private readonly SmapiHungerDamageExecutor damageExecutor;
-    private readonly PlayerTimeBehaviorState timeState = new();
     private readonly Dictionary<string, HungerCycleRuntimeState> states =
         new(StringComparer.Ordinal);
     private Action<Farmer>? lowWarningHandler;
@@ -64,99 +63,90 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
         state.IsStarving = boundary.IsStarving;
         state.ZeroDiagnosticLogged = boundary.IsStarving;
         state.DamageDiagnosticLogged = false;
-        timeState.Clear(playerKey);
     }
 
-    public void Update(long time)
+    public void OnMinute(
+        Farmer player,
+        string playerKey,
+        long time,
+        SurvivalStateTimePhase phase
+    )
     {
+        if (phase != SurvivalStateTimePhase.Ordinary)
+            return;
+
         if (changeService.Role != HungerAuthorityRole.Host)
         {
-            foreach (var state in states.Values)
-                state.Reset();
-            timeState.Clear();
+            states.Clear();
             return;
         }
 
         if (!HungerExtensions.IsEnabled)
         {
-            foreach (var state in states.Values)
-                state.Pause();
-            timeState.Clear();
+            if (
+                HungerProtocol.IsValidPlayerKey(playerKey)
+                && states.TryGetValue(playerKey, out var pausedState)
+            )
+                pausedState.Pause();
             return;
         }
 
-        foreach (var player in Game1.getOnlineFarmers())
+        if (!HungerProtocol.IsValidPlayerKey(playerKey))
+            return;
+
+        changeService.TryEnsureHostPlayer(playerKey, out _, out _);
+        var state = GetOrCreateState(playerKey);
+        if (changeService.IsDebugLocked)
         {
-            var playerKey = player.UniqueMultiplayerID.ToString(CultureInfo.InvariantCulture);
-            if (!HungerProtocol.IsValidPlayerKey(playerKey))
-                continue;
-
-            changeService.TryEnsureHostPlayer(playerKey, out _, out _);
-            var state = GetOrCreateState(playerKey);
-            if (changeService.IsDebugLocked)
-            {
-                state.Reset();
-                timeState.Clear(playerKey);
-                continue;
-            }
-            if (HungerExtensions.IsPlayerInSleepContext(playerKey))
-            {
-                // SleepSystem owns the same per-minute Hunger/Sanity/Health step while this
-                // player sleeps. Reset the ordinary cursor so waking never replays stale wait
-                // or first-zero damage from the pre-sleep lane.
-                state.Reset();
-                timeState.Clear(playerKey);
-                continue;
-            }
-            if (!timeState.TryEnterMinute(playerKey, isSleeping: false))
-                continue;
-
-            var currentHunger = player.GetHunger();
-            var loadout = equipmentRuntime.Capture(player);
-            // The canonical natural rate remains HungerRules.NaturalDecayPerMinute (0.052d);
-            // equipment only supplies the separate multiplier and fixed-recovery inputs here.
-            var minute = HungerRules.ApplyNaturalMinute(
-                currentHunger,
-                player.GetMaxHunger(),
-                HungerEquipmentRules.CalculateConsumptionMultiplier(loadout),
-                HungerEquipmentRules.CalculateFixedRecoveryPerMinute(loadout)
-            );
-            player.SetHunger(minute.BoundedCurrent);
-            var warning = HungerWarningRules.Evaluate(
-                minute.BoundedCurrent,
-                player.GetMaxHunger(),
-                state.IsInLowValueRegion
-            );
-            state.IsInLowValueRegion = warning.IsLow;
-            if (warning.ShouldWarn)
-                lowWarningHandler?.Invoke(player);
-
-            if (minute.BoundedCurrent <= 0d && !state.ZeroDiagnosticLogged)
-            {
-                state.ZeroDiagnosticLogged = true;
-                monitor.Log(
-                    $"hunger.runtime.zero-evaluated player={playerKey} time={time} before={currentHunger:F3} after={minute.BoundedCurrent:F3}",
-                    LogLevel.Debug
-                );
-            }
-
-            var starvation = HungerStarvationRules.Evaluate(
-                state.IsStarving,
-                minute.BoundedCurrent
-            );
-            state.IsStarving = starvation.IsStarving;
-            if (!starvation.DamageDue)
-            {
-                if (!state.IsStarving)
-                {
-                    state.ZeroDiagnosticLogged = false;
-                    state.DamageDiagnosticLogged = false;
-                }
-                continue;
-            }
-
-            ApplyDamageWithDiagnostic(player, playerKey, time, state);
+            state.Reset();
+            return;
         }
+
+        var currentHunger = player.GetHunger();
+        var loadout = equipmentRuntime.Capture(player);
+        // The canonical natural rate remains HungerRules.NaturalDecayPerMinute (0.052d);
+        // equipment only supplies the separate multiplier and fixed-recovery inputs here.
+        var minute = HungerRules.ApplyNaturalMinute(
+            currentHunger,
+            player.GetMaxHunger(),
+            HungerEquipmentRules.CalculateConsumptionMultiplier(loadout),
+            HungerEquipmentRules.CalculateFixedRecoveryPerMinute(loadout)
+        );
+        player.SetHunger(minute.BoundedCurrent);
+        var warning = HungerWarningRules.Evaluate(
+            minute.BoundedCurrent,
+            player.GetMaxHunger(),
+            state.IsInLowValueRegion
+        );
+        state.IsInLowValueRegion = warning.IsLow;
+        if (warning.ShouldWarn)
+            lowWarningHandler?.Invoke(player);
+
+        if (minute.BoundedCurrent <= 0d && !state.ZeroDiagnosticLogged)
+        {
+            state.ZeroDiagnosticLogged = true;
+            monitor.Log(
+                $"hunger.runtime.zero-evaluated player={playerKey} time={time} before={currentHunger:F3} after={minute.BoundedCurrent:F3}",
+                LogLevel.Debug
+            );
+        }
+
+        var starvation = HungerStarvationRules.Evaluate(
+            state.IsStarving,
+            minute.BoundedCurrent
+        );
+        state.IsStarving = starvation.IsStarving;
+        if (!starvation.DamageDue)
+        {
+            if (!state.IsStarving)
+            {
+                state.ZeroDiagnosticLogged = false;
+                state.DamageDiagnosticLogged = false;
+            }
+            return;
+        }
+
+        ApplyDamageWithDiagnostic(player, playerKey, time, state);
     }
 
     private void ApplyDamageWithDiagnostic(
@@ -175,19 +165,6 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
             $"hunger.runtime.damage-evaluated player={playerKey} time={time} applied={applied} damage={result.Damage} health={result.RemainingHealth}",
             LogLevel.Debug
         );
-    }
-
-    public void Sync(long _, long delta)
-    {
-        if (
-            !HungerExtensions.IsEnabled
-            || changeService.Role != HungerAuthorityRole.Host
-            || delta >= 0
-        )
-            return;
-
-        foreach (var playerKey in states.Keys)
-            timeState.AddRewindWait(playerKey, delta);
     }
 
     public void Load(IModHelper helper)
@@ -258,7 +235,6 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
             return;
         }
 
-        var waits = new Dictionary<string, long>(StringComparer.Ordinal);
         foreach (var pair in data.Players)
         {
             if (
@@ -274,10 +250,7 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
                 // The new phase is safe to resume; an absolute old timestamp is not.
                 IsStarving = data.SchemaVersion >= 3 && pair.Value.IsStarving,
             };
-            if (pair.Value.Wait > 0)
-                waits[pair.Key] = pair.Value.Wait;
         }
-        timeState.Load(waits, legacyPlayerKey: null, legacyWait: 0);
     }
 
     public void Save(IModHelper helper)
@@ -290,13 +263,14 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
             return;
 
         var data = new HungerCycleSaveData();
-        var waits = timeState.CaptureWaits();
         foreach (var pair in states)
         {
             data.Players[pair.Key] = new HungerCyclePlayerSaveData
             {
                 IsStarving = pair.Value.IsStarving,
-                Wait = waits.TryGetValue(pair.Key, out var wait) ? wait : 0,
+                // Older files stored per-behavior rewind waits here. The session-local owner
+                // now handles time de-duplication, so preserve the field as zero for schema compatibility.
+                Wait = 0,
             };
         }
         helper.Data.WriteSaveData(SAVE_KEY, data);
@@ -305,7 +279,6 @@ internal sealed class HungerCycle : ITimeRelatedBehavior
     internal void ResetRuntime()
     {
         states.Clear();
-        timeState.Clear();
     }
 
     private HungerCycleRuntimeState GetOrCreateState(string playerKey)

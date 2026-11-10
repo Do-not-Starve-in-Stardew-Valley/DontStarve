@@ -133,27 +133,6 @@ public sealed class MinuteTimeTimelineTests
     }
 
     [Fact]
-    public void RewindAwareConsumerKeepsPersistedWaitAndDoesNotReplayEffects()
-    {
-        var timeline = new MinuteTimeTimeline();
-        var consumer = new RewindAwareConsumer(wait: 2);
-        timeline.OnUpdate.Add(consumer.Update);
-        timeline.OnSync.Add(consumer.Sync);
-        timeline.Load(100);
-
-        timeline.Synchronize(103);
-        Assert.Equal(0, consumer.Wait);
-        Assert.Equal(1, consumer.AppliedUpdates);
-
-        timeline.Synchronize(100);
-        Assert.Equal(3, consumer.Wait);
-
-        timeline.Synchronize(103);
-        Assert.Equal(0, consumer.Wait);
-        Assert.Equal(1, consumer.AppliedUpdates);
-    }
-
-    [Fact]
     public void CallbackFailureIsDiagnosedOnceAndNeverRetriesTheMinute()
     {
         var diagnostics = new List<string>();
@@ -195,34 +174,5 @@ public sealed class MinuteTimeTimelineTests
         Assert.Equal(1441, timeline.Time);
         Assert.Single(diagnostics);
         Assert.Contains("no minutes were discarded", diagnostics[0]);
-    }
-
-    private sealed class RewindAwareConsumer
-    {
-        internal RewindAwareConsumer(long wait)
-        {
-            Wait = wait;
-        }
-
-        internal long Wait { get; private set; }
-
-        internal int AppliedUpdates { get; private set; }
-
-        internal void Update(long _)
-        {
-            if (Wait > 0)
-            {
-                Wait--;
-                return;
-            }
-
-            AppliedUpdates++;
-        }
-
-        internal void Sync(long _, long delta)
-        {
-            if (delta < 0)
-                Wait += -delta;
-        }
     }
 }

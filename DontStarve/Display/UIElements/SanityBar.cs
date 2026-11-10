@@ -14,8 +14,13 @@ namespace DontStarve.Display.UIElements;
 /// <summary>
 /// 绘制理智条和悬停数值；状态读取来自 SanityExtensions。
 /// </summary>
-internal class SanityBar : INonTimeRelatedUIElement
+internal class SanityBar : INonTimeRelatedUIElement, IHudStatusBarProvider
 {
+    private const string BarId = "sanity";
+    private const int HudLayoutOrder = 100;
+
+    public string HudBarId => BarId;
+
     private readonly ISanitySystemState sanitySystemState;
     private readonly HashSet<string> reportedFailures = new(StringComparer.Ordinal);
     private CultureInfo culture = CultureInfo.InvariantCulture;
@@ -34,30 +39,53 @@ internal class SanityBar : INonTimeRelatedUIElement
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => reportedFailures.Clear();
     }
 
+    public bool TryGetLayoutRequest(out HudBarLayoutRequest request)
+    {
+        if (!SanityHudRules.ResolveVisibility(sanitySystemState.IsEnabled).ShowBar)
+        {
+            request = default;
+            return false;
+        }
+
+        request = new HudBarLayoutRequest(
+            BarId,
+            HudLayoutOrder,
+            TextureLoader.SanityContainerScaledWidth,
+            TextureLoader.SanityContainerScaledHeight
+        );
+        return true;
+    }
+
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
-        if (
-            !HudDisplayRules
-                .ResolveSanityVisibility(sanitySystemState.IsEnabled)
-                .ShowBar
-        )
-        {
+        if (!uiContext.StatusBarBounds.HasValue)
             return;
-        }
+        var statusBarBounds = uiContext.StatusBarBounds.Value;
 
         var player = Game1.player;
         var sanity = player.GetSanity();
         var maxSanity = player.GetMaxSanity();
 
-        var containerTexture = TextureLoader.SanityContainer;
         if (
-            !HudDisplayRules.TryCreateSanityFrame(
-                uiContext.HudLayout.SanityBounds,
-                TextureLoader.FillerWidthMultiplier * Game1.pixelZoom,
+            !SanityHudRules.TryCreateValues(
                 sanity,
                 maxSanity,
-                out var frame,
+                out var values,
                 out var reason
+            )
+        )
+        {
+            ReportFailureOnce(reason);
+            return;
+        }
+
+        if (
+            !HudStatusBarFrameRules.TryCreateFrame(
+                statusBarBounds,
+                TextureLoader.FillerWidthMultiplier * Game1.pixelZoom,
+                values.FillRatio,
+                out var frame,
+                out reason
             )
         )
         {
@@ -69,7 +97,7 @@ internal class SanityBar : INonTimeRelatedUIElement
         var containerBounds = frame.ContainerBounds;
 
         spriteBatch.Draw(
-            containerTexture,
+            TextureLoader.SanityContainer,
             new Rectangle(
                 containerBounds.X,
                 containerBounds.Y,
@@ -92,7 +120,7 @@ internal class SanityBar : INonTimeRelatedUIElement
         );
 
         var mousePoint = Game1.getMousePosition(true);
-        if (containerBounds.Contains(mousePoint.X, mousePoint.Y))
+        if (frame.HitBounds.Contains(mousePoint.X, mousePoint.Y))
         {
             var label = uiContext.Helper.Translation.Get("sanity-hud.label").ToString();
             var information = uiContext.Helper.Translation
@@ -101,8 +129,8 @@ internal class SanityBar : INonTimeRelatedUIElement
                     new
                     {
                         label,
-                        current = LocalizedValueFormatter.FormatWhole(frame.Current, culture),
-                        maximum = LocalizedValueFormatter.FormatWhole(frame.Maximum, culture),
+                        current = LocalizedValueFormatter.FormatWhole(values.Current, culture),
+                        maximum = LocalizedValueFormatter.FormatWhole(values.Maximum, culture),
                     }
                 )
                 .ToString();

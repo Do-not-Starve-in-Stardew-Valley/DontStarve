@@ -6,11 +6,11 @@
       "Id": "stardew.loom",
       "QualifiedItemId": "(BC)17",
       "ExpectedCategory": "OrdinarySingleInputFinite",
-      "Enabled": true,
+      "Enabled": false,
       "Excluded": false,
-      "AllowDelay": true,
+      "AllowDelay": false,
       "AllowEject": false,
-      "AllowThief": true,
+      "AllowThief": false,
       "LocationAllowlist": ["Farm"],
       "Evidence": [
         "stardew-1.6.15-data-machines-default-rule-count-1-minutes-240",
@@ -18,7 +18,7 @@
         "stardew-1.6.15.24356-not-overnight-no-additional-consume-no-custom-output",
         "pending-real-machine"
       ],
-      "Reason": "dark-hand.machine.target.verified-loom-delay-and-explicit-thief"
+      "Reason": "dark-hand.machine.target.disabled-pending-full-darkhand-rework"
     },
     {
       "Id": "stardew.crystalarium",

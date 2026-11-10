@@ -420,6 +420,7 @@ public sealed class SanityRuntimeStateTests
     [InlineData((int)SanityChangeSource.HealthDeath)]
     [InlineData((int)SanityChangeSource.SanityDarknessSpecialDeath)]
     [InlineData((int)SanityChangeSource.FlowerCollection)]
+    [InlineData((int)SanityChangeSource.BathHouse)]
     public void Client_cannot_submit_host_observable_or_host_owned_sources(
         int sourceValue
     )

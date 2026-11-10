@@ -233,7 +233,7 @@ public sealed class OnlinePersistenceAndHungerContractTests
     public void HungerDisablePausesTheHostCycleAndNonHostStillDiscardsLocalState()
     {
         var cycle = ReadContract("HungerCycle.cs");
-        var update = ExtractMethod(cycle, "public void Update(long time)");
+        var update = ExtractMethod(cycle, "public void OnMinute(");
         var nonHostBranch = ExtractBlock(
             update,
             "if (changeService.Role != HungerAuthorityRole.Host)"
@@ -241,21 +241,22 @@ public sealed class OnlinePersistenceAndHungerContractTests
         var disabledBranch = ExtractBlock(update, "if (!HungerExtensions.IsEnabled)");
         var pauseMethod = ExtractBlock(cycle, "internal void Pause()");
 
-        Assert.Contains("state.Reset()", nonHostBranch, StringComparison.Ordinal);
-        Assert.Contains("state.Pause()", disabledBranch, StringComparison.Ordinal);
-        Assert.Contains("timeState.Clear()", disabledBranch, StringComparison.Ordinal);
+        Assert.Contains("states.Clear()", nonHostBranch, StringComparison.Ordinal);
+        Assert.Contains("pausedState.Pause()", disabledBranch, StringComparison.Ordinal);
         Assert.DoesNotContain("IsStarving =", pauseMethod, StringComparison.Ordinal);
         Assert.DoesNotContain("IsInLowValueRegion =", pauseMethod, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void HungerMinuteMaintenanceDoesNotUseAnAbsoluteLastTimeCursor()
+    public void HungerMinuteMaintenanceReliesOnTheSharedSurvivalTimeOwner()
     {
         var cycle = ReadContract("HungerCycle.cs");
         var save = ReadContract("HungerSaveData.cs");
 
-        Assert.Contains("PlayerTimeBehaviorState", cycle, StringComparison.Ordinal);
-        Assert.Contains("TryEnterMinute", cycle, StringComparison.Ordinal);
+        Assert.Contains("ISurvivalStateTimeBehavior<Farmer>", cycle, StringComparison.Ordinal);
+        Assert.Contains("SurvivalStateTimePhase.Ordinary", cycle, StringComparison.Ordinal);
+        Assert.DoesNotContain("PlayerTimeBehaviorState", cycle, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryEnterMinute", cycle, StringComparison.Ordinal);
         Assert.DoesNotContain("state.LastTime", cycle, StringComparison.Ordinal);
         Assert.DoesNotContain("LastTime =", cycle, StringComparison.Ordinal);
         Assert.DoesNotContain("LastTime", save, StringComparison.Ordinal);

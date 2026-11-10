@@ -16,7 +16,7 @@ public sealed class ForageReplacementFactFreezeTests
         );
 
     [Fact]
-    public void ShippedVersionTwoCatalogHasOneDefaultReachableMapping()
+    public void ShippedVersionTwoCatalogHasNoDefaultReachableMapping()
     {
         var load = LoadShipped();
 
@@ -24,14 +24,19 @@ public sealed class ForageReplacementFactFreezeTests
         Assert.Equal(2, load.Catalog.SchemaVersion);
         Assert.Equal(1, load.Catalog.Revision);
         Assert.Equal(3, load.Catalog.Mappings.Count);
-        var enabled = Assert.Single(load.Catalog.Mappings, mapping => mapping.Enabled);
-        Assert.Equal("rabbit-foot-to-void-essence", enabled.Id);
-        Assert.Equal("(O)446", enabled.SourceQualifiedItemId);
-        Assert.Equal("(O)769", enabled.TargetQualifiedItemId);
-        Assert.Equal(new[] { "Deluxe Coop" }, enabled.LocationAllowlist);
+        // 2026-11-10 设计师盘点：觅食替换三行全部停用（含兔子脚→虚空精华），
+        // 等待觅食替换整体重做后按计划文档恢复。
+        Assert.DoesNotContain(load.Catalog.Mappings, mapping => mapping.Enabled);
+        var rabbitFoot = Assert.IsType<ForageReplacementMapping>(
+            load.Catalog.FindBySource("(O)446")
+        );
+        Assert.False(rabbitFoot.Enabled);
+        Assert.Equal("rabbit-foot-to-void-essence", rabbitFoot.Id);
+        Assert.Equal("(O)769", rabbitFoot.TargetQualifiedItemId);
+        Assert.Equal(new[] { "Deluxe Coop" }, rabbitFoot.LocationAllowlist);
         Assert.Equal(
             new[] { ForagePickupContextIds.NormalDirectObjectPickup },
-            enabled.ContextAllowlist
+            rabbitFoot.ContextAllowlist
         );
     }
 
@@ -45,7 +50,9 @@ public sealed class ForageReplacementFactFreezeTests
         );
         Assert.False(bunnyPuff.Enabled);
         Assert.Null(bunnyPuff.TargetQualifiedItemId);
-        Assert.True(catalog.FindBySource("(O)446")?.Enabled);
+        // 兔子脚行也已停用（disabled-pending-full-forage-rework），但保留目标与 allowlist
+        // 作为恢复时的现成配置。
+        Assert.False(catalog.FindBySource("(O)446")?.Enabled);
         Assert.Equal("(O)769", catalog.FindBySource("(O)446")?.TargetQualifiedItemId);
     }
 

@@ -163,16 +163,32 @@ internal sealed class DarknessAttackStateMachine : IDisposable
             0d,
             state.RemainingSeconds - elapsed.TotalSeconds
         );
+        // 【2026-11-10 原版口径对齐】警告音与警告提示拆成两个时刻：音在比例点触发并提交
+        // 播放 claim；提示在音后 1 秒（WarningPromptDelaySeconds）弹出。若时钟步长一次跨过
+        // 两个阈值（或直接归零），则同帧合并，先提交 claim 再弹提示，保证两个表现都不丢。
         var warningAction = DarknessWarningClaimAction.None;
         var prompt = DarknessAttackPromptKind.None;
         if (
             state.State == DarknessAttackOwnerState.Countdown
-            && state.RemainingSeconds <= state.WarningDurationSeconds
+            && state.RemainingSeconds <= state.WarningSoundRemainingSeconds
         )
         {
             state.State = DarknessAttackOwnerState.Warned;
             state.WarningClaimActive = true;
             warningAction = DarknessWarningClaimAction.Activate;
+            if (state.RemainingSeconds <= state.WarningPromptRemainingSeconds)
+            {
+                state.WarningPromptShown = true;
+                prompt = DarknessAttackPromptKind.Warning;
+            }
+        }
+        else if (
+            state.State == DarknessAttackOwnerState.Warned
+            && !state.WarningPromptShown
+            && state.RemainingSeconds <= state.WarningPromptRemainingSeconds
+        )
+        {
+            state.WarningPromptShown = true;
             prompt = DarknessAttackPromptKind.Warning;
         }
 
@@ -189,23 +205,33 @@ internal sealed class DarknessAttackStateMachine : IDisposable
             );
         }
 
-        if (warningAction == DarknessWarningClaimAction.None && intent is null)
+        if (
+            warningAction == DarknessWarningClaimAction.None
+            && prompt == DarknessAttackPromptKind.None
+            && intent is null
+        )
+        {
             return DarknessAttackUpdateResult.NoChange("darkness.state.countdown-advanced");
+        }
+        // 提示事件也要携带 clip 元数据：ShowPrompt 的显示时长沿用音效时长（与旧行为一致）。
+        var carriesWarningMetadata =
+            warningAction == DarknessWarningClaimAction.Activate
+            || prompt != DarknessAttackPromptKind.None;
         return new DarknessAttackUpdateResult(
             DarknessAttackMutationStatus.Applied,
-            intent is null ? "darkness.state.warning-emitted" : "darkness.state.expired",
+            intent is not null
+                ? "darkness.state.expired"
+                : warningAction == DarknessWarningClaimAction.Activate
+                    ? "darkness.state.warning-emitted"
+                    : "darkness.state.warning-prompt-shown",
             prompt,
             warningAction,
             warningAction == DarknessWarningClaimAction.Activate
                 ? state.RequestId
                 : string.Empty,
             intent,
-            warningAction == DarknessWarningClaimAction.Activate
-                ? state.WarningClipId
-                : string.Empty,
-            warningAction == DarknessWarningClaimAction.Activate
-                ? state.WarningDurationSeconds
-                : 0d
+            carriesWarningMetadata ? state.WarningClipId : string.Empty,
+            carriesWarningMetadata ? state.WarningDurationSeconds : 0d
         );
     }
 
@@ -402,6 +428,36 @@ internal sealed class DarknessAttackStateMachine : IDisposable
             return Result(DarknessAttackMutationStatus.Invalid, "darkness.warning-rng.failed");
         }
 
+        // 【2026-11-10 原版口径对齐】DST grue.lua：每轮随机警告音时刻 = 倒计时 × (40% + 随机×40%)，
+        // 即已流逝 40%~80% 时响起；提前量与音效文件时长无关（clip 时长只作为播放/显示元数据）。
+        int fractionRoll;
+        try
+        {
+            fractionRoll = random.NextInclusive(
+                0,
+                DarknessAttackContract.WarningFractionRandomMax
+            );
+        }
+        catch (Exception)
+        {
+            return Result(DarknessAttackMutationStatus.Invalid, "darkness.warning-rng.failed");
+        }
+        if (
+            fractionRoll < 0
+            || fractionRoll > DarknessAttackContract.WarningFractionRandomMax
+        )
+        {
+            return Result(
+                DarknessAttackMutationStatus.Invalid,
+                "darkness.warning-rng.out-of-range"
+            );
+        }
+        var warningFraction =
+            DarknessAttackContract.WarningSoundMinimumFraction
+            + DarknessAttackContract.WarningSoundFractionSpan
+                * fractionRoll
+                / DarknessAttackContract.WarningFractionRandomMax;
+
         string requestId;
         try
         {
@@ -428,6 +484,13 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         state.RngBranch = initial ? "initial-inclusive-5-10" : "repeat-inclusive-5-11";
         state.WarningClipId = warningClip.ClipId;
         state.WarningDurationSeconds = warningClip.DurationSeconds;
+        state.WarningSoundRemainingSeconds = sampled * warningFraction;
+        state.WarningPromptRemainingSeconds = Math.Max(
+            0d,
+            state.WarningSoundRemainingSeconds
+                - DarknessAttackContract.WarningPromptDelaySeconds
+        );
+        state.WarningPromptShown = false;
         state.RequestId = requestId;
         state.WarningClaimActive = false;
         state.CancelReason = string.Empty;
@@ -459,6 +522,9 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         state.WarningClaimActive = false;
         state.WarningClipId = string.Empty;
         state.WarningDurationSeconds = 0d;
+        state.WarningSoundRemainingSeconds = 0d;
+        state.WarningPromptRemainingSeconds = 0d;
+        state.WarningPromptShown = false;
         state.RequestId = string.Empty;
         state.CancelReason = string.IsNullOrWhiteSpace(reason)
             ? "darkness.state.cancelled"
@@ -556,6 +622,14 @@ internal sealed class DarknessAttackStateMachine : IDisposable
         internal string WarningClipId { get; set; } = string.Empty;
 
         internal double WarningDurationSeconds { get; set; }
+
+        // 【2026-11-10 原版口径对齐】警告音触发点（剩余秒阈值）与音后 1 秒的提示阈值；
+        // WarningPromptShown 保证提示一次性。音频 claim 与这些阈值无关。
+        internal double WarningSoundRemainingSeconds { get; set; }
+
+        internal double WarningPromptRemainingSeconds { get; set; }
+
+        internal bool WarningPromptShown { get; set; }
 
         internal string RequestId { get; set; } = string.Empty;
 

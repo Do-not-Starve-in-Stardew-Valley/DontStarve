@@ -9,6 +9,7 @@ using DontStarve.Display.UIElements;
 using DontStarve.Music;
 using DontStarve.Player;
 using DontStarve.Player.Death;
+using DontStarve.Player.Stats;
 using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Sleep;
@@ -598,12 +599,14 @@ internal class ModEntry : Mod, IDisposable
     private ModConfig _config = new();
     private ConfigurationRuntime _configurationRuntime;
     private SanitySystemLifecycleCoordinator _sanityLifecycle;
+    private SurvivalStateTimeOwner<Farmer> _survivalStateTime;
     private SanitySmapiResourceService _sanityResources;
     private ShadowCreatureSmapiSfxService _shadowCreatureSfx;
     private SanitySmapiAudioService _sanityAudio;
     private TaggedHudMessageService _taggedHudMessages;
     private SanitySmapiEventService _sanityEvents;
     private SanitySmapiVisualService _sanityVisual;
+    private SanityIdlePanicLoopService _idlePanicLoop;
     private SanityVignetteOverlayService _sanityVignette;
     private SmapiHarmlessProjectionHost _harmlessProjectionHost;
     private SmapiForageVisualProjectionService _forageVisualProjection;
@@ -693,7 +696,8 @@ internal class ModEntry : Mod, IDisposable
             _passOutReasonLedger,
             _playerDeathCauseLedger,
             () => _hungerDamageMode,
-            out var hungerDebugController
+            out var hungerDebugController,
+            out _survivalStateTime
         );
         _trashCanSanity = new SmapiTrashCanSanityService(
             Monitor,
@@ -721,6 +725,10 @@ internal class ModEntry : Mod, IDisposable
             _sanityLifecycle,
             _sanitySystemEnabled
         );
+        // 低理智待机惊醒循环：本地玩家待机满 1 秒且理智低于 50% 时，交替原版昏迷动作
+        // （+Angry 气泡）与原版受惊动作（+Surprised 气泡），任意输入立刻打断。它是玩家
+        // 行为表现而非屏幕滤镜，因此只跟随 Sanity 系统总开关，不受视觉开关影响。
+        _idlePanicLoop = new SanityIdlePanicLoopService(helper, Monitor, _sanityLifecycle);
         // 任务族 03 阶段 06 只建立 manifest-driven 资源与诊断预览；具体玩法仍由下方
         // owner-local projection species 显式注册，资源 facade 本身不创建实体。
         _sanityResources = new SanitySmapiResourceService(
@@ -889,6 +897,7 @@ internal class ModEntry : Mod, IDisposable
             Monitor,
             ModManifest.UniqueID,
             _timeApi,
+            _survivalStateTime,
             _sanityLifecycle,
             _passOutReasonService,
             () => _sleepRecoveryBalanceEnabled,
@@ -936,6 +945,18 @@ internal class ModEntry : Mod, IDisposable
         );
         HostileShadowNpcGreetingPatch.TryInstall(
             ModManifest.UniqueID + ".npc-greeting",
+            Monitor
+        );
+        HostileShadowAutoTargetCallerScopePatch.TryInstall(
+            ModManifest.UniqueID + ".shadow-auto-target-callers",
+            Monitor
+        );
+        HostileShadowAutoTargetingPatch.TryInstall(
+            ModManifest.UniqueID + ".shadow-auto-target",
+            Monitor
+        );
+        HostileShadowFrozenImmunityPatch.TryInstall(
+            ModManifest.UniqueID + ".shadow-frozen-immunity",
             Monitor
         );
         _minigameDangerGate = new MinigameDangerGateService(
@@ -1021,83 +1042,130 @@ internal class ModEntry : Mod, IDisposable
                 LogLevel.Error
             );
         }
-        var mrSkittsBehavior = new MrSkittsProjectionBehavior();
-        if (
-            !_harmlessProjectionHost.RegisterSpecies(
-                MrSkittsProjectionContract.CreatePolicy(),
-                new MrSkittsProjectionRenderer(),
-                mrSkittsBehavior,
-                out var mrSkittsRegistrationReason
-            )
-        )
+        // 【占位素材停用 2026-11-10】以下四个普通物种注册块统一受 OwnerLocalProjectionDisableList
+        // （单一事实来源）约束：命中清单的物种跳过注册并记录 Info——这是素材定稿前的主动停用，
+        // 不是失败。不注册即不生成投影、不挂载行为；暗影之手的点火源/机器世界交互由投影行为
+        // 驱动（相关服务无独立事件订阅入口），随之一并封住。恢复时从清单删除对应物种 ID 并
+        // 按 文档/当前在做计划/san值系统当前缺少的内容.md 条目 c) 复核 JSON 行开关。
+        if (OwnerLocalProjectionDisableList.IsDisabled(MrSkittsProjectionContract.SpeciesId))
         {
-            // 注册失败时 species 保持 disabled；不能回退旧 Critter 或共享世界集合。
             Monitor.Log(
-                $"Mr.Skitts owner-local projection registration failed closed ({mrSkittsRegistrationReason}).",
-                LogLevel.Error
+                $"Mr.Skitts owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
+                LogLevel.Info
             );
         }
-        var darkHandBehavior = new DarkHandProjectionBehavior(
-            darkHandModeResolver,
-            new SmapiDarkHandEnvironmentLightProbe(_environmentLightService, _timeApi),
-            _darkHandLeaseCoordinator
-        );
-        if (
-            !_harmlessProjectionHost.RegisterSpecies(
-                DarkHandProjectionContract.CreatePolicy(),
-                new DarkHandProjectionRenderer(),
-                darkHandBehavior,
-                out var darkHandRegistrationReason
-            )
-        )
+        else
         {
-            // 失败时只禁用 owner-local DarkHand；不得回退旧 Critter 或触碰共享对象。
+            var mrSkittsBehavior = new MrSkittsProjectionBehavior();
+            if (
+                !_harmlessProjectionHost.RegisterSpecies(
+                    MrSkittsProjectionContract.CreatePolicy(),
+                    new MrSkittsProjectionRenderer(),
+                    mrSkittsBehavior,
+                    out var mrSkittsRegistrationReason
+                )
+            )
+            {
+                // 注册失败时 species 保持 disabled；不能回退旧 Critter 或共享世界集合。
+                Monitor.Log(
+                    $"Mr.Skitts owner-local projection registration failed closed ({mrSkittsRegistrationReason}).",
+                    LogLevel.Error
+                );
+            }
+        }
+        if (OwnerLocalProjectionDisableList.IsDisabled(DarkHandProjectionContract.SpeciesId))
+        {
+            // DarkHand 停用时 lease coordinator 等世界交互服务保持闲置（无事件订阅、被动调用），
+            // 不额外拆除，便于素材定稿后恢复注册即可重新驱动。
             Monitor.Log(
-                $"DarkHand owner-local projection registration failed closed ({darkHandRegistrationReason}).",
-                LogLevel.Error
+                $"DarkHand owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
+                LogLevel.Info
             );
         }
-        var darkWatcherBehavior = new DarkWatcherProjectionBehavior(
-            new SmapiDarkWatcherEnvironmentLightProbe(
-                _environmentLightService,
-                _timeApi
-            )
-        );
-        if (
-            !_harmlessProjectionHost.RegisterSpecies(
-                DarkWatcherProjectionContract.CreatePolicy(),
-                new DarkWatcherProjectionRenderer(),
-                darkWatcherBehavior,
-                out var darkWatcherRegistrationReason
-            )
-        )
+        else
         {
-            // 失败时只禁用 owner-local Watcher；旧 Critter 不会成为隐式回退路径。
+            var darkHandBehavior = new DarkHandProjectionBehavior(
+                darkHandModeResolver,
+                new SmapiDarkHandEnvironmentLightProbe(_environmentLightService, _timeApi),
+                _darkHandLeaseCoordinator
+            );
+            if (
+                !_harmlessProjectionHost.RegisterSpecies(
+                    DarkHandProjectionContract.CreatePolicy(),
+                    new DarkHandProjectionRenderer(),
+                    darkHandBehavior,
+                    out var darkHandRegistrationReason
+                )
+            )
+            {
+                // 失败时只禁用 owner-local DarkHand；不得回退旧 Critter 或触碰共享对象。
+                Monitor.Log(
+                    $"DarkHand owner-local projection registration failed closed ({darkHandRegistrationReason}).",
+                    LogLevel.Error
+                );
+            }
+        }
+        if (OwnerLocalProjectionDisableList.IsDisabled(DarkWatcherProjectionContract.SpeciesId))
+        {
             Monitor.Log(
-                $"DarkWatcher owner-local projection registration failed closed ({darkWatcherRegistrationReason}).",
-                LogLevel.Error
+                $"DarkWatcher owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
+                LogLevel.Info
             );
         }
-        var eyesBehavior = new EyesProjectionBehavior(
-            new SmapiEyesEnvironmentLightProbe(
-                _environmentLightService,
-                _timeApi
-            )
-        );
-        if (
-            !_harmlessProjectionHost.RegisterSpecies(
-                EyesProjectionContract.CreatePolicy(),
-                new EyesProjectionRenderer(),
-                eyesBehavior,
-                out var eyesRegistrationReason
-            )
-        )
+        else
         {
-            // 失败时只禁用 owner-local Eyes；资源或光照不可用不能触发旧 Critter 回退。
-            Monitor.Log(
-                $"Eyes owner-local projection registration failed closed ({eyesRegistrationReason}).",
-                LogLevel.Error
+            var darkWatcherBehavior = new DarkWatcherProjectionBehavior(
+                new SmapiDarkWatcherEnvironmentLightProbe(
+                    _environmentLightService,
+                    _timeApi
+                )
             );
+            if (
+                !_harmlessProjectionHost.RegisterSpecies(
+                    DarkWatcherProjectionContract.CreatePolicy(),
+                    new DarkWatcherProjectionRenderer(),
+                    darkWatcherBehavior,
+                    out var darkWatcherRegistrationReason
+                )
+            )
+            {
+                // 失败时只禁用 owner-local Watcher；旧 Critter 不会成为隐式回退路径。
+                Monitor.Log(
+                    $"DarkWatcher owner-local projection registration failed closed ({darkWatcherRegistrationReason}).",
+                    LogLevel.Error
+                );
+            }
+        }
+        if (OwnerLocalProjectionDisableList.IsDisabled(EyesProjectionContract.SpeciesId))
+        {
+            Monitor.Log(
+                $"Eyes owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
+                LogLevel.Info
+            );
+        }
+        else
+        {
+            var eyesBehavior = new EyesProjectionBehavior(
+                new SmapiEyesEnvironmentLightProbe(
+                    _environmentLightService,
+                    _timeApi
+                )
+            );
+            if (
+                !_harmlessProjectionHost.RegisterSpecies(
+                    EyesProjectionContract.CreatePolicy(),
+                    new EyesProjectionRenderer(),
+                    eyesBehavior,
+                    out var eyesRegistrationReason
+                )
+            )
+            {
+                // 失败时只禁用 owner-local Eyes；资源或光照不可用不能触发旧 Critter 回退。
+                Monitor.Log(
+                    $"Eyes owner-local projection registration failed closed ({eyesRegistrationReason}).",
+                    LogLevel.Error
+                );
+            }
         }
         // The two 50% shadow appearances use the dedicated owner-shared permit lane. Keeping this
         // registration separate proves the ordinary four species cannot consume that permit.
@@ -1189,6 +1257,10 @@ internal class ModEntry : Mod, IDisposable
         _flowerCollectionSanity = null;
         _sleepLifecycle?.Dispose();
         _sleepLifecycle = null;
+        _survivalStateTime?.Dispose();
+        _survivalStateTime = null;
+        _idlePanicLoop?.Dispose();
+        _idlePanicLoop = null;
         SeedEdibilityRuntime.Dispose();
         ActiveShadowCreatureSfx = null;
     }

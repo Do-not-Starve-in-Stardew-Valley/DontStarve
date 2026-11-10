@@ -1,6 +1,6 @@
 #nullable enable
 
-using System;
+using System.Collections.Generic;
 
 namespace DontStarve.Display;
 
@@ -26,47 +26,17 @@ internal readonly record struct VanillaHudLayout(
     internal HudBounds AnchorBounds => ShowingHealth ? HealthBounds : EnergyBounds;
 }
 
-internal readonly record struct HudDisplayLayout(
-    VanillaHudLayout Vanilla,
-    HudBounds HungerBounds,
-    HudBounds SanityBounds,
-    bool ShowingHunger,
-    bool ShowingSanity
-)
-{
-    internal HudBounds AnchorBounds => Vanilla.AnchorBounds;
-}
-
-internal readonly record struct SanityHudFrame(
-    HudBounds ContainerBounds,
-    HudPoint FillerPosition,
-    int FillerWidth,
-    int FillerHeight,
-    double Current,
-    double Maximum
+internal readonly record struct HudBarLayoutRequest(
+    string Id,
+    int Order,
+    int Width,
+    int Height
 );
 
-internal readonly record struct HungerHudFrame(
-    HudBounds ContainerBounds,
-    HudPoint FillerPosition,
-    int FillerWidth,
-    int FillerHeight,
-    double Current,
-    double Maximum
-);
-
-internal readonly record struct SanityDisplayVisibility(
-    bool ShowBar,
-    bool ShowHeldFoodTooltip
-);
-
-/// <summary>
-/// 与 Stardew/XNA 解耦的 HUD 定位和 Sanity 数值门，供绘制层与确定性测试共用。
-/// </summary>
+/// <summary>按可见状态条的顺序和尺寸，从原版 HUD 锚点计算屏幕 bounds。</summary>
 internal static class HudDisplayRules
 {
-    // 这些尺寸来自 Stardew 1.6.15 drawHUD 的状态条：右边距 8、底边距 16、条宽 48、条高 224。
-    // DS 容器也保持 48x224；布局只计算相对原版条的位置，不保存屏幕坐标。
+    // 原版状态条：右边距 8、底边距 16、尺寸 48x224。
     internal const int VanillaStatusBarWidth = 48;
     internal const int VanillaStatusBarHeight = 224;
     internal const int VanillaStatusBarRightInset = 8;
@@ -74,200 +44,7 @@ internal static class HudDisplayRules
     internal const int VanillaStatusBarGap = 8;
     internal const int DontStarveBarGap = 12;
 
-    internal const int FillerXOffset = 36;
-    internal const int FillerBottomOffset = 9;
-    internal const int FillerMaximumHeight = 168;
-
-    internal static SanityDisplayVisibility ResolveSanityVisibility(
-        bool systemEnabled
-    )
-    {
-        // 总开关只隐藏 Sanity 自己的 HUD；物品数据提示仍由 formatter 单独控制。
-        return new SanityDisplayVisibility(systemEnabled, true);
-    }
-
-    internal static HudDisplayLayout CreateLayout(
-        int viewportWidth,
-        int viewportHeight,
-        bool showingHealth,
-        bool showingHunger,
-        bool showingSanity,
-        int maxHealth,
-        int maxStamina,
-        int customBarWidth,
-        int customBarHeight,
-        int customBarGap = DontStarveBarGap
-    )
-    {
-        var vanilla = CreateVanillaLayout(
-            viewportWidth,
-            viewportHeight,
-            showingHealth,
-            maxHealth,
-            maxStamina
-        );
-        var anchor = vanilla.AnchorBounds;
-        // Keep the existing slot geometry when both systems are visible: right-to-left is
-        // vanilla Energy, vanilla Health, Sanity, then Hunger. A visible system reuses the first
-        // custom slot when its sibling system is hidden.
-        var firstCustomBounds = PlaceCustomBar(
-            anchor,
-            customBarWidth,
-            customBarHeight,
-            customBarGap
-        );
-        var sanityBounds = firstCustomBounds;
-        var hungerBounds = firstCustomBounds;
-        if (showingSanity && showingHunger)
-        {
-            hungerBounds = PlaceCustomBar(
-                sanityBounds,
-                customBarWidth,
-                customBarHeight,
-                customBarGap
-            );
-        }
-
-        return new HudDisplayLayout(
-            vanilla,
-            hungerBounds,
-            sanityBounds,
-            showingHunger,
-            showingSanity
-        );
-    }
-
-    internal static HudPoint GetFillerPosition(HudBounds containerBounds)
-    {
-        return new HudPoint(
-            containerBounds.X + FillerXOffset,
-            containerBounds.Bottom - FillerBottomOffset
-        );
-    }
-
-    internal static int GetFillerHeight(double current, double maximum)
-    {
-        if (!double.IsFinite(current) || !double.IsFinite(maximum) || maximum <= 0)
-            return 0;
-
-        var ratio = Math.Clamp(current / maximum, 0d, 1d);
-        return Math.Clamp(
-            (int)(ratio * FillerMaximumHeight),
-            0,
-            FillerMaximumHeight
-        );
-    }
-
-    internal static bool TryCreateSanityFrame(
-        HudBounds containerBounds,
-        int fillerWidth,
-        double current,
-        double maximum,
-        out SanityHudFrame frame,
-        out string reason
-    )
-    {
-        frame = default;
-        if (
-            containerBounds.Width <= 0
-            || containerBounds.Height <= 0
-            || fillerWidth <= 0
-        )
-        {
-            reason = "sanity-hud-layout-dimensions-are-invalid";
-            return false;
-        }
-        if (!double.IsFinite(current))
-        {
-            reason = "sanity-hud-current-is-not-finite";
-            return false;
-        }
-        if (!double.IsFinite(maximum))
-        {
-            reason = "sanity-hud-maximum-is-not-finite";
-            return false;
-        }
-        if (maximum <= 0)
-        {
-            reason = "sanity-hud-maximum-is-not-positive";
-            return false;
-        }
-        if (current < 0 || current > maximum)
-        {
-            reason = "sanity-hud-current-is-out-of-range";
-            return false;
-        }
-
-        frame = new SanityHudFrame(
-            containerBounds,
-            GetFillerPosition(containerBounds),
-            fillerWidth,
-            GetFillerHeight(current, maximum),
-            current,
-            maximum
-        );
-        reason = "sanity-hud-frame-ready";
-        return true;
-    }
-
-    internal static bool TryCreateHungerFrame(
-        HudBounds containerBounds,
-        int fillerWidth,
-        double current,
-        double maximum,
-        out HungerHudFrame frame,
-        out string reason
-    )
-    {
-        frame = default;
-        if (
-            containerBounds.Width <= 0
-            || containerBounds.Height <= 0
-            || fillerWidth <= 0
-        )
-        {
-            reason = "hunger-hud-layout-dimensions-are-invalid";
-            return false;
-        }
-        if (!double.IsFinite(current))
-        {
-            reason = "hunger-hud-current-is-not-finite";
-            return false;
-        }
-        if (!double.IsFinite(maximum))
-        {
-            reason = "hunger-hud-maximum-is-not-finite";
-            return false;
-        }
-        if (maximum <= 0)
-        {
-            reason = "hunger-hud-maximum-is-not-positive";
-            return false;
-        }
-
-        // Runtime overshoot is allowed before persistence, but the player-facing HUD never
-        // exposes a negative value. Positive overflow remains a state error instead of hiding
-        // a corrupted maximum/current pair.
-        var boundedCurrent = Math.Max(0d, current);
-        if (boundedCurrent > maximum)
-        {
-            reason = "hunger-hud-current-is-out-of-range";
-            return false;
-        }
-
-        frame = new HungerHudFrame(
-            containerBounds,
-            GetFillerPosition(containerBounds),
-            fillerWidth,
-            GetFillerHeight(boundedCurrent, maximum),
-            boundedCurrent,
-            maximum
-        );
-        reason = "hunger-hud-frame-ready";
-        return true;
-    }
-
-    private static VanillaHudLayout CreateVanillaLayout(
+    internal static VanillaHudLayout CreateVanillaLayout(
         int viewportWidth,
         int viewportHeight,
         bool showingHealth,
@@ -296,18 +73,69 @@ internal static class HudDisplayRules
         return new VanillaHudLayout(energyBounds, healthBounds, showingHealth);
     }
 
-    private static HudBounds PlaceCustomBar(
-        HudBounds anchor,
-        int width,
-        int height,
-        int gap
+    internal static bool TryGetBarBounds(
+        VanillaHudLayout vanillaLayout,
+        IReadOnlyList<HudBarLayoutRequest> visibleBars,
+        string id,
+        out HudBounds bounds,
+        int customBarGap = DontStarveBarGap
     )
     {
-        return new HudBounds(
-            anchor.X - gap - width,
-            anchor.Bottom - height,
-            width,
-            height
+        bounds = default;
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+
+        var targetIndex = -1;
+        for (var i = 0; i < visibleBars.Count; i++)
+        {
+            if (!string.Equals(visibleBars[i].Id, id, System.StringComparison.Ordinal))
+                continue;
+
+            if (targetIndex >= 0)
+                return false;
+
+            targetIndex = i;
+        }
+
+        if (targetIndex < 0)
+            return false;
+
+        var target = visibleBars[targetIndex];
+        if (!IsValid(target))
+            return false;
+
+        var anchor = vanillaLayout.AnchorBounds;
+        var left = anchor.X;
+        for (var i = 0; i < visibleBars.Count; i++)
+        {
+            var bar = visibleBars[i];
+            if (i == targetIndex || !IsValid(bar))
+                continue;
+
+            if (CompareOrder(bar, target) < 0)
+                left -= customBarGap + bar.Width;
+        }
+
+        left -= customBarGap + target.Width;
+        bounds = new HudBounds(
+            left,
+            anchor.Bottom - target.Height,
+            target.Width,
+            target.Height
         );
+        return true;
+    }
+
+    private static bool IsValid(HudBarLayoutRequest bar)
+    {
+        return !string.IsNullOrWhiteSpace(bar.Id) && bar.Width > 0 && bar.Height > 0;
+    }
+
+    private static int CompareOrder(HudBarLayoutRequest left, HudBarLayoutRequest right)
+    {
+        var order = left.Order.CompareTo(right.Order);
+        return order != 0
+            ? order
+            : System.StringComparer.Ordinal.Compare(left.Id, right.Id);
     }
 }

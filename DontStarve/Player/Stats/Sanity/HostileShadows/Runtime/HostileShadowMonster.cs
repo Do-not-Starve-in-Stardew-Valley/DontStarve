@@ -44,17 +44,20 @@ public sealed class HostileShadowMonster : Monster
         "Yurin.DontStarve/HostileShadow/MovementFrame";
     internal const string KnockbackImmunityModDataKey =
         "Yurin.DontStarve/HostileShadow/Immunity/Knockback";
+    // modData 契约字符串的唯一真源在 HostileShadowVanillaCombatContracts（该文件被源码链接进
+    // DontStarve.Tests 冻结校验；Harmony 补丁同源读取）。这里仅别名引用，防止两处字面量漂移。
     internal const string FrozenImmunityModDataKey =
-        "Yurin.DontStarve/HostileShadow/Immunity/Frozen";
+        HostileShadowVanillaCombatContracts.FrozenImmunityModDataKey;
     // DIAG-20260809: 绑定隐藏态标记（1=隐藏）。危险实体被无害投影外观取代时置位：
     // 不渲染/无敌/行为禁用；低理智恢复时清除。
     internal const string BindingHiddenModDataKey =
-        "Yurin.DontStarve/HostileShadow/BindingHidden";
+        HostileShadowVanillaCombatContracts.BindingHiddenModDataKey;
     // DIAG-20260810: 脱战恐吓标记（1=恐吓中）。危险影怪脱战后先播恐吓动画
     // （期间无敌、停止行为），恐吓结束才进入绑定隐藏态——恐吓是脱战的视觉缓冲。
     internal const string RetreatingModDataKey =
         "Yurin.DontStarve/HostileShadow/Retreating";
-    private const string EnabledModDataValue = "1";
+    private const string EnabledModDataValue =
+        HostileShadowVanillaCombatContracts.EnabledModDataValue;
 
     public HostileShadowMonster()
     {

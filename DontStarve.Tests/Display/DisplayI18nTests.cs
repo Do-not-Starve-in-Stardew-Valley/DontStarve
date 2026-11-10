@@ -139,11 +139,12 @@ public sealed class DisplayI18nTests
     }
 
     [Theory]
-    [InlineData("default.json", "per minute while equipped")]
-    [InlineData("zh.json", "装备时每分钟")]
+    [InlineData("default.json", "Sanity aura:", "/min")]
+    [InlineData("zh.json", "理智光环：", "/分钟")]
     public void EquipmentSanityTemplateRetainsEquipmentContext(
         string localeFile,
-        string equipmentContext
+        string equipmentContext,
+        string perMinuteUnit
     )
     {
         using var locale = ReadLocale(localeFile);
@@ -154,6 +155,8 @@ public sealed class DisplayI18nTests
         Assert.NotNull(template);
         Assert.Contains("{{value}}", template, StringComparison.Ordinal);
         Assert.Contains(equipmentContext, template, StringComparison.Ordinal);
+        // 2026-11-10 用户定稿格式："理智光环：{{value}}/分钟" / "Sanity aura: {{value}}/min"。
+        Assert.Contains(perMinuteUnit, template, StringComparison.Ordinal);
     }
 
     [Theory]

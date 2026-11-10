@@ -3,7 +3,6 @@
 using System;
 using System.Globalization;
 using DontStarve.Display;
-using DontStarve.Interface;
 using DontStarve.Player.Death;
 using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Hunger.HungerBehaviors;
@@ -61,8 +60,12 @@ internal sealed class Hunger : IStat
 
     internal HungerDebugController DebugController => debugController;
 
-    public void Init(IModHelper helper, ITimeAPI timeApi)
+    public void Init(
+        IModHelper helper,
+        SurvivalStateTimeOwner<Farmer> survivalTime
+    )
     {
+        survivalTime.Register(hungerCycle);
         HungerExtensions.Bind(changeService);
         HungerExtensions.BindSleepBoundary(hungerCycle.ResumeAfterSleep);
         equipmentRuntime.Load(helper, monitor);
@@ -99,21 +102,9 @@ internal sealed class Hunger : IStat
         );
         multiplayer.Initialize();
 
-        timeApi.OnUpdate.Add(Update);
-        timeApi.OnSync.Add(Sync);
         helper.Events.GameLoop.SaveLoaded += (_, _) => Load(helper);
         helper.Events.GameLoop.Saving += (_, _) => Save(helper);
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => ClearSession();
-    }
-
-    private void Update(long time)
-    {
-        hungerCycle.Update(time);
-    }
-
-    private void Sync(long time, long delta)
-    {
-        hungerCycle.Sync(time, delta);
     }
 
     private void Load(IModHelper helper)
@@ -293,7 +284,6 @@ public static class HungerExtensions
     private static HungerChangeService? changeService;
     private static Action<Farmer>? sleepBoundary;
     private static bool systemEnabled;
-    private static Func<string, bool>? sleepContextResolver;
 
     internal static bool IsEnabled => systemEnabled;
 
@@ -311,23 +301,6 @@ public static class HungerExtensions
     internal static void SetEnabled(bool enabled)
     {
         systemEnabled = enabled;
-    }
-
-    internal static void BindSleepContext(Func<string, bool>? resolver)
-    {
-        sleepContextResolver = resolver;
-    }
-
-    internal static bool IsPlayerInSleepContext(string playerKey)
-    {
-        try
-        {
-            return sleepContextResolver?.Invoke(playerKey) == true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     internal static void ResetRuntime()

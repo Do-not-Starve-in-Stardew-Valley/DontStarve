@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using DontStarve.Display.UIElements;
 using DontStarve.Interface;
-using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using StardewModdingAPI;
 using StardewValley;
@@ -12,6 +11,8 @@ internal static class DisplayManager
 {
     // HUD 元素只负责读状态和绘制，不在 RenderingHud 里修改 Hunger/Sanity 或写存档。
     private static List<INonTimeRelatedUIElement> nonTimeRelatedUIElements = new();
+    // 复用 HUD 请求缓冲区，避免每帧为可见条创建集合。
+    private static readonly List<HudBarLayoutRequest> hudBarLayoutRequests = new(4);
 
     private static readonly List<ITimeRelatedUIElement> timeRelatedUIElements =
         new List<ITimeRelatedUIElement>();
@@ -40,16 +41,47 @@ internal static class DisplayManager
                 return;
 
             // RenderingHud 使用 UI viewport 坐标；不要混用世界坐标或 Game1.viewport。
-            var uiContext = new UIRenderContext(
-                helper,
-                e,
-                HungerExtensions.IsEnabled,
-                sanitySystemState.IsEnabled
+            hudBarLayoutRequests.Clear();
+            foreach (var element in nonTimeRelatedUIElements)
+            {
+                if (element is IHudStatusBarProvider provider)
+                    AddHudBarLayoutRequest(provider);
+            }
+            foreach (var element in timeRelatedUIElements)
+            {
+                if (element is IHudStatusBarProvider provider)
+                    AddHudBarLayoutRequest(provider);
+            }
+
+            var viewport = Game1.uiViewport;
+            var player = Game1.player;
+            var vanillaLayout = HudDisplayRules.CreateVanillaLayout(
+                viewport.Width,
+                viewport.Height,
+                Game1.showingHealth,
+                player.maxHealth,
+                player.MaxStamina
             );
             foreach (var el in nonTimeRelatedUIElements)
+            {
+                var uiContext = CreateUIRenderContext(
+                    helper,
+                    e,
+                    vanillaLayout,
+                    el as IHudStatusBarProvider
+                );
                 el.Render(e, uiContext);
+            }
             foreach (var el in timeRelatedUIElements)
+            {
+                var uiContext = CreateUIRenderContext(
+                    helper,
+                    e,
+                    vanillaLayout,
+                    el as IHudStatusBarProvider
+                );
                 el.Render(e, uiContext);
+            }
         };
 
         if (timeRelatedUIElements.Count > 0)
@@ -84,5 +116,35 @@ internal static class DisplayManager
     {
         foreach (var e in timeRelatedUIElements)
             e.Save(helper);
+    }
+
+    private static void AddHudBarLayoutRequest(IHudStatusBarProvider provider)
+    {
+        if (provider.TryGetLayoutRequest(out var request))
+            hudBarLayoutRequests.Add(request);
+    }
+
+    private static UIRenderContext CreateUIRenderContext(
+        IModHelper helper,
+        StardewModdingAPI.Events.RenderingHudEventArgs e,
+        VanillaHudLayout vanillaLayout,
+        IHudStatusBarProvider provider
+    )
+    {
+        HudBounds? statusBarBounds = null;
+        if (
+            provider != null
+            && HudDisplayRules.TryGetBarBounds(
+                vanillaLayout,
+                hudBarLayoutRequests,
+                provider.HudBarId,
+                out var bounds
+            )
+        )
+        {
+            statusBarBounds = bounds;
+        }
+
+        return new UIRenderContext(helper, e, statusBarBounds);
     }
 }

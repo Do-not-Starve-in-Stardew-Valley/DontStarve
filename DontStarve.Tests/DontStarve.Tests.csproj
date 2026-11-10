@@ -54,7 +54,8 @@
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsData.cs" Link="Player\Sleep\SleepWakeEffectsData.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsPolicy.cs" Link="Player\Sleep\SleepWakeEffectsPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Death\PlayerDeathCausePolicy.cs" Link="Player\Death\PlayerDeathCausePolicy.cs" />
-    <Compile Include="..\DontStarve\Player\Stats\PlayerTimeBehaviorState.cs" Link="Player\Stats\PlayerTimeBehaviorState.cs" />
+    <Compile Include="..\DontStarve\Interface\ITimeAPI.cs" Link="Interface\ITimeAPI.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\SurvivalStateTimeOwner.cs" Link="Player\Stats\SurvivalStateTimeOwner.cs" />
     <Compile Include="..\DontStarve\Music\ActivityMusicArbitration.cs" Link="Music\ActivityMusicArbitration.cs" />
     <Compile Include="..\DontStarve\Music\ActivityMusicPhasePolicy.cs" Link="Music\ActivityMusicPhasePolicy.cs" />
     <Compile Include="..\DontStarve\Music\ActivityMusicSuppressionStateStore.cs" Link="Music\ActivityMusicSuppressionStateStore.cs" />
@@ -117,6 +118,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackStateMachine.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackStateMachine.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearAttackTransitionPolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearAttackTransitionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearCombatImmunityPolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\CreeperFearCombatImmunityPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowVanillaCombatContracts.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowVanillaCombatContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowGameplayPausePolicy.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowGameplayPausePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowMovementPresentation.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileShadowMovementPresentation.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackDamage.cs" Link="Player\Stats\Sanity\HostileShadows\Runtime\HostileAttackDamage.cs" />
@@ -163,6 +165,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityGameMusicCoordinator.cs" Link="Player\Stats\Sanity\Audio\SanityGameMusicCoordinator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdleDetector.cs" Link="Player\Stats\Sanity\Visual\SanityIdleDetector.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePanicLoopRules.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePanicLoopRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVisualController.cs" Link="Player\Stats\Sanity\Visual\SanityVisualController.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityMinigameVisualClassifier.cs" Link="Player\Stats\Sanity\Visual\SanityMinigameVisualClassifier.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Minigames\MinigameDangerGatePolicy.cs" Link="Player\Stats\Sanity\Minigames\MinigameDangerGatePolicy.cs" />
@@ -184,6 +187,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\DarkHandProjectionBehavior.cs" Link="Player\Stats\Sanity\Illusions\Projection\DarkHandProjectionBehavior.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\DarkWatcherProjectionBehavior.cs" Link="Player\Stats\Sanity\Illusions\Projection\DarkWatcherProjectionBehavior.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\EyesProjectionBehavior.cs" Link="Player\Stats\Sanity\Illusions\Projection\EyesProjectionBehavior.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\OwnerLocalProjectionDisableList.cs" Link="Player\Stats\Sanity\Illusions\Projection\OwnerLocalProjectionDisableList.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" />
@@ -207,6 +211,9 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityBehaviors\SanityBehaviorRules.cs" Link="Player\Stats\Sanity\SanityBehaviors\SanityBehaviorRules.cs" />
     <Compile Include="..\DontStarve\Time\MinuteTimeTimeline.cs" Link="Time\MinuteTimeTimeline.cs" />
     <Compile Include="..\DontStarve\Display\HudDisplayRules.cs" Link="Display\HudDisplayRules.cs" />
+    <Compile Include="..\DontStarve\Display\HudStatusBarFrameRules.cs" Link="Display\HudStatusBarFrameRules.cs" />
+    <Compile Include="..\DontStarve\Display\HungerHudRules.cs" Link="Display\HungerHudRules.cs" />
+    <Compile Include="..\DontStarve\Display\SanityHudRules.cs" Link="Display\SanityHudRules.cs" />
     <Compile Include="..\DontStarve\Display\UIElements\LocalizedValueFormatter.cs" Link="Display\UIElements\LocalizedValueFormatter.cs" />
     <Compile Include="..\DontStarve\Display\UIElements\SanityTooltipContracts.cs" Link="Display\UIElements\SanityTooltipContracts.cs" />
     <None Include="..\DontStarve\i18n\default.json" Link="I18n\default.json">

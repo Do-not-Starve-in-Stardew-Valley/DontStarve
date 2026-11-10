@@ -27,19 +27,21 @@ public sealed class ForagePickupAuthorityTransactionTests
         );
 
     [Fact]
-    public void ShippedCatalogAndCurrentEvidencePublishExecutableCapability()
+    public void ShippedCatalogIsDisabledUntilForageReworkSoCurrentEvidenceCannotExecute()
     {
         var capability = ForagePickupReplacementCapabilityGate.Evaluate(
             LoadShipped(),
             ForagePickupRuntimeEvidence.Current
         );
 
+        // 2026-11-10 设计师盘点：觅食替换三行全部停用后，即使运行时证据齐全，
+        // 拾取替换能力也保持关闭；合成启用 catalog 的行为验证见下方用例。
         Assert.Equal(
-            ForagePickupReplacementCapabilityStatus.Available,
+            ForagePickupReplacementCapabilityStatus.DisabledNoEnabledMappings,
             capability.Status
         );
-        Assert.Equal(1, capability.EnabledMappingCount);
-        Assert.True(capability.CanExecute);
+        Assert.Equal(0, capability.EnabledMappingCount);
+        Assert.False(capability.CanExecute);
     }
 
     [Fact]

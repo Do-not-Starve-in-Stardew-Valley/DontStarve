@@ -40,7 +40,7 @@ public sealed class DarkHandThiefTransactionTests
     private static string ChineseI18nPath => Path.Combine(AppContext.BaseDirectory, "I18n", "zh.json");
 
     [Fact]
-    public void ShippedCatalogAuthorizesOnlyLoomBehindExplicitThiefMode()
+    public void ShippedCatalogDisablesThiefTargetsPendingDarkHandRework()
     {
         var catalog = LoadShipped();
         var capability = DarkHandThiefCapabilityGate.Evaluate(
@@ -48,21 +48,24 @@ public sealed class DarkHandThiefTransactionTests
             MachineRuntimeEvidence.VerifiedStardew1615
         );
 
+        // 2026-11-10 设计师盘点：暗影之手机器目标行全部停用（含已验证的织布机 (BC)17），
+        // 织布机的 AllowThief 一并关闭，偷窃能力随之关闭；
+        // 恢复开关见 文档/当前在做计划/san值系统当前缺少的内容.md。
         Assert.Equal(2, catalog.SchemaVersion);
         Assert.Equal(8, catalog.Targets.Count);
-        Assert.Equal(1, catalog.EnabledTargetCount);
-        var loom = Assert.Single(catalog.Targets.Where(target => target.AllowThief));
-        Assert.Equal("(BC)17", loom.QualifiedItemId);
-        Assert.Equal(new[] { "Farm" }, loom.LocationAllowlist);
-        Assert.Equal(DarkHandThiefCapabilityStatus.Available, capability.Status);
-        Assert.Equal(DarkHandThiefReasonIds.Eligible, capability.Reason);
-        Assert.True(capability.CanCommitDelete);
+        Assert.Equal(0, catalog.EnabledTargetCount);
+        Assert.DoesNotContain(catalog.Targets, target => target.AllowThief);
+        Assert.Equal(DarkHandThiefCapabilityStatus.ReadOnlyNoEnabledTargets, capability.Status);
+        Assert.Equal(DarkHandThiefReasonIds.NoEnabledTargets, capability.Reason);
+        Assert.False(capability.CanCommitDelete);
     }
 
     [Fact]
-    public void VerifiedShippedProductionRejectsMissingTargetWithoutDeleting()
+    public void SyntheticEnabledProductionRejectsMissingTargetWithoutDeleting()
     {
-        var catalog = LoadShipped();
+        // 行为验证改用合成启用 catalog：shipped catalog 停用后不再充当授权数据源，
+        // 但"目标缺失必须拒绝且不删除"的事务语义由合成行继续锁定。
+        var catalog = EnabledCatalog(MachineInteractionCategory.OrdinarySingleInputFinite);
         var capability = DarkHandThiefCapabilityGate.Evaluate(
             catalog,
             MachineRuntimeEvidence.VerifiedStardew1615

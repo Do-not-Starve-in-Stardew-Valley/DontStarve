@@ -39,7 +39,7 @@ public sealed class DarkHandFireThiefAuthorityTests
         );
 
     [Fact]
-    public void ShippedCatalogEnablesVerifiedFarmTorchWithFullRuntimeEvidence()
+    public void ShippedCatalogDisablesAllFireTargetsPendingDarkHandRework()
     {
         var catalog = LoadShipped();
         var capability = DarkHandFireCapabilityGate.Evaluate(
@@ -47,18 +47,17 @@ public sealed class DarkHandFireThiefAuthorityTests
             DarkHandFireRuntimeEvidence.VerifiedStardew1615
         );
 
+        // 2026-11-10 设计师盘点：暗影之手点火源目标行全部停用（含已验证的农场火源 (BC)146），
+        // 即使运行时证据齐全，点火源能力也保持关闭；
+        // 恢复开关见 文档/当前在做计划/san值系统当前缺少的内容.md。
         Assert.Equal(13, catalog.Targets.Count);
-        Assert.Equal(1, catalog.EnabledTargetCount);
+        Assert.Equal(0, catalog.EnabledTargetCount);
         Assert.Equal(
-            DarkHandFireCapabilityStatus.Available,
+            DarkHandFireCapabilityStatus.DisabledNoEnabledTargets,
             capability.Status
         );
-        Assert.Equal(DarkHandFireReasonIds.CapabilityAvailable, capability.Reason);
-        Assert.True(capability.CanExecute);
-        Assert.True(capability.Evidence.StableTargetRevisionAvailable);
-        Assert.True(capability.Evidence.ExplainableLightTargetBindingAvailable);
-        Assert.True(capability.Evidence.AtomicExtinguishAdapterAvailable);
-        Assert.True(capability.Evidence.ExistingPrivateLeaseAvailable);
+        Assert.Equal(DarkHandFireReasonIds.NoEnabledTargets, capability.Reason);
+        Assert.False(capability.CanExecute);
     }
 
     [Fact]
@@ -84,13 +83,11 @@ public sealed class DarkHandFireThiefAuthorityTests
         };
 
         Assert.Equal(expected, actual);
-        var enabled = Assert.Single(catalog.Targets.Where(target => target.Enabled));
-        Assert.Equal("(BC)146", enabled.QualifiedItemId);
-        Assert.Equal(new[] { "Farm" }, enabled.LocationAllowlist);
-        Assert.All(
-            catalog.Targets.Where(target => !ReferenceEquals(target, enabled)),
-            target => Assert.False(target.Enabled)
-        );
+        // 全部目标行保持禁用；农场火源 (BC)146 保留 Farm allowlist 作为恢复时的现成配置。
+        Assert.All(catalog.Targets, target => Assert.False(target.Enabled));
+        var campfire146 = catalog.FindByQualifiedItemId("(BC)146");
+        Assert.NotNull(campfire146);
+        Assert.Equal(new[] { "Farm" }, campfire146!.LocationAllowlist);
         Assert.All(
             catalog.Targets.Where(target => target.TargetKind == DarkHandFireTargetKind.Campfire),
             target => Assert.Equal(DarkHandFireRuntimeTypeNames.Torch, target.RuntimeTypeFullName)
@@ -156,7 +153,9 @@ public sealed class DarkHandFireThiefAuthorityTests
             DarkHandFireReasonIds.TargetInvalid
         );
         AssertLoadFailure(
-            ReplaceFirst(shipped, "\"Enabled\": false", "\"Enabled\": true"),
+            // (BC)278 行 LocationAllowlist 为空，翻成启用行时必须被解析器拒绝；
+            // (BC)146 行已停用但保留 Farm allowlist，翻回启用是合法的恢复路径。
+            ReplaceAfter(shipped, "(BC)278", "\"Enabled\": false", "\"Enabled\": true"),
             DarkHandFireReasonIds.TargetInvalid
         );
         AssertLoadFailure(
@@ -713,6 +712,25 @@ public sealed class DarkHandFireThiefAuthorityTests
     private static string ReplaceFirst(string value, string oldValue, string newValue)
     {
         var index = value.IndexOf(oldValue, StringComparison.Ordinal);
+        Assert.True(index >= 0);
+        return value[..index] + newValue + value[(index + oldValue.Length)..];
+    }
+
+    /// <summary>把锚点（如某个 QualifiedItemId）之后第一处 oldValue 替换为 newValue。</summary>
+    private static string ReplaceAfter(
+        string value,
+        string anchor,
+        string oldValue,
+        string newValue
+    )
+    {
+        var anchorIndex = value.IndexOf(anchor, StringComparison.Ordinal);
+        Assert.True(anchorIndex >= 0);
+        var index = value.IndexOf(
+            oldValue,
+            anchorIndex + anchor.Length,
+            StringComparison.Ordinal
+        );
         Assert.True(index >= 0);
         return value[..index] + newValue + value[(index + oldValue.Length)..];
     }

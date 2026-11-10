@@ -14,8 +14,13 @@ namespace DontStarve.Display.UIElements;
 /// <summary>
 /// 绘制饥饿条和悬停数值；状态读取来自 HungerExtensions。
 /// </summary>
-internal class HungerBar : INonTimeRelatedUIElement
+internal class HungerBar : INonTimeRelatedUIElement, IHudStatusBarProvider
 {
+    private const string BarId = "hunger";
+    private const int HudLayoutOrder = 200;
+
+    public string HudBarId => BarId;
+
     private readonly HashSet<string> reportedFailures = new(StringComparer.Ordinal);
     private CultureInfo culture = CultureInfo.InvariantCulture;
 
@@ -28,23 +33,46 @@ internal class HungerBar : INonTimeRelatedUIElement
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => reportedFailures.Clear();
     }
 
+    public bool TryGetLayoutRequest(out HudBarLayoutRequest request)
+    {
+        if (!HungerExtensions.IsEnabled)
+        {
+            request = default;
+            return false;
+        }
+
+        request = new HudBarLayoutRequest(
+            BarId,
+            HudLayoutOrder,
+            TextureLoader.HungerContainerScaledWidth,
+            TextureLoader.HungerContainerScaledHeight
+        );
+        return true;
+    }
+
     public void Render(RenderingHudEventArgs e, UIRenderContext uiContext)
     {
-        if (!uiContext.ShowingHunger)
+        if (!uiContext.StatusBarBounds.HasValue)
             return;
+        var statusBarBounds = uiContext.StatusBarBounds.Value;
 
         var player = Game1.player;
         var hunger = player.GetHunger();
         var maxHunger = player.GetMaxHunger();
 
+        if (!HungerHudRules.TryCreateValues(hunger, maxHunger, out var values, out var reason))
+        {
+            ReportFailureOnce(reason);
+            return;
+        }
+
         if (
-            !HudDisplayRules.TryCreateHungerFrame(
-                uiContext.HudLayout.HungerBounds,
-                fillerWidth: TextureLoader.HungerFillerScaledWidth,
-                current: hunger,
-                maximum: maxHunger,
+            !HudStatusBarFrameRules.TryCreateFrame(
+                statusBarBounds,
+                TextureLoader.HungerFillerScaledWidth,
+                values.FillRatio,
                 out var frame,
-                out var reason
+                out reason
             )
         )
         {
@@ -66,11 +94,10 @@ internal class HungerBar : INonTimeRelatedUIElement
             Color.White
         );
 
-        var fillerPosition = HudDisplayRules.GetFillerPosition(containerBounds);
         // HungerFiller already contains #CEAF3D; a colored tint would multiply it again.
         spriteBatch.Draw(
             TextureLoader.HungerFiller,
-            new Vector2(fillerPosition.X, fillerPosition.Y),
+            new Vector2(frame.FillerPosition.X, frame.FillerPosition.Y),
             new Rectangle(
                 0,
                 0,
@@ -86,7 +113,7 @@ internal class HungerBar : INonTimeRelatedUIElement
         );
 
         var mousePoint = Game1.getMousePosition(true);
-        if (containerBounds.Contains(mousePoint.X, mousePoint.Y))
+        if (frame.HitBounds.Contains(mousePoint.X, mousePoint.Y))
         {
             var label = uiContext.Helper.Translation.Get("hunger-hud.label").ToString();
             var information = uiContext.Helper.Translation
@@ -95,8 +122,8 @@ internal class HungerBar : INonTimeRelatedUIElement
                     new
                     {
                         label,
-                        current = LocalizedValueFormatter.FormatWhole(frame.Current, culture),
-                        maximum = LocalizedValueFormatter.FormatWhole(frame.Maximum, culture),
+                        current = LocalizedValueFormatter.FormatWhole(values.Current, culture),
+                        maximum = LocalizedValueFormatter.FormatWhole(values.Maximum, culture),
                     }
                 )
                 .ToString();

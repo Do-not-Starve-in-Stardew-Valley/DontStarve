@@ -25,31 +25,33 @@ public sealed class MachineInteractionAdapterFactTests
         );
 
     [Fact]
-    public void ShippedCatalogEnablesOnlyVerifiedFarmLoomTransactions()
+    public void ShippedCatalogDisablesAllMachineTargetsPendingDarkHandRework()
     {
         var catalog = LoadShipped();
 
+        // 2026-11-10 设计师盘点：暗影之手机器目标行全部停用（含已验证的织布机 (BC)17）；
+        // 织布机行保留 Farm allowlist，但 AllowDelay/AllowThief 已按 schema 一并关闭，
+        // 恢复开关见 文档/当前在做计划/san值系统当前缺少的内容.md。
         Assert.True(catalog.IsAvailable);
         Assert.Equal(2, catalog.SchemaVersion);
         Assert.Equal(8, catalog.Targets.Count);
-        Assert.Equal(1, catalog.EnabledTargetCount);
-        var loom = Assert.Single(catalog.Targets.Where(target => target.Enabled));
-        Assert.Equal("(BC)17", loom.QualifiedItemId);
-        Assert.Equal(new[] { "Farm" }, loom.LocationAllowlist);
-        Assert.True(loom.AllowDelay);
-        Assert.True(loom.AllowThief);
+        Assert.Equal(0, catalog.EnabledTargetCount);
+        var loom = catalog.Find("(BC)17");
+        Assert.NotNull(loom);
+        Assert.Equal(new[] { "Farm" }, loom!.LocationAllowlist);
+        Assert.False(loom.AllowDelay);
+        Assert.False(loom.AllowThief);
         Assert.All(catalog.Targets, target => Assert.False(target.AllowEject));
-        Assert.All(
-            catalog.Targets.Where(target => !ReferenceEquals(target, loom)),
-            target => Assert.False(target.Enabled)
-        );
+        Assert.All(catalog.Targets, target => Assert.False(target.Enabled));
     }
 
     [Fact]
-    public void VerifiedShippedCapabilityAllowsDelayButKeepsEjectClosed()
+    public void SyntheticVerifiedCapabilityAllowsDelayButKeepsEjectClosed()
     {
+        // 行为验证改用合成启用 catalog：shipped catalog 停用后 capability 不再可用，
+        // 但"允许延迟、拒绝弹出"的 schema 语义由合成行继续锁定。
         var capability = MachineInteractionCapabilityGate.Evaluate(
-            LoadShipped(),
+            EnabledCatalog("(BC)17", MachineInteractionCategory.OrdinarySingleInputFinite, allowDelay: true, allowEject: false),
             MachineRuntimeEvidence.VerifiedStardew1615
         );
 
@@ -58,7 +60,7 @@ public sealed class MachineInteractionAdapterFactTests
             capability.Status
         );
         Assert.Equal(MachineInteractionReasonIds.Eligible, capability.Reason);
-        Assert.Equal(8, capability.CandidateTargetCount);
+        Assert.Equal(1, capability.CandidateTargetCount);
         Assert.Equal(1, capability.EnabledTargetCount);
         Assert.True(capability.CanCaptureSnapshot);
         Assert.True(capability.CanCommitDelay);
@@ -165,7 +167,9 @@ public sealed class MachineInteractionAdapterFactTests
             MachineInteractionReasonIds.TargetQualifiedIdDuplicated
         );
         AssertLoadFailure(
-            ReplaceFirst(shipped, "\"Enabled\": false", "\"Enabled\": true"),
+            // (BC)21 行 LocationAllowlist 为空，翻成启用行时必须被解析器拒绝；
+            // (BC)17 行已停用但保留 Farm allowlist，翻回启用是合法的恢复路径。
+            ReplaceAfter(shipped, "(BC)21", "\"Enabled\": false", "\"Enabled\": true"),
             MachineInteractionReasonIds.TargetInvalid
         );
     }
@@ -216,12 +220,9 @@ public sealed class MachineInteractionAdapterFactTests
         Assert.Equal(expected, snapshot.Category);
         Assert.False(snapshot.CanDelay);
         Assert.False(snapshot.CanEject);
-        Assert.Equal(
-            qualifiedItemId == "(BC)17"
-                ? MachineInteractionReasonIds.AuthorityRevisionUnavailable
-                : MachineInteractionReasonIds.TargetDisabled,
-            snapshot.Reason
-        );
+        // 2026-11-10 起 shipped catalog 全行停用（含织布机 (BC)17），捕获快照的
+        // reason 统一为 target-disabled；本测试锁定的拓扑分类（Category）语义不变。
+        Assert.Equal(MachineInteractionReasonIds.TargetDisabled, snapshot.Reason);
     }
 
     [Theory]
@@ -711,6 +712,29 @@ public sealed class MachineInteractionAdapterFactTests
     private static string ReplaceFirst(string value, string oldValue, string newValue)
     {
         var index = value.IndexOf(oldValue, StringComparison.Ordinal);
+        Assert.True(index >= 0);
+        return string.Concat(
+            value.AsSpan(0, index),
+            newValue,
+            value.AsSpan(index + oldValue.Length)
+        );
+    }
+
+    /// <summary>把锚点（如某个 QualifiedItemId）之后第一处 oldValue 替换为 newValue。</summary>
+    private static string ReplaceAfter(
+        string value,
+        string anchor,
+        string oldValue,
+        string newValue
+    )
+    {
+        var anchorIndex = value.IndexOf(anchor, StringComparison.Ordinal);
+        Assert.True(anchorIndex >= 0);
+        var index = value.IndexOf(
+            oldValue,
+            anchorIndex + anchor.Length,
+            StringComparison.Ordinal
+        );
         Assert.True(index >= 0);
         return string.Concat(
             value.AsSpan(0, index),

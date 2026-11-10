@@ -1,6 +1,5 @@
 #nullable enable
 
-using System.Collections.Generic;
 using System;
 using StardewModdingAPI;
 using StardewValley;
@@ -14,24 +13,8 @@ namespace DontStarve.Player.Stats.Sanity.SanityBehaviors;
 /// </summary>
 internal class Night : IPlayerTimeRelatedBehavior
 {
-    private const string SAVE_KEY = "DontStarve.Sanity.Night";
-    private readonly SanitySystemLifecycleCoordinator lifecycle;
-    private readonly PlayerTimeBehaviorState state = new();
-
-    internal Night(SanitySystemLifecycleCoordinator lifecycle)
+    public void Update(Farmer player, string playerKey, long time)
     {
-        this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
-    }
-
-    public void Update(Farmer player, long time)
-    {
-        if (
-            !PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(player, out var playerKey)
-            || lifecycle.IsPlayerInSleepContext(playerKey)
-            || !state.TryEnterMinute(playerKey, player.isInBed.Value)
-        )
-            return;
-
         var location = player.currentLocation;
         if (location == null)
             return;
@@ -65,38 +48,4 @@ internal class Night : IPlayerTimeRelatedBehavior
             player.ChangeSanity(-value, SanityChangeSource.Night);
     }
 
-    public void Sync(string playerKey, long time, long delta)
-    {
-        if (delta < 0)
-            state.AddRewindWait(playerKey, delta);
-    }
-
-    public void Load(IModHelper helper)
-    {
-        var data = helper.Data.ReadSaveData<NightData>(SAVE_KEY);
-        var legacyPlayerKey = PlayerTimeRelatedBehaviorPlayer.TryGetPlayerKey(
-            Game1.MasterPlayer,
-            out var playerKey
-        )
-            ? playerKey
-            : null;
-        state.Load(data?.Players, legacyPlayerKey, data?.Wait ?? 0);
-    }
-
-    public void Save(IModHelper helper)
-    {
-        helper.Data.WriteSaveData(
-            SAVE_KEY,
-            new NightData { Players = state.CaptureWaits() }
-        );
-    }
-
-    public void Reset() => state.Clear();
-}
-
-internal class NightData
-{
-    public long Wait { get; init; }
-
-    public Dictionary<string, long>? Players { get; init; }
 }

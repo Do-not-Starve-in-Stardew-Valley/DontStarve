@@ -1,42 +1,16 @@
 #nullable enable
 
-using StardewModdingAPI;
 using StardewValley;
 
 namespace DontStarve.Player.Stats;
 
 /// <summary>
-/// Sanity 等需要对每位玩家分别执行的分钟行为。
-/// ITimeAPI 仍只发布全局分钟；玩家维度在消费边界显式传入，避免依赖 Game1.player。
+/// Sanity 内部按单个玩家计算的分钟规则。玩家分钟的去重与阶段由
+/// <see cref="SurvivalStateTimeOwner{TPlayer}"/> 统一管理。
 /// </summary>
 internal interface IPlayerTimeRelatedBehavior
 {
-    void Init(IModHelper helper) { }
+    void Init(StardewModdingAPI.IModHelper helper) { }
 
-    void Update(Farmer player, long time);
-
-    void Sync(string playerKey, long time, long delta);
-
-    void Load(IModHelper helper);
-
-    void Save(IModHelper helper);
-
-    void Reset();
-}
-
-internal static class PlayerTimeRelatedBehaviorPlayer
-{
-    internal static bool TryGetPlayerKey(Farmer? player, out string playerKey)
-    {
-        if (player is null)
-        {
-            playerKey = string.Empty;
-            return false;
-        }
-
-        playerKey = Sanity.SanityPlayerKey.FromUniqueMultiplayerId(
-            player.UniqueMultiplayerID
-        );
-        return Sanity.SanityPlayerKey.IsCanonical(playerKey);
-    }
+    void Update(Farmer player, string playerKey, long time);
 }

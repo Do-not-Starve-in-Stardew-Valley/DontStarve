@@ -8,7 +8,7 @@
       "RuntimeTypeFullName": "StardewValley.Torch",
       "TargetKind": "Campfire",
       "OperationId": "dark-hand.fire-thief.extinguish.v1",
-      "Enabled": true,
+      "Enabled": false,
       "LocationAllowlist": ["Farm"],
       "Evidence": [
         "stardew-1.6.15-big-craftables-campfire",
@@ -16,7 +16,7 @@
         "stardew-1.6.15.24356-torch-check-for-action-safe-off-path",
         "stardew-1.6.15.24356-object-perform-remove-action-does-not-remove-location-object"
       ],
-      "Reason": "dark-hand.fire-target.verified-vanilla-torch-safe-off"
+      "Reason": "dark-hand.fire-target.disabled-pending-full-darkhand-rework"
     },
     {
       "Id": "stardew.campfire.278",

@@ -29,6 +29,7 @@ internal enum SanityChangeSource
     SanityDarknessSpecialDeath = 18,
     Garbage = 19,
     FlowerCollection = 20,
+    BathHouse = 21,
 }
 
 internal enum SanityChangeStatus

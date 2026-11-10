@@ -26,7 +26,7 @@
     "sanity.shadow-monster.terrorbeak.name": "Terrorbeak",
     "sanity-tooltip": "{{value}} Sanity",
     "sanity-tooltip.food-once": "{{value}} Sanity when eaten",
-    "sanity-tooltip.equipment-per-minute": "{{value}} Sanity per minute while equipped",
+    "sanity-tooltip.equipment-per-minute": "Sanity aura: {{value}}/min",
     "darkness-attack.prompt.entered": "You are in darkness!",
     "darkness-attack.prompt.warning": "Something in the darkness is rapidly approaching you!",
     "darkness-attack.prompt.resolved": "You have been attacked by the darkness!",

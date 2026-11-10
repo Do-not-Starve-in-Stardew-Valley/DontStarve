@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using DontStarve.Interface;
 using DontStarve.Player.Death;
+using DontStarve.Player.Stats;
 using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
 using DontStarve.Player.Stats.Sanity.PassOut;
@@ -25,6 +26,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private readonly IMonitor monitor;
     private readonly string modId;
     private readonly ITimeAPI timeApi;
+    private readonly SurvivalStateTimeOwner<Farmer> survivalTime;
     private readonly SanitySystemLifecycleCoordinator sanityLifecycle;
     private readonly Func<bool> sleepRecoveryBalanceProvider;
     private readonly Func<HungerDamageMode> hungerDamageModeProvider;
@@ -53,6 +55,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         IMonitor monitor,
         string modId,
         ITimeAPI timeApi,
+        SurvivalStateTimeOwner<Farmer> survivalTime,
         SanitySystemLifecycleCoordinator sanityLifecycle,
         SmapiPassOutReasonService passOutReasons,
         Func<bool> sleepRecoveryBalanceProvider,
@@ -66,6 +69,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             ? throw new ArgumentException("A mod ID is required.", nameof(modId))
             : modId;
         this.timeApi = timeApi ?? throw new ArgumentNullException(nameof(timeApi));
+        this.survivalTime = survivalTime
+            ?? throw new ArgumentNullException(nameof(survivalTime));
         this.sanityLifecycle = sanityLifecycle
             ?? throw new ArgumentNullException(nameof(sanityLifecycle));
         this.sleepRecoveryBalanceProvider = sleepRecoveryBalanceProvider
@@ -82,7 +87,6 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         passOutReasons.VoluntarySleepCommitted += OnVoluntarySleepCommitted;
 
         sanityLifecycle.BindSleepContext(IsPlayerInSleepContext);
-        HungerExtensions.BindSleepContext(IsPlayerInSleepContext);
 
         timeApi.OnUpdate.Add(OnMinuteUpdate);
         timeApi.OnSync.Add(OnSync);
@@ -156,6 +160,9 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         {
             foreach (var snapshot in message.Players)
             {
+                if (!snapshot.Active)
+                    survivalTime.EndSleep(snapshot.PlayerKey, snapshot.SessionId);
+
                 var local = Game1.player;
                 if (
                     local is not null
@@ -187,6 +194,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                             Phase = SleepPhase.BlackoutBatch,
                         };
                         nightInProgress = true;
+                        if (!survivalTime.SetSleepPhase(
+                            snapshot.PlayerKey,
+                            snapshot.SessionId,
+                            SurvivalStateTimePhase.BlackoutSleep
+                        ))
+                            LogOnce("sleep-client-blackout-survival-time-phase-rejected", LogLevel.Warn);
                     }
                     else if (snapshot.Phase == SleepPhase.Completed)
                         nightInProgress = true;
@@ -367,6 +380,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             return;
         }
 
+        survivalTime.ForgetPlayer(playerKey);
         if (Role == SleepAuthorityRole.Host)
         {
             active.Remove(playerKey);
@@ -401,7 +415,6 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         engineBridge.Dispose();
 
         sanityLifecycle.BindSleepContext(null);
-        HungerExtensions.BindSleepContext(null);
         ClearRuntimeOnly();
     }
 
@@ -473,6 +486,18 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 LogOnce("sleep-save-player-is-unavailable", LogLevel.Error);
                 continue;
             }
+            if (!survivalTime.CanAdvanceSleepInterval(
+                input.PlayerKey,
+                farmer,
+                input.SessionId,
+                input.BlackoutStartMinute,
+                input.TargetMinute,
+                SurvivalStateTimePhase.BlackoutSleep
+            ))
+            {
+                LogOnce("sleep-blackout-survival-time-interval-rejected", LogLevel.Error);
+                continue;
+            }
             if (input.RecoveryBalance.SanityEnabled)
             {
                 var sanity = farmer.SetSanity(result.Sanity, SanityChangeSource.VoluntarySleep);
@@ -488,6 +513,21 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 HungerExtensions.ResumeAfterSleep(farmer);
             }
             ApplyFinalHealth(farmer, result);
+            // Register the blackout interval only after the existing joint result has been applied;
+            // rejected Sanity writes can then retry Saving without consuming the owner phase first.
+            if (!survivalTime.AdvanceSleepInterval(
+                input.PlayerKey,
+                farmer,
+                input.SessionId,
+                input.BlackoutStartMinute,
+                input.TargetMinute,
+                SurvivalStateTimePhase.BlackoutSleep,
+                out _
+            ))
+            {
+                LogOnce("sleep-blackout-survival-time-commit-rejected", LogLevel.Error);
+                continue;
+            }
             committedPlayers.Add(input.PlayerKey);
             if (active.TryGetValue(input.PlayerKey, out var entry))
             {
@@ -563,6 +603,16 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             }
             entry.BlackoutStartMinute = blackoutStart;
             entry.Context = entry.Context.EnterBlackout(blackoutStart);
+            if (!survivalTime.SetSleepPhase(
+                entry.PlayerKey,
+                entry.Context.SessionId,
+                SurvivalStateTimePhase.BlackoutSleep
+            ))
+            {
+                LogOnce("sleep-blackout-survival-time-phase-rejected", LogLevel.Error);
+                CancelAttempt(entry.PlayerKey, entry.AttemptId);
+                continue;
+            }
             LogRuntimeDiagnostic($"sleep.runtime.night-prepared player={entry.PlayerKey} start={blackoutStart} target={snapshot.TargetMinute}");
             PublishHostSnapshot(entry);
         }
@@ -575,6 +625,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         PrunePendingWakeDeaths();
         MarkPendingWakeDeaths();
         nightInProgress = false;
+        survivalTime.EndAllSleepContexts();
         active.Clear();
         pendingAttempts.Clear();
         clientSleeping.Clear();
@@ -619,6 +670,20 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 farmer.health,
                 entry.Snapshot.MaximumHealth
             );
+            if (!survivalTime.AdvanceSleepInterval(
+                entry.PlayerKey,
+                farmer,
+                entry.Context.SessionId,
+                before.LastProcessedMinute,
+                time,
+                SurvivalStateTimePhase.RealtimeSleep,
+                out _
+            ))
+            {
+                LogOnce("sleep-realtime-survival-time-interval-rejected", LogLevel.Error);
+                CancelAttempt(entry.PlayerKey, entry.AttemptId);
+                continue;
+            }
             var snapshot = entry.Snapshot with
             {
                 Hunger = farmer.GetHunger(),
@@ -935,6 +1000,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             LogOnce(reason, LogLevel.Warn);
             return;
         }
+        if (!survivalTime.BeginSleep(playerKey, context.SessionId))
+        {
+            contextState.TryInterrupt(playerKey, context.SessionId, out _);
+            LogOnce("sleep-survival-time-context-rejected", LogLevel.Error);
+            return;
+        }
         var entry = new ActiveSleep(
             playerKey,
             attemptId,
@@ -960,6 +1031,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             LogOnce(reason, LogLevel.Warn);
             return;
         }
+        if (!survivalTime.BeginSleep(playerKey, context.SessionId))
+        {
+            contextState.TryInterrupt(playerKey, context.SessionId, out _);
+            LogOnce("sleep-survival-time-context-rejected", LogLevel.Error);
+            return;
+        }
         active[playerKey] = new ActiveSleep(
             playerKey,
             attemptId,
@@ -980,6 +1057,16 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             LastProcessedMinute = entry.BlackoutStartMinute,
             Phase = SleepPhase.BlackoutBatch,
         };
+        if (!survivalTime.SetSleepPhase(
+            entry.PlayerKey,
+            entry.Context.SessionId,
+            SurvivalStateTimePhase.BlackoutSleep
+        ))
+        {
+            LogOnce("sleep-blackout-survival-time-phase-rejected", LogLevel.Error);
+            CancelAttempt(entry.PlayerKey, entry.AttemptId);
+            return;
+        }
         PublishHostSnapshot(entry);
     }
 
@@ -1139,8 +1226,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private void CancelAttempt(string playerKey, string attemptId)
     {
         var hadSleepContext = active.ContainsKey(playerKey) || clientSleeping.Contains(playerKey);
-        if (Role == SleepAuthorityRole.Host && active.TryGetValue(playerKey, out var entry))
-            PublishHostSnapshot(entry, activeValue: false);
+        if (active.TryGetValue(playerKey, out var entry))
+        {
+            survivalTime.EndSleep(playerKey, entry.Context.SessionId);
+            if (Role == SleepAuthorityRole.Host)
+                PublishHostSnapshot(entry, activeValue: false);
+        }
         transportState.CancelAttempt(playerKey, SessionId, attemptId, out _);
         pendingAttempts.Remove(playerKey);
         active.Remove(playerKey);
@@ -1161,6 +1252,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         committedPlayers.Clear();
         ownerHealth.Clear();
         nightInProgress = false;
+        survivalTime.ClearSession();
     }
 
     internal long KnownRevision(string playerKey) =>

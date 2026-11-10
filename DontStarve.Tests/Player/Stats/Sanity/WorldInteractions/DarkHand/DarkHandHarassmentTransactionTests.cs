@@ -40,9 +40,17 @@ public sealed class DarkHandHarassmentTransactionTests
         );
 
     [Fact]
-    public void VerifiedShippedProductionAllowsDelayAndRejectsMissingTarget()
+    public void SyntheticVerifiedProductionAllowsDelayAndRejectsMissingTarget()
     {
-        var catalog = LoadShipped();
+        // 行为验证改用合成启用 catalog：shipped catalog 于 2026-11-10 整体停用
+        // （dark-hand-machines.json 全行 Enabled=false），不再充当授权数据源；
+        // "允许延迟、目标缺失必须拒绝"的事务语义由合成行继续锁定。
+        var catalog = EnabledCatalog(
+            "(BC)17",
+            MachineInteractionCategory.OrdinarySingleInputFinite,
+            allowDelay: true,
+            allowEject: false
+        );
         var capability = MachineInteractionCapabilityGate.Evaluate(
             catalog,
             MachineRuntimeEvidence.VerifiedStardew1615

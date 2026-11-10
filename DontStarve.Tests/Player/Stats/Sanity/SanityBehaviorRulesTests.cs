@@ -446,10 +446,46 @@ public sealed class SanityBehaviorRulesTests
                 SanityChangeSource.ExhaustionPassOut,
                 SanityChangeSource.HealthDeath,
                 SanityChangeSource.SanityDarknessSpecialDeath,
+                SanityChangeSource.BathHouse,
             }
         )
         {
             Assert.False(SanityRequestPolicy.For(source).ClientRequestAllowed);
         }
+    }
+
+    [Theory]
+    [InlineData(true, true, 1d)]
+    [InlineData(true, false, 0d)]
+    [InlineData(false, true, 0d)]
+    [InlineData(false, false, 0d)]
+    public void BathHouseRecoveryRequiresBathHousePoolAndSwimming(
+        bool isBathHousePool,
+        bool isSwimming,
+        double expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            SanityBehaviorRules.CalculateBathHouseRecovery(
+                isBathHousePool,
+                isSwimming
+            )
+        );
+    }
+
+    [Fact]
+    public void BathHouseRecoveryAddsOnePointPerMinuteTimeTick()
+    {
+        var timeline = new MinuteTimeTimeline();
+        var recovered = 0d;
+        timeline.OnUpdate.Add(_ =>
+            recovered += SanityBehaviorRules.CalculateBathHouseRecovery(true, true)
+        );
+
+        timeline.Load(100);
+        timeline.Synchronize(101);
+
+        Assert.Equal(1d, recovered);
     }
 }

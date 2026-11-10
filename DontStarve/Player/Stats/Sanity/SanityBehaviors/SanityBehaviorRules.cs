@@ -151,6 +151,14 @@ internal static class SanityBehaviorRules
         return locationKind == MineSanityLocationKind.Other;
     }
 
+    internal static double CalculateBathHouseRecovery(
+        bool isBathHousePool,
+        bool isSwimming
+    )
+    {
+        return isBathHousePool && isSwimming ? 1d : 0d;
+    }
+
     internal static bool ShouldApplyMonsterSanityLoss(
         bool isHostileShadow,
         string? assetBindingId,

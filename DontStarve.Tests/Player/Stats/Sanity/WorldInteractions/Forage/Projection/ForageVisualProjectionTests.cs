@@ -66,21 +66,23 @@ public sealed class ForageVisualProjectionTests
     }
 
     [Fact]
-    public void ShippedCatalogEnablesOneGroundObjectProjectionMapping()
+    public void ShippedCatalogHasNoGroundObjectProjectionMappingUntilForageRework()
     {
         var load = ForageReplacementCatalog.Load(File.ReadAllText(ShippedCatalogPath));
         Assert.True(load.IsAvailable, load.Reason);
 
         var capability = ForageGroundProjectionCapabilityGate.Evaluate(load.Catalog);
 
+        // 2026-11-10 设计师盘点：觅食替换三行全部停用，地面投影能力随之关闭；
+        // 恢复开关见 文档/当前在做计划/san值系统当前缺少的内容.md。
         Assert.Equal(
-            ForageGroundProjectionCapabilityStatus.Available,
+            ForageGroundProjectionCapabilityStatus.DisabledNoEnabledMappings,
             capability.Status
         );
-        Assert.Equal(1, capability.EnabledMappingCount);
-        Assert.True(capability.CanProjectGroundObjects);
+        Assert.Equal(0, capability.EnabledMappingCount);
+        Assert.False(capability.CanProjectGroundObjects);
         Assert.Equal(
-            ForageVisualProjectionReasonIds.GroundMappingsAvailable,
+            ForageVisualProjectionReasonIds.NoEnabledGroundMappings,
             capability.Reason
         );
     }

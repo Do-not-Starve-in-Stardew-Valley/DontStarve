@@ -594,8 +594,14 @@ public sealed class HostileShadowRuntimeBoundaryTests
     public void Stage_03_bridges_nonlethal_hits_after_sync_and_force_cleans_world_audio()
     {
         var world = Contract("SmapiHostileShadowWorldRuntime.cs");
-        var modEntry = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "Contracts", "ShadowProjection", "ModEntry.cs")
+        // 2026-11-13 受击桥接/世界音频清理实现在 ShadowCreatureSmapiSfxService 中（整类搬出 ModEntry.cs），快照跟随新文件。
+        var sfxService = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Contracts",
+                "ShadowProjection",
+                "ShadowCreatureSmapiSfxService.cs"
+            )
         );
         var hit = Slice(
             world,
@@ -612,9 +618,9 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.Contains("ResolvePendingLethalDamage", world, StringComparison.Ordinal);
         Assert.Contains("ConfirmHostileDeath", world, StringComparison.Ordinal);
         Assert.Contains("RemoveOwner(", world, StringComparison.Ordinal);
-        Assert.Contains("NotifyHostileHit(", modEntry, StringComparison.Ordinal);
-        Assert.Contains("ForceRemoveAll(", modEntry, StringComparison.Ordinal);
-        Assert.Contains("coordinator.ForceRemoveAll", modEntry, StringComparison.Ordinal);
+        Assert.Contains("NotifyHostileHit(", sfxService, StringComparison.Ordinal);
+        Assert.Contains("ForceRemoveAll(", sfxService, StringComparison.Ordinal);
+        Assert.Contains("coordinator.ForceRemoveAll", sfxService, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -26,7 +26,8 @@ public sealed class SeedEdibilityRuntimeContractTests
     [Fact]
     public void XnaShadowCreatureInstanceForwardsLoopingToTheNativeInstance()
     {
-        var source = ReadContract("ShadowProjection", "ModEntry.cs");
+        // 2026-11-13 嵌套实例类随 ShadowCreatureSmapiSfxService 整类搬出 ModEntry.cs，快照跟随新文件。
+        var source = ReadContract("ShadowProjection", "ShadowCreatureSmapiSfxService.cs");
         var adapter = ExtractBlock(source, "private sealed class XnaShadowCreatureSfxInstance");
 
         Assert.Contains("get => instance.LoopCount != 0", adapter, StringComparison.Ordinal);

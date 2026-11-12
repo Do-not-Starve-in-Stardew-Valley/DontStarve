@@ -568,6 +568,10 @@
     <None Include="..\DontStarve\ModEntry.cs" Link="Contracts\ShadowProjection\ModEntry.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 2026-11-13 影怪音效服务整类搬出 ModEntry.cs（纯搬运），其源码契约快照跟随新文件。 -->
+    <None Include="..\DontStarve\Player\Stats\Sanity\Audio\ShadowCreatureSmapiSfxService.cs" Link="Contracts\ShadowProjection\ShadowCreatureSmapiSfxService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\WorldInteractions\Forage\SmapiForageVisualProjectionService.cs" Link="Contracts\ForageProjection\SmapiForageVisualProjectionService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

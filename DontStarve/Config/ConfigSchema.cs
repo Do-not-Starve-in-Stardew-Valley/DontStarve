@@ -25,8 +25,11 @@ internal static class ConfigKeys
     internal const string EnableJunimoBlessing = "EnableJunimoBlessing";
     internal const string EnableDangerMinigameBlocking =
         "EnableDangerMinigameBlocking";
+    internal const string EnableStatusFeedbackSounds = "EnableStatusFeedbackSounds";
     internal const string EnableDawnDuskMusic = "EnableDawnDuskMusic";
     internal const string EnableActivityMusic = "EnableActivityMusic";
+    internal const string EnableDontStarveHealth = "EnableDontStarveHealth";
+    internal const string EnableHealthEffectBalance = "EnableHealthEffectBalance";
 
     private static readonly HashSet<string> FrozenKeys = new(
         new[]
@@ -46,8 +49,11 @@ internal static class ConfigKeys
             MonsterDifficultyProfile,
             EnableJunimoBlessing,
             EnableDangerMinigameBlocking,
+            EnableStatusFeedbackSounds,
             EnableDawnDuskMusic,
             EnableActivityMusic,
+            EnableDontStarveHealth,
+            EnableHealthEffectBalance,
         },
         StringComparer.Ordinal
     );

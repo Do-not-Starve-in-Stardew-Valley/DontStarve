@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using DontStarve.Display;
+using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -36,6 +37,7 @@ internal sealed class MinigameDangerGateService : IDisposable
     private const int NearbyMonsterDistanceTiles = 20;
     private const long DuplicateMessageWindowTicks = 15;
     private const string BlockedMessageKey = "minigame-danger-blocked";
+    private const string StarvingBlockedMessageKey = "minigame-danger-blocked-starving";
     private const string AbigailStoryEventAssetName = "Data\\Events\\SeedShop";
     private const string AbigailStoryEventId = "1";
     private const string AbigailStoryCutsceneCommand = "cutscene AbigailGame";
@@ -284,7 +286,7 @@ internal sealed class MinigameDangerGateService : IDisposable
         if (decision.Allowed)
             return true;
         if (notify)
-            ShowBlockedMessage();
+            ShowBlockedMessage(decision.Reason);
         monitor.Log(
             $"Danger minigame blocked ({game}, reason={decision.Reason}).",
             LogLevel.Trace
@@ -310,10 +312,22 @@ internal sealed class MinigameDangerGateService : IDisposable
             storyException,
             nearbyMonster,
             hostileShadowTargeting,
+            IsStarving(player),
             isMultiplayer,
             multiplayerDanger,
             multiplayerStateAvailable
         );
+    }
+
+    /// <summary>
+    /// 饥饿 0 视为危险，与睡眠危险确认同一条口径：饥饿系统关闭时不判定，
+    /// 避免关闭饥饿后存档残留的 0 值误拦小游戏。数值边界共用 HungerStarvationRules。
+    /// </summary>
+    private static bool IsStarving(Farmer player)
+    {
+        if (!HungerExtensions.IsEnabled)
+            return false;
+        return HungerStarvationRules.IsStarving(player.GetHunger());
     }
 
     private bool TryGetDangerState(Farmer player, out bool danger)
@@ -381,7 +395,7 @@ internal sealed class MinigameDangerGateService : IDisposable
             && AbigailGame.playingWithAbigail;
     }
 
-    private void ShowBlockedMessage()
+    private void ShowBlockedMessage(MinigameDangerReason reason)
     {
         var currentTick = (long)Game1.ticks;
         if (
@@ -391,9 +405,14 @@ internal sealed class MinigameDangerGateService : IDisposable
             return;
         lastBlockedMessageTick = currentTick;
 
-        var translated = helper.Translation.Get(BlockedMessageKey);
+        var translated = helper.Translation.Get(ResolveBlockedMessageKey(reason));
         Game1.addHUDMessage(new HUDMessage(translated, HUDMessage.error_type));
     }
+
+    private static string ResolveBlockedMessageKey(MinigameDangerReason reason) =>
+        reason == MinigameDangerReason.Starving
+            ? StarvingBlockedMessageKey
+            : BlockedMessageKey;
 
     private static bool Consume(ref bool result)
     {

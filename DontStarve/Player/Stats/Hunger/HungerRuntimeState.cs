@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 
 namespace DontStarve.Player.Stats.Hunger;
 
@@ -417,7 +418,17 @@ internal sealed class HungerChangeService : IHungerDebugBackend
     private long nextClientNonce;
     private bool hostFoodCompletionPatchInstalled;
 
-    internal event Action<HungerPlayerSnapshot>? HostStateChanged;
+    /// <summary>
+    /// 主机一次真实结算的完整观察事实（种类、结算前值、结算后快照）。
+    /// 网络广播与状态反馈音效共用这一个结算出口，保证两者看到同一份事实。
+    /// </summary>
+    internal event Action<HungerSettlementObservation>? HostStateChanged;
+
+    /// <summary>
+    /// 客户端成功应用主机增量快照后的回放观察（仅 AppliedDelta、仅增量）。
+    /// 状态反馈音效据此对"自己请求被主机接受"的事实恰当地播一次音。
+    /// </summary>
+    internal event Action<HungerClientDeltaObservation>? ClientSnapshotApplied;
 
     internal event Action<HungerFoodChangeRequest>? ClientFoodRequestCreated;
 
@@ -514,9 +525,27 @@ internal sealed class HungerChangeService : IHungerDebugBackend
 
     internal HungerChangeResult SetHostValue(string playerKey, double value)
     {
+        return SetHostValue(playerKey, value, HungerChangeKind.Overtime);
+    }
+
+    /// <summary>
+    /// kind 标注该次写入的结算种类（默认 Overtime：历史调用方都是每分钟衰减/睡眠
+    /// 结算这类 overtime 写入）。反馈分类依赖该标注，新增调用方必须传准确种类。
+    /// </summary>
+    internal HungerChangeResult SetHostValue(
+        string playerKey,
+        double value,
+        HungerChangeKind kind
+    )
+    {
         if (IsDebugLocked)
             return HungerChangeResult.Rejected("hunger-change-locked-by-debug-command");
 
+        // 结算前值用于状态反馈方向判定；玩家尚不存在时（TrySetHostValue 内部首次
+        // ensure）没有可信前值，记 NaN——反馈端对非有限前值不播音，网络广播不受影响。
+        double previousCurrent = state.TryGetSnapshot(playerKey, out var previous)
+            ? previous.Current
+            : double.NaN;
         if (
             !state.TrySetHostValue(
                 playerKey,
@@ -528,12 +557,16 @@ internal sealed class HungerChangeService : IHungerDebugBackend
         )
             return HungerChangeResult.Rejected(reason);
 
-        PublishIfChanged(snapshot, changed);
+        PublishIfChanged(snapshot, changed, kind, previousCurrent);
         return HungerChangeResult.Applied(snapshot, changed, reason);
     }
 
     internal HungerChangeResult SetDebugValue(string playerKey, double value)
     {
+        // 结算前值同上：缺失基线时记 NaN，反馈端安全静音。
+        double previousCurrent = state.TryGetSnapshot(playerKey, out var previous)
+            ? previous.Current
+            : double.NaN;
         if (
             !state.TrySetHostValue(
                 playerKey,
@@ -545,7 +578,7 @@ internal sealed class HungerChangeService : IHungerDebugBackend
         )
             return HungerChangeResult.Rejected(reason);
 
-        PublishIfChanged(snapshot, changed);
+        PublishIfChanged(snapshot, changed, HungerChangeKind.Debug, previousCurrent);
         return HungerChangeResult.Applied(snapshot, changed, reason);
     }
 
@@ -606,7 +639,7 @@ internal sealed class HungerChangeService : IHungerDebugBackend
         )
             return HungerChangeResult.Rejected(reason);
 
-        PublishIfChanged(snapshot, changed);
+        PublishIfChanged(snapshot, changed, HungerChangeKind.Food, current.Current);
         return HungerChangeResult.Applied(snapshot, changed, reason);
     }
 
@@ -693,6 +726,23 @@ internal sealed class HungerChangeService : IHungerDebugBackend
 
     internal HungerSnapshotApplyResult ApplyClientSnapshot(HungerSnapshotMessage message)
     {
+        // 回放反馈的结算前值必须在应用前捕获；完整快照（入session/重连）不参与反馈。
+        HungerPlayerSnapshot? previousDeltaPlayer = null;
+        if (
+            state.Role == HungerAuthorityRole.Client
+            && message is { IsFull: false, Players.Count: 1 }
+        )
+        {
+            var incoming = message.Players[0];
+            if (
+                incoming is not null
+                && state.TryGetSnapshot(incoming.PlayerKey, out var before)
+            )
+            {
+                previousDeltaPlayer = before;
+            }
+        }
+
         var result = state.ApplyClientSnapshot(message);
         if (
             state.Role == HungerAuthorityRole.Client
@@ -704,17 +754,73 @@ internal sealed class HungerChangeService : IHungerDebugBackend
             HostFoodCompletionSupported = message.HostFoodCompletionSupported;
         }
 
+        if (
+            result.Status == HungerSnapshotApplyStatus.AppliedDelta
+            && previousDeltaPlayer is not null
+            && message is { Players.Count: 1 }
+        )
+        {
+            var applied = message.Players[0];
+            if (
+                applied is not null
+                && string.Equals(
+                    applied.PlayerKey,
+                    previousDeltaPlayer.PlayerKey,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                ClientSnapshotApplied?.Invoke(
+                    new HungerClientDeltaObservation(
+                        applied.PlayerKey,
+                        previousDeltaPlayer.Current,
+                        applied.Current,
+                        message.FeedbackHint,
+                        message.DeltaKind
+                    )
+                );
+            }
+        }
+
         return result;
     }
 
     internal HungerSaveData CaptureSaveData() => state.CaptureSaveData();
 
-    private void PublishIfChanged(HungerPlayerSnapshot snapshot, bool changed)
+    private void PublishIfChanged(
+        HungerPlayerSnapshot snapshot,
+        bool changed,
+        HungerChangeKind kind,
+        double previousCurrent
+    )
     {
         if (changed)
-            HostStateChanged?.Invoke(snapshot.Clone());
+            HostStateChanged?.Invoke(
+                new HungerSettlementObservation(kind, previousCurrent, snapshot.Clone())
+            );
     }
 }
+
+/// <summary>主机一次 Hunger 结算的观察事实（结算种类、前值、后快照）。</summary>
+internal readonly record struct HungerSettlementObservation(
+    HungerChangeKind Kind,
+    double PreviousCurrent,
+    HungerPlayerSnapshot Snapshot
+);
+
+/// <summary>
+/// 客户端一次成功应用的增量快照回放事实（仅 AppliedDelta 发布）。
+/// PreviousCurrent 是应用前本机已知值，供状态反馈判定方向与防双响。
+/// Kind 来自增量快照附加字段 DeltaKind：旧主机消息缺字段时为 Unknown，
+/// 消费端（进食恢复弹窗）必须按「不可弹」处理。
+/// </summary>
+internal readonly record struct HungerClientDeltaObservation(
+    string PlayerKey,
+    double PreviousCurrent,
+    double Current,
+    StatusFeedbackTriggerKind Hint,
+    HungerChangeKind Kind
+);
 
 internal sealed class HungerChangeResult
 {

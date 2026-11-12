@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Combat;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 
@@ -12,7 +13,7 @@ namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 internal sealed class HostileShadowSettlementService
 {
     internal const int MaximumReceipts = 256;
-    internal const int BonusRollScale = 10_000;
+    internal const int BonusRollScale = VanillaKillRingCatalog.RollScale;
 
     private readonly IHostileShadowSettlementRandom random;
     private readonly IHostileShadowDropSpawnAuthority dropAuthority;
@@ -274,194 +275,68 @@ internal sealed class HostileShadowSettlementService
         }
 
         var snapshot = ringSnapshot.Snapshot;
-        var warriorTriggers = 0;
-        var vampireRings = 0;
-        var savageRings = 0;
-        var soulSapperRings = 0;
-        var napalmRings = 0;
-        var ringIndex = 0;
-        foreach (var ringId in snapshot.EnumerateRingIds())
+        var sharedSnapshot = new VanillaKillRingSnapshot(
+            snapshot.MonsterSlayRingSequence,
+            snapshot.HasBurglarRing,
+            snapshot.HasMonsterBook,
+            snapshot.LuckLevel
+        );
+        VanillaKillRingEffectPlan ringPlan;
+        var sharedRandom = new HostileShadowVanillaKillRollRandom(this);
+        try
         {
-            switch (ringId)
-            {
-                case HostileShadowVanillaRingIds.HotJava:
-                    if (
-                        !TryNextRoll(
-                            HostileShadowSettlementSeed.CreateDerived(
-                                key,
-                                string.Concat("hot-java:", ringIndex, ":coffee")
-                            ),
-                            out var coffeeRoll,
-                            out rollReason
-                        )
-                    )
-                    {
-                        return RingRollFailure(
-                            request,
-                            seed,
-                            roll,
-                            baseQuantity,
-                            stacks,
-                            hitter,
-                            ringSnapshot,
-                            rollReason
-                        );
-                    }
-                    if (coffeeRoll < 2500)
-                    {
-                        stacks.Add(
-                            new HostileShadowDropStack(
-                                HostileShadowSettlementItemSemanticIds.Coffee,
-                                1
-                            )
-                        );
-                    }
-                    else if (
-                        !TryNextRoll(
-                            HostileShadowSettlementSeed.CreateDerived(
-                                key,
-                                string.Concat("hot-java:", ringIndex, ":espresso")
-                            ),
-                            out var espressoRoll,
-                            out rollReason
-                        )
-                    )
-                    {
-                        return RingRollFailure(
-                            request,
-                            seed,
-                            roll,
-                            baseQuantity,
-                            stacks,
-                            hitter,
-                            ringSnapshot,
-                            rollReason
-                        );
-                    }
-                    else if (espressoRoll < 1000)
-                    {
-                        stacks.Add(
-                            new HostileShadowDropStack(
-                                HostileShadowSettlementItemSemanticIds.TripleShotEspresso,
-                                1
-                            )
-                        );
-                    }
-                    break;
-
-                case HostileShadowVanillaRingIds.Warrior:
-                    if (
-                        !TryNextRoll(
-                            HostileShadowSettlementSeed.CreateDerived(
-                                key,
-                                string.Concat("warrior:", ringIndex)
-                            ),
-                            out var warriorRoll,
-                            out rollReason
-                        )
-                    )
-                    {
-                        return RingRollFailure(
-                            request,
-                            seed,
-                            roll,
-                            baseQuantity,
-                            stacks,
-                            hitter,
-                            ringSnapshot,
-                            rollReason
-                        );
-                    }
-                    if (
-                        warriorRoll / (double)BonusRollScale
-                        < 0.1d + snapshot.LuckLevel / 100d
-                    )
-                    {
-                        warriorTriggers++;
-                    }
-                    break;
-
-                case HostileShadowVanillaRingIds.Vampire:
-                    vampireRings++;
-                    break;
-                case HostileShadowVanillaRingIds.Savage:
-                    savageRings++;
-                    break;
-                case HostileShadowVanillaRingIds.SoulSapper:
-                    soulSapperRings++;
-                    break;
-                case HostileShadowVanillaRingIds.Napalm:
-                    napalmRings++;
-                    break;
-            }
-            ringIndex++;
+            ringPlan = VanillaKillRingRules.Plan(
+                sharedSnapshot,
+                1,
+                key.SettlementId,
+                sharedRandom
+            );
         }
-
-        if (snapshot.HasBurglarRing)
+        catch (VanillaKillRingPlanException exception)
         {
-            if (
-                !TryNextRoll(
-                    HostileShadowSettlementSeed.CreateDerived(key, "burglar"),
-                    out var burglarRoll,
-                    out rollReason
-                )
-            )
-            {
-                return RingRollFailure(
-                    request,
-                    seed,
-                    roll,
-                    baseQuantity,
+            stacks = CreateShadowDropStacks(
+                CreateSharedDropStacks(
                     stacks,
-                    hitter,
-                    ringSnapshot,
-                    rollReason
-                );
-            }
-            if ((burglarRoll / (double)BonusRollScale) < request.BonusChance)
-            {
-                stacks.Add(new HostileShadowDropStack(
-                    request.ItemSemanticId,
-                    request.GuaranteedQuantity + request.BonusQuantity
-                ));
-            }
-            else
-            {
-                // Burglar's Ring reruns the complete base table. A failed optional roll does not
-                // suppress the table's guaranteed part.
-                stacks.Add(new HostileShadowDropStack(
-                    request.ItemSemanticId,
-                    request.GuaranteedQuantity
-                ));
-            }
+                    exception.PartialPlan.DropItemIds
+                )
+            );
+            return RingRollFailure(
+                request,
+                seed,
+                roll,
+                baseQuantity,
+                stacks,
+                hitter,
+                ringSnapshot,
+                exception.Reason
+            );
         }
-
-        if (snapshot.HasMonsterBook)
+        try
         {
-            if (
-                !TryNextRoll(
-                    HostileShadowSettlementSeed.CreateDerived(key, "monster-book"),
-                    out var bookRoll,
-                    out rollReason
-                )
-            )
-            {
-                return RingRollFailure(
-                    request,
-                    seed,
-                    roll,
-                    baseQuantity,
-                    stacks,
-                    hitter,
-                    ringSnapshot,
-                    rollReason
-                );
-            }
-            if (bookRoll < 300)
-            {
-                var copy = stacks.ToArray();
-                stacks.AddRange(copy);
-            }
+            var dropPlan = VanillaKillRingRules.PlanDrops(
+                sharedSnapshot,
+                CreateSharedDropStacks(stacks, ringPlan.DropItemIds),
+                snapshot.HasBurglarRing
+                    ? new HostileShadowBurglarDropReroller(request)
+                    : null,
+                key.SettlementId,
+                sharedRandom
+            );
+            stacks = CreateShadowDropStacks(dropPlan.DropStacks);
+        }
+        catch (VanillaKillRingDropPlanException exception)
+        {
+            stacks = CreateShadowDropStacks(exception.PartialDropStacks);
+            return RingRollFailure(
+                request,
+                seed,
+                roll,
+                baseQuantity,
+                stacks,
+                hitter,
+                ringSnapshot,
+                exception.Reason
+            );
         }
 
         var drop = SpawnDrop(request, seed, roll, stacks, out var dropReason);
@@ -487,11 +362,11 @@ internal sealed class HostileShadowSettlementService
         var killEffects = ApplyKillEffects(
             request,
             hitter.PlayerKey,
-            vampireRings * 2,
-            soulSapperRings * 4,
-            warriorTriggers,
-            savageRings,
-            napalmRings
+            ringPlan.VampireHealth,
+            ringPlan.SoulSapperEnergy,
+            ringPlan.WarriorTriggerCount,
+            ringPlan.SavageTriggerCount,
+            ringPlan.NapalmExplosionCount
         );
         if (!IsValidKillEffectReceipt(killEffects, request, hitter.PlayerKey))
         {
@@ -725,6 +600,100 @@ internal sealed class HostileShadowSettlementService
                     exception.GetType().Name
                 )
             );
+        }
+    }
+
+    private static List<VanillaKillRingDropStack> CreateSharedDropStacks(
+        IReadOnlyList<HostileShadowDropStack> baseStacks,
+        IReadOnlyList<string> itemIds
+    )
+    {
+        var stacks = new List<VanillaKillRingDropStack>(
+            baseStacks.Count + itemIds.Count
+        );
+        foreach (var stack in baseStacks)
+            stacks.Add(new VanillaKillRingDropStack(stack.ItemSemanticId, stack.Quantity));
+        foreach (var itemId in itemIds)
+        {
+            stacks.Add(
+                new VanillaKillRingDropStack(
+                    SharedRingItemToSemanticId(itemId),
+                    1
+                )
+            );
+        }
+        return stacks;
+    }
+
+    private static List<HostileShadowDropStack> CreateShadowDropStacks(
+        IReadOnlyList<VanillaKillRingDropStack> stacks
+    )
+    {
+        var result = new List<HostileShadowDropStack>(stacks.Count);
+        foreach (var stack in stacks)
+            result.Add(new HostileShadowDropStack(stack.ItemId, stack.Quantity));
+        return result;
+    }
+
+    private static string SharedRingItemToSemanticId(string itemId)
+    {
+        return itemId switch
+        {
+            VanillaKillRingCatalog.CoffeeItemId
+                => HostileShadowSettlementItemSemanticIds.Coffee,
+            VanillaKillRingCatalog.TripleShotEspressoItemId
+                => HostileShadowSettlementItemSemanticIds.TripleShotEspresso,
+            _ => throw new InvalidOperationException(
+                string.Concat("Unknown shared kill-ring item ID: ", itemId)
+            ),
+        };
+    }
+
+    private sealed class HostileShadowBurglarDropReroller
+        : IVanillaKillBurglarDropReroller
+    {
+        private readonly HostileShadowSettlementRequest request;
+
+        internal HostileShadowBurglarDropReroller(
+            HostileShadowSettlementRequest request
+        )
+        {
+            this.request = request;
+        }
+
+        public IReadOnlyList<VanillaKillRingDropStack> Roll(
+            int seed,
+            IVanillaKillRollRandom random
+        )
+        {
+            var roll = random.NextRoll10000(seed);
+            var quantity = request.GuaranteedQuantity
+                + (
+                    roll / (double)VanillaKillRingCatalog.RollScale < request.BonusChance
+                        ? request.BonusQuantity
+                        : 0
+                );
+            return new[]
+            {
+                new VanillaKillRingDropStack(request.ItemSemanticId, quantity),
+            };
+        }
+    }
+
+    private sealed class HostileShadowVanillaKillRollRandom : IVanillaKillRollRandom
+    {
+        private readonly HostileShadowSettlementService owner;
+
+        internal HostileShadowVanillaKillRollRandom(HostileShadowSettlementService owner)
+        {
+            this.owner = owner;
+        }
+
+        public int NextRoll10000(int seed)
+        {
+            if (!owner.TryNextRoll(seed, out var roll, out var reason))
+                throw new InvalidOperationException(reason);
+            return roll;
         }
     }
 

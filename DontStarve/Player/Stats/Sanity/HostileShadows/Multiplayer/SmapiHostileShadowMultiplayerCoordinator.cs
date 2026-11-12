@@ -38,6 +38,31 @@ internal interface IHostileShadowAttackHitHandler
     );
 }
 
+internal interface IHostileShadowDamageCommandSender
+{
+    bool SendAttackDamageCommand(
+        ShadowAttackDamageCommand command,
+        long targetPlayerId,
+        out string reason
+    );
+}
+
+internal interface IHostileShadowDamageCommandHandler
+{
+    bool HandleAttackDamageCommand(
+        ShadowAttackDamageCommand command,
+        long senderPlayerId,
+        out ShadowAttackDamageResult result,
+        out string reason
+    );
+
+    bool HandleAttackDamageResult(
+        ShadowAttackDamageResult result,
+        long senderPlayerId,
+        out string reason
+    );
+}
+
 internal interface IHostileShadowPhysicalCapabilityHandler
 {
     HostileShadowPhysicalEntityCapability GetLocalPhysicalCapability();
@@ -85,7 +110,9 @@ internal interface IDarkHandInteractionTransportHandler
 /// SMAPI transport boundary for the host table. It never accepts client state/config and
 /// never turns a client message directly into a mutation without host context revalidation.
 /// </summary>
-internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
+internal sealed class SmapiHostileShadowMultiplayerCoordinator
+    : IHostileShadowDamageCommandSender,
+        IDisposable
 {
     internal const string FullSnapshotMessageType =
         "HostileShadow.StateSnapshot.v4";
@@ -104,6 +131,10 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         "HostileShadow.PushBoxResult.v1";
     internal const string AttackHitRequestMessageType =
         "HostileShadow.AttackHitRequest.v1";
+    internal const string AttackDamageCommandMessageType =
+        "HostileShadow.AttackDamageCommand.v1";
+    internal const string AttackDamageResultMessageType =
+        "HostileShadow.AttackDamageResult.v1";
     internal const string ConfigFingerprintMessageType =
         "HostileShadow.ConfigFingerprint.v1";
     internal const string DarkHandLeaseRequestMessageType =
@@ -132,6 +163,7 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
     private readonly IHostileShadowConversionRequestHandler conversionHandler;
     private readonly IHostileShadowAggroHintHandler aggroHintHandler;
     private readonly IHostileShadowAttackHitHandler attackHitHandler;
+    private readonly IHostileShadowDamageCommandHandler damageCommandHandler;
     private readonly IHostileShadowPhysicalCapabilityHandler physicalCapabilityHandler;
     private readonly ShadowStateRevisionStore clientStore = new();
     private readonly Dictionary<string, DarkHandInteractionLeaseInbox> leaseInboxes =
@@ -163,6 +195,7 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         IHostileShadowConversionRequestHandler conversionHandler,
         IHostileShadowAggroHintHandler aggroHintHandler,
         IHostileShadowAttackHitHandler attackHitHandler,
+        IHostileShadowDamageCommandHandler damageCommandHandler,
         IHostileShadowPhysicalCapabilityHandler physicalCapabilityHandler
     )
     {
@@ -187,6 +220,8 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
             ?? throw new ArgumentNullException(nameof(aggroHintHandler));
         this.attackHitHandler = attackHitHandler
             ?? throw new ArgumentNullException(nameof(attackHitHandler));
+        this.damageCommandHandler = damageCommandHandler
+            ?? throw new ArgumentNullException(nameof(damageCommandHandler));
         this.physicalCapabilityHandler = physicalCapabilityHandler
             ?? throw new ArgumentNullException(nameof(physicalCapabilityHandler));
 
@@ -610,6 +645,58 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
         return true;
     }
 
+    public bool SendAttackDamageCommand(
+        ShadowAttackDamageCommand command,
+        long targetPlayerId,
+        out string reason
+    )
+    {
+        reason = string.Empty;
+        if (disposed || !Game1.IsMasterGame)
+        {
+            reason = "hostile-shadow.damage-command-sender-not-host";
+            return false;
+        }
+
+        var target = Game1.GetPlayer(targetPlayerId, onlyOnline: true);
+        var targetKey = SanityPlayerKey.FromUniqueMultiplayerId(targetPlayerId);
+        if (
+            target is null
+            || !HostileShadowProtocol.IsValidAttackDamageCommand(
+                command,
+                targetKey,
+                authority.SessionId,
+                out reason
+            )
+        )
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "hostile-shadow.damage-command-target-unavailable";
+            return false;
+        }
+
+        try
+        {
+            helper.Multiplayer.SendMessage(
+                command,
+                AttackDamageCommandMessageType,
+                new[] { modId },
+                new[] { targetPlayerId }
+            );
+        }
+        catch (Exception exception)
+        {
+            reason = string.Concat(
+                "hostile-shadow.damage-command-send-failed-",
+                exception.GetType().Name
+            );
+            return false;
+        }
+
+        reason = "hostile-shadow.damage-command-sent";
+        return true;
+    }
+
     /// <summary>
     /// DarkHand target adapters request an owner-private lease through this existing hostile-shadow
     /// transport. The bound host handler still owns all target revalidation and world mutation.
@@ -1008,6 +1095,20 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
                 case AttackHitRequestMessageType:
                     DispatchByDirection(e, hostReceives: true, HandleAttackHit);
                     break;
+                case AttackDamageCommandMessageType:
+                    DispatchByDirection(
+                        e,
+                        hostReceives: false,
+                        HandleAttackDamageCommand
+                    );
+                    break;
+                case AttackDamageResultMessageType:
+                    DispatchByDirection(
+                        e,
+                        hostReceives: true,
+                        HandleAttackDamageResult
+                    );
+                    break;
                 case PhysicalCapabilityMessageType:
                     DispatchByDirection(
                         e,
@@ -1256,6 +1357,77 @@ internal sealed class SmapiHostileShadowMultiplayerCoordinator : IDisposable
                 request,
                 e.FromPlayerID,
                 out _,
+                out reason
+            )
+        )
+        {
+            LogMessage(e, reason, LogLevel.Trace);
+        }
+    }
+
+    private void HandleAttackDamageCommand(ModMessageReceivedEventArgs e)
+    {
+        var command = e.ReadAs<ShadowAttackDamageCommand>();
+        var host = Game1.MasterPlayer;
+        var localPlayer = Game1.player;
+        if (
+            command is null
+            ||
+            host is null
+            || localPlayer is null
+            || e.FromPlayerID != host.UniqueMultiplayerID
+        )
+        {
+            LogMessage(e, "hostile-shadow.damage-command-sender-invalid", LogLevel.Warn);
+            return;
+        }
+
+        var handled = damageCommandHandler.HandleAttackDamageCommand(
+            command!,
+            e.FromPlayerID,
+            out var result,
+            out var reason
+        );
+        if (!handled)
+            LogMessage(e, reason, LogLevel.Trace);
+
+        if (
+            result is not null
+            && HostileShadowProtocol.IsValidAttackDamageResult(
+                result,
+                SanityPlayerKey.FromUniqueMultiplayerId(
+                    localPlayer.UniqueMultiplayerID
+                ),
+                sessionIdProvider(),
+                out _
+            )
+        )
+        {
+            helper.Multiplayer.SendMessage(
+                result,
+                AttackDamageResultMessageType,
+                new[] { modId },
+                new[] { host.UniqueMultiplayerID }
+            );
+        }
+    }
+
+    private void HandleAttackDamageResult(ModMessageReceivedEventArgs e)
+    {
+        var result = e.ReadAs<ShadowAttackDamageResult>();
+        var expectedPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+            e.FromPlayerID
+        );
+        if (
+            !HostileShadowProtocol.IsValidAttackDamageResult(
+                result,
+                expectedPlayerKey,
+                authority.SessionId,
+                out var reason
+            )
+            || !damageCommandHandler.HandleAttackDamageResult(
+                result!,
+                e.FromPlayerID,
                 out reason
             )
         )

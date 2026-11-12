@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using StardewModdingAPI;
@@ -17,6 +18,7 @@ namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 internal sealed class SmapiHostileAttackCombatService
 {
     private const int MaximumDiagnosticEntries = 256;
+    private const int MaximumPendingRemoteDamageCommands = 256;
 
     // Attack diagnostics are deliberately bounded because this service runs on the fixed update
     // path. Re-enabling the command starts a fresh bounded sample for the next reproduction.
@@ -35,7 +37,11 @@ internal sealed class SmapiHostileAttackCombatService
     }
 
     private readonly HostileShadowAuthority authority;
+    private readonly SmapiInvincibilityFrameDamageService damageService;
     private readonly Action<string, LogLevel> log;
+    private IHostileShadowDamageCommandSender? remoteDamageTransport;
+    private readonly Dictionary<string, ShadowAttackDamageCommand>
+        pendingRemoteDamageCommands = new(StringComparer.Ordinal);
     // DIAG-20260806: 攻击命中但结算被拒时记录一次原因（去重，不刷屏），
     // 用于定位“受击传送后无法对玩家造成伤害”。
     private readonly BoundedDiagnosticSet loggedRejectedReasons = new();
@@ -60,12 +66,42 @@ internal sealed class SmapiHostileAttackCombatService
 
     internal SmapiHostileAttackCombatService(
         HostileShadowAuthority authority,
+        SmapiInvincibilityFrameDamageService damageService,
         Action<string, LogLevel> log
     )
     {
         this.authority = authority
             ?? throw new ArgumentNullException(nameof(authority));
+        this.damageService = damageService
+            ?? throw new ArgumentNullException(nameof(damageService));
         this.log = log ?? throw new ArgumentNullException(nameof(log));
+    }
+
+    internal bool BindRemoteDamageTransport(
+        IHostileShadowDamageCommandSender transport,
+        out string reason
+    )
+    {
+        if (transport is null)
+        {
+            reason = "hostile-shadow.damage-transport-null";
+            return false;
+        }
+
+        if (remoteDamageTransport is not null)
+        {
+            reason = "hostile-shadow.damage-transport-already-bound";
+            return false;
+        }
+
+        remoteDamageTransport = transport;
+        reason = "hostile-shadow.damage-transport-bound";
+        return true;
+    }
+
+    internal void ClearPendingRemoteDamage()
+    {
+        pendingRemoteDamageCommands.Clear();
     }
 
     internal void ProcessCurrentHits(
@@ -104,6 +140,29 @@ internal sealed class SmapiHostileAttackCombatService
                 string.Empty,
                 string.Empty,
                 LogLevel.Info
+            );
+            return;
+        }
+
+        // 激活帧必须能解析出唯一命中窗口（20261113 冻结决议 5）；解析失败按不变量违例
+        // fail-closed 跳过本帧结算，绝不退化成无窗口命中。
+        if (
+            !definition.TryGetWindowForFrame(
+                instance.FrameNumber,
+                out var preflightHitWindow
+            )
+            || preflightHitWindow is null
+        )
+        {
+            LogAttackPreflightDecision(
+                "hit-window-missing",
+                state.EntityId,
+                state.StateId,
+                instance.InstanceId,
+                instance.FrameNumber,
+                string.Empty,
+                string.Empty,
+                LogLevel.Warn
             );
             return;
         }
@@ -193,7 +252,12 @@ internal sealed class SmapiHostileAttackCombatService
                 );
                 continue;
             }
-            if (instance.HasSettledPlayer(playerId))
+            if (
+                instance.HasSettledPlayerInWindow(
+                    preflightHitWindow.WindowId,
+                    playerId
+                )
+            )
             {
                 LogAttackPreflightDecision(
                     "player-already-settled",
@@ -606,37 +670,215 @@ internal sealed class SmapiHostileAttackCombatService
         out HostileAttackReceipt receipt
     )
     {
+        // 命中窗口是策略的唯一来源：DamagePolicy 必须来自当前帧所属窗口的定义，
+        // 不允许任何调用方硬编码 Normal/Strong/Weak 绕过资源声明（冻结决议 6）。
+        if (
+            !definition.TryGetWindowForFrame(
+                instance.FrameNumber,
+                out var hitWindow
+            )
+            || hitWindow is null
+        )
+        {
+            receipt = Rejected(
+                request,
+                "hostile-shadow.attack-hit-window-missing"
+            );
+            return false;
+        }
+
+        var context = new HostileAttackHitContext
+        {
+            SessionId = authority.SessionId,
+            EntityId = state.EntityId,
+            CurrentEntityRevision = state.Revision,
+            LocationId = state.LocationId,
+            StateId = state.StateId,
+            CurrentFrameNumber = state.AttackFrameNumber,
+            TargetPlayerId = farmer.UniqueMultiplayerID,
+            Instance = instance,
+            Definition = definition,
+            AttackBox = attackBox,
+            TargetBox = targetBox,
+            AttackerStanding = attackerStanding,
+            TargetStanding = targetStanding,
+            // DIAG-20260807: MaximumRangePixels 改为攻击框覆盖范围（对角/2 + 玩家半宽余量）。
+            // 原值 AttackRangeTiles×64=128px，TryProcess 里的 IsWithinRange 会拒绝红框
+            // （320×320）偏外侧的命中——用户实测“只有贴着绿框才吃到 50 伤害”即此根因。
+            // 主策划裁定：红框区域=想要的实际伤害范围，红框相交即命中。
+            MaximumRangePixels = Math.Sqrt(
+                (attackBox.Width * attackBox.Width)
+                + (attackBox.Height * attackBox.Height)
+            ) / 2d + 128d,
+            Damage = profile.BaseDamage,
+            DamagePolicy = hitWindow.Policy,
+            HitWindowId = hitWindow.WindowId,
+        };
+
+        if (!farmer.IsLocalPlayer)
+        {
+            return TryDispatchRemoteHit(
+                monster,
+                farmer,
+                request,
+                expectedPlayerKey,
+                context,
+                out receipt
+            );
+        }
+
         return HostileAttackHitProcessor.TryProcess(
             request,
             expectedPlayerKey,
-            new HostileAttackHitContext
-            {
-                SessionId = authority.SessionId,
-                EntityId = state.EntityId,
-                CurrentEntityRevision = state.Revision,
-                LocationId = state.LocationId,
-                StateId = state.StateId,
-                CurrentFrameNumber = state.AttackFrameNumber,
-                TargetPlayerId = farmer.UniqueMultiplayerID,
-                Instance = instance,
-                Definition = definition,
-                AttackBox = attackBox,
-                TargetBox = targetBox,
-                AttackerStanding = attackerStanding,
-                TargetStanding = targetStanding,
-                // DIAG-20260807: MaximumRangePixels 改为攻击框覆盖范围（对角/2 + 玩家半宽余量）。
-                // 原值 AttackRangeTiles×64=128px，TryProcess 里的 IsWithinRange 会拒绝红框
-                // （320×320）偏外侧的命中——用户实测“只有贴着绿框才吃到 50 伤害”即此根因。
-                // 主策划裁定：红框区域=想要的实际伤害范围，红框相交即命中。
-                MaximumRangePixels = Math.Sqrt(
-                    (attackBox.Width * attackBox.Width)
-                    + (attackBox.Height * attackBox.Height)
-                ) / 2d + 128d,
-                Damage = profile.BaseDamage,
-            },
-            new SmapiHostileAttackDamageAdapter(farmer, monster),
+            context,
+            new SmapiHostileAttackDamageAdapter(
+                farmer,
+                monster,
+                damageService
+            ),
             out receipt
         );
+    }
+
+    private bool TryDispatchRemoteHit(
+        HostileShadowMonster monster,
+        Farmer farmer,
+        ShadowAttackHitRequest request,
+        string expectedPlayerKey,
+        HostileAttackHitContext context,
+        out HostileAttackReceipt receipt
+    )
+    {
+        if (remoteDamageTransport is null)
+        {
+            receipt = Rejected(
+                request,
+                "hostile-shadow.damage-transport-unavailable"
+            );
+            return false;
+        }
+
+        if (pendingRemoteDamageCommands.Count >= MaximumPendingRemoteDamageCommands)
+        {
+            receipt = Rejected(
+                request,
+                "hostile-shadow.damage-transport-pending-capacity"
+            );
+            return false;
+        }
+
+        if (
+            !HostileAttackHitProcessor.TryValidateAndClaim(
+                request,
+                expectedPlayerKey,
+                context,
+                out var validationReason
+            )
+        )
+        {
+            receipt = Rejected(request, validationReason);
+            return false;
+        }
+
+        var command = new ShadowAttackDamageCommand
+        {
+            SessionId = context.SessionId,
+            Nonce = request.Nonce,
+            EntityId = context.EntityId,
+            TargetPlayerKey = request.TargetPlayerKey,
+            LocationId = request.LocationId,
+            AttackInstanceId = request.AttackInstanceId,
+            ObservedEntityRevision = request.ObservedEntityRevision,
+            ObservedAttackInstanceRevision = request.ObservedAttackInstanceRevision,
+            ObservedFrameNumber = request.ObservedFrameNumber,
+            Damage = context.Damage,
+            PolicyMode = (int)context.DamagePolicy.Mode,
+            PolicyDurationMilliseconds = context.DamagePolicy.DurationMilliseconds,
+            HitWindowId = context.HitWindowId,
+        };
+        pendingRemoteDamageCommands[command.Nonce] = command;
+        if (
+            !remoteDamageTransport.SendAttackDamageCommand(
+                command,
+                farmer.UniqueMultiplayerID,
+                out var sendReason
+            )
+        )
+        {
+            pendingRemoteDamageCommands.Remove(command.Nonce);
+            receipt = Rejected(request, sendReason);
+            return false;
+        }
+
+        receipt = new HostileAttackReceipt(
+            request.AttackInstanceId,
+            request.EntityId,
+            request.TargetPlayerKey,
+            request.ObservedEntityRevision,
+            new HostileAttackResult(
+                HostileAttackReceiptStatus.PendingRemote,
+                context.Damage,
+                farmer.health,
+                farmer.health,
+                pipelineInvoked: false,
+                "hostile-shadow.attack-damage-command-pending"
+            )
+        );
+        return true;
+    }
+
+    internal bool TryHandleRemoteDamageResult(
+        ShadowAttackDamageResult result,
+        long senderPlayerId,
+        out string reason
+    )
+    {
+        var expectedPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+            senderPlayerId
+        );
+        if (
+            !HostileShadowProtocol.IsValidAttackDamageResult(
+                result,
+                expectedPlayerKey,
+                authority.SessionId,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+
+        if (!pendingRemoteDamageCommands.TryGetValue(result.Nonce, out var command))
+        {
+            reason = "hostile-shadow.damage-result-pending-command-missing";
+            return false;
+        }
+
+        if (
+            command.EntityId != result.EntityId
+            || command.ObservedEntityRevision != result.ObservedEntityRevision
+            || command.ObservedAttackInstanceRevision
+                != result.ObservedAttackInstanceRevision
+            || command.ObservedFrameNumber != result.ObservedFrameNumber
+            || !string.Equals(
+                command.LocationId,
+                result.LocationId,
+                StringComparison.Ordinal
+            )
+            || !string.Equals(
+                command.TargetPlayerKey,
+                result.TargetPlayerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            reason = "hostile-shadow.damage-result-command-mismatch";
+            return false;
+        }
+
+        pendingRemoteDamageCommands.Remove(result.Nonce);
+        reason = "hostile-shadow.damage-result-accepted";
+        return true;
     }
 
     internal static HostileAttackReceipt Rejected(

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Player.Stats.Food;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
 using StardewModdingAPI;
@@ -24,19 +25,22 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
     private readonly IMonitor monitor;
     private readonly string modId;
     private readonly SanityChangeService service;
+    private readonly ISanityStatusFeedbackSink? statusFeedbackSink;
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
 
     internal SmapiSanityMultiplayerCoordinator(
         IModHelper helper,
         IMonitor monitor,
         string modId,
-        SanityChangeService service
+        SanityChangeService service,
+        ISanityStatusFeedbackSink? statusFeedbackSink = null
     )
     {
         this.helper = helper;
         this.monitor = monitor;
         this.modId = modId;
         this.service = service;
+        this.statusFeedbackSink = statusFeedbackSink;
     }
 
     internal void Initialize()
@@ -45,6 +49,7 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
         helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
         helper.Events.Multiplayer.ModMessageReceived += OnModMessageReceived;
         service.HostStateChanged += OnHostStateChanged;
+        service.ClientSnapshotApplied += OnClientSnapshotApplied;
         service.ClientRequestCreated += OnClientRequestCreated;
     }
 
@@ -268,12 +273,26 @@ internal sealed class SmapiSanityMultiplayerCoordinator : ISanityRequestTruthSou
         if (service.Role != SanityAuthorityRole.Host)
             return;
 
+        var delta = service.CreateDeltaSnapshot(change.Snapshot);
+        // FeedbackHint 是协议事实（帮手客户端据此对自身离散变化播音一次），
+        // 与主机本机的反馈开关无关；sink 缺省时保持 Unknown=静音。
+        delta.FeedbackHint = statusFeedbackSink?.ResolveDeltaHint(change.Source)
+            ?? StatusFeedbackTriggerKind.Unknown;
+        // DeltaSource 是进食恢复弹窗的事实来源：客户端只在 Source=Food 且本机玩家时弹窗。
+        // 完整快照不带本字段（默认 Unknown=不弹），旧客户端忽略未知 JSON 字段。
+        delta.DeltaSource = change.Source;
         helper.Multiplayer.SendMessage(
-            service.CreateDeltaSnapshot(change.Snapshot),
+            delta,
             SnapshotMessageType,
             new[] { modId },
             null
         );
+    }
+
+    private void OnClientSnapshotApplied(SanityClientDeltaObservation observation)
+    {
+        // 客户端防双响：回放事实先经 sink 过滤（本机玩家 + Hint=Discrete）再播音。
+        statusFeedbackSink?.ObserveClientDelta(observation);
     }
 
     private void OnClientRequestCreated(SanityChangeRequest request)

@@ -1207,10 +1207,18 @@ internal sealed class SmapiForagePickupReplacementService : IDisposable
             return;
         }
 
+        // 1.6.15 的 GameLocation.checkAction 第二参数是 xTile 地图库自己的 Rectangle
+        // （xTile.Dimensions.Rectangle），不是 Microsoft.Xna.Framework.Rectangle——两者是
+        // 毫无继承关系的不同类型，用错会让 AccessTools 点名扑空，钩子按签名漂移 fail-closed。
         patchedCheckActionMethod = AccessTools.DeclaredMethod(
             typeof(GameLocation),
             nameof(GameLocation.checkAction),
-            new[] { typeof(TileLocation), typeof(Rectangle), typeof(Farmer) }
+            new[]
+            {
+                typeof(TileLocation),
+                typeof(xTile.Dimensions.Rectangle),
+                typeof(Farmer),
+            }
         );
         var transpilerMethod = AccessTools.DeclaredMethod(
             typeof(SmapiForagePickupReplacementService),

@@ -25,6 +25,8 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
     [InlineData("StardewValley.AnimalHouse", "Default", "Barn0001", "Barn", "vanilla.barn", true)]
     [InlineData("StardewValley.SlimeHutch", "Default", "SlimeHutch0001", "Slime Hutch", "vanilla.slime-hutch", true)]
     [InlineData("StardewValley.GameLocation", "Default", "Greenhouse", "", "vanilla.greenhouse", true)]
+    [InlineData("StardewValley.GameLocation", "Default", "Hospital", "", "vanilla.hospital", false)]
+    [InlineData("StardewValley.GameLocation", "Default", "HarveyRoom", "", "vanilla.harvey-room", false)]
     public void EveryRequiredVanillaLocationIsTwoAmSafeAndOtherSemanticsStayIndependent(
         string runtimeType,
         string contextId,
@@ -74,7 +76,6 @@ public sealed class TwoAmSpecialDeathLocationRuleTests
     }
 
     [Theory]
-    [InlineData("StardewValley.GameLocation", "Default", "Hospital", "")]
     [InlineData("Example.Mod.CustomLocation", "Example.Mod", "UnknownRoom", "")]
     [InlineData("Example.Mod.GreenhouseLocation", "Default", "Greenhouse", "")]
     [InlineData("StardewValley.AnimalHouse", "Default", "SVE_PremiumBarn0001", "FlashShifter.StardewValleyExpandedCP_PremiumBarn")]

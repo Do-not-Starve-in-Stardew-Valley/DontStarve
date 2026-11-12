@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Buff;
 using DontStarve.Config;
 using DontStarve.Debug;
@@ -619,6 +620,7 @@ internal class ModEntry : Mod, IDisposable
     private SmapiHostileShadowHost _hostileShadowHost;
     private MinigameDangerGateService _minigameDangerGate;
     private MinigameFishingInterruptionService _minigameFishingInterruption;
+    private HungerFishingCastGateService _hungerFishingCastGate;
     private SmapiEnvironmentLightFinalVisibilitySampler _environmentLightSampler;
     private SmapiNaturalDarknessLightmapService _naturalDarknessLightmap;
     private SmapiNpcFlashlightService _npcFlashlights;
@@ -629,6 +631,7 @@ internal class ModEntry : Mod, IDisposable
     private SmapiDarknessAttackResolutionService _darknessAttackResolution;
     private PlayerDeathCauseLedger _playerDeathCauseLedger;
     private PassOutReasonLedger _passOutReasonLedger;
+    private SpecialPassOutSanitySettlement _specialPassOutSanitySettlement;
     private SmapiPassOutReasonService _passOutReasonService;
     private SmapiSleepLifecycleAdapter _sleepLifecycle;
     private SmapiSanityTwoAmSpecialDeathService _sanityTwoAmPassOut;
@@ -647,6 +650,8 @@ internal class ModEntry : Mod, IDisposable
     private bool _sanityVignetteEnabled = true;
     private bool _naturalDarknessEnabled = true;
     private bool _dangerMinigameBlockingEnabled = true;
+    private bool _statusFeedbackSoundsEnabled = true;
+    private StatusFeedbackCoordinator? _statusFeedback;
 
     private bool IsNaturalDarknessRuntimeEnabled =>
         _sanitySystemEnabled && _naturalDarknessEnabled;
@@ -660,52 +665,7 @@ internal class ModEntry : Mod, IDisposable
     public override void Entry(IModHelper helper)
     {
         _config = ReadModConfig(helper);
-
-        SeedEdibilityRuntime.TryInstall(ModManifest.UniqueID, Monitor);
-        SeedEdibilityRuntime.SetEnabled(_seedEdibilityEnabled);
-        _seedEdibilityInteraction = new SeedEdibilityInteractionService(
-            helper,
-            Monitor,
-            () => _seedEdibilityEnabled
-        );
-
-        // 后续模块不要再从外部 mod 获取 MinuteTimeHelper；本项目的时间契约由内部 TimeApi 提供。
-        _timeApi.Initialize(helper);
-        TextureLoader.Initialize(helper);
-        MusicManager.Initialize(
-            helper,
-            Monitor,
-            ModManifest.UniqueID,
-            _config.EnableDawnDuskMusic,
-            _activityMusicEnabled
-        );
-        // SMAPI 只允许在所有 mod 初始化完成后获取其它 mod API，GMCM 注册必须延后到 GameLaunched。
-        helper.Events.GameLoop.GameLaunched += OnGameLaunched;
-        RecipeCategoryDisplayService.Initialize(helper, Monitor, ModManifest.UniqueID);
-        BuffManager.Initialize(helper, _timeApi, ModManifest.UniqueID);
-        _playerDeathCauseLedger = new PlayerDeathCauseLedger(Monitor);
-        _passOutReasonLedger = new PassOutReasonLedger();
-        _taggedHudMessages = new TaggedHudMessageService(helper);
-        _sanityLifecycle = StatManager.Initialize(
-            helper,
-            _timeApi,
-            Monitor,
-            ModManifest.UniqueID,
-            _taggedHudMessages,
-            _canWriteConfig ? _configurationRuntime.Resolver : null,
-            _passOutReasonLedger,
-            _playerDeathCauseLedger,
-            () => _hungerDamageMode,
-            out var hungerDebugController,
-            out _survivalStateTime
-        );
-        _trashCanSanity = new SmapiTrashCanSanityService(
-            Monitor,
-            ModManifest.UniqueID
-        );
-        _flowerCollectionSanity = new SmapiFlowerCollectionSanityService(
-            helper, Monitor, ModManifest.UniqueID, _sanityLifecycle
-        );
+        var hungerDebugController = InitializeCoreServices(helper);
         HungerExtensions.SetEnabled(_hungerSystemEnabled);
         DisplayManager.Initialize(helper, _timeApi, _sanityLifecycle);
         // EatFood/Wearing have already loaded their unique data tables through StatManager.
@@ -887,11 +847,13 @@ internal class ModEntry : Mod, IDisposable
         // engine adapters. They only capture a reason or settle 50% of the current Sanity max;
         // the 2:00 prefix remains the sole owner of the special darkness flow.
         _passOutReasonService = new SmapiPassOutReasonService(
+            helper,
             Monitor,
             ModManifest.UniqueID,
             _sanityLifecycle,
             _passOutReasonLedger
         );
+        _specialPassOutSanitySettlement = new SpecialPassOutSanitySettlement();
         _sleepLifecycle = new SmapiSleepLifecycleAdapter(
             helper,
             Monitor,
@@ -902,11 +864,12 @@ internal class ModEntry : Mod, IDisposable
             _passOutReasonService,
             () => _sleepRecoveryBalanceEnabled,
             () => _hungerDamageMode,
+            _specialPassOutSanitySettlement,
             _playerDeathCauseLedger.MarkHunger
         );
         // The 2:00 adapter consumes the same typed mode, location result, lifecycle authority,
-        // event overlay, audio coordinator and 10-03 Reduce receipt seam. It owns no duplicate
-        // config, location, health-floor, Sanity, session or physical-audio authority.
+        // event overlay, audio coordinator, death-cause ledger and sleep-settlement seam. It owns
+        // no duplicate config, location, Sanity, session or physical-audio authority.
         _sanityTwoAmPassOut = new SmapiSanityTwoAmSpecialDeathService(
             helper,
             Monitor,
@@ -917,10 +880,13 @@ internal class ModEntry : Mod, IDisposable
             junimoBlessingResolver,
             _environmentLightService,
             environmentLightLocationRules,
-            _darknessAttackResolution,
             _sanityEvents,
-            _sanityAudio
+            _sanityAudio,
+            _playerDeathCauseLedger,
+            _specialPassOutSanitySettlement,
+            _sleepLifecycle.RegisterHiddenHospitalDeath
         );
+        _sleepLifecycle.HiddenHospitalWakeReady += _sanityTwoAmPassOut.BeginHiddenHospitalHandoff;
         // 共享敌对态先注册为 owner-local 转换的唯一主机 sink。真实 Monster 只有在
         // NetCollection roundtrip、同版本 peer、共享视觉与 location 落点均成立时才生成。
         _hostileShadowHost = new SmapiHostileShadowHost(
@@ -973,6 +939,13 @@ internal class ModEntry : Mod, IDisposable
             ModManifest.UniqueID,
             () => _sanityLifecycle.SessionId,
             () => _dangerMinigameBlockingEnabled
+        );
+        // 饥饿 0 挥杆门：饥饿系统自己的边界，不受危险小游戏开关控制；已在进行的钓鱼
+        // 过程（BobberBar）不会被饥饿掉血中断，该边界由 SmapiHungerDamageExecutor 保持。
+        _hungerFishingCastGate = new HungerFishingCastGateService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID
         );
         IDarkHandModeResolver darkHandModeResolver = _canWriteConfig
             ? new TypedConfigDarkHandModeResolver(_configurationRuntime.Resolver)
@@ -1234,6 +1207,73 @@ internal class ModEntry : Mod, IDisposable
         );
     }
 
+    private HungerDebugController InitializeCoreServices(IModHelper helper)
+    {
+        SeedEdibilityRuntime.TryInstall(ModManifest.UniqueID, Monitor);
+        SeedEdibilityRuntime.SetEnabled(_seedEdibilityEnabled);
+        _seedEdibilityInteraction = new SeedEdibilityInteractionService(
+            helper,
+            Monitor,
+            () => _seedEdibilityEnabled
+        );
+
+        // 后续模块不要再从外部 mod 获取 MinuteTimeHelper；本项目的时间契约由内部 TimeApi 提供。
+        _timeApi.Initialize(helper);
+        TextureLoader.Initialize(helper);
+        MusicManager.Initialize(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _config.EnableDawnDuskMusic,
+            _activityMusicEnabled
+        );
+        // SMAPI 只允许在所有 mod 初始化完成后获取其它 mod API，GMCM 注册必须延后到 GameLaunched。
+        helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+        RecipeCategoryDisplayService.Initialize(helper, Monitor, ModManifest.UniqueID);
+        BuffManager.Initialize(helper, _timeApi, ModManifest.UniqueID);
+        // 状态反馈音效：跨系统模块（参照 Music 先例，独立于 Sanity manifest 治理）。
+        // 必须在 StatManager.Initialize 之前创建——其多人观察 seam（delta hint 解析）
+        // 随 Sanity/Hunger 构造注入，且始终生效，与本机播音开关无关。
+        // 播音本体（预解码实例 + 订阅）由 SetEnabled 按 GMCM 开关挂载。
+        _statusFeedback = new StatusFeedbackCoordinator(helper, Monitor);
+        _playerDeathCauseLedger = new PlayerDeathCauseLedger(Monitor);
+        _passOutReasonLedger = new PassOutReasonLedger();
+        _taggedHudMessages = new TaggedHudMessageService(helper);
+        var statManagerResult = StatManager.Initialize(
+            helper,
+            _timeApi,
+            Monitor,
+            ModManifest.UniqueID,
+            _taggedHudMessages,
+            _canWriteConfig ? _configurationRuntime.Resolver : null,
+            _passOutReasonLedger,
+            _playerDeathCauseLedger,
+            () => _hungerDamageMode,
+            out var hungerDebugController,
+            out _survivalStateTime,
+            _statusFeedback,
+            _statusFeedback
+        );
+        _sanityLifecycle = statManagerResult.Lifecycle;
+        _statusFeedback.AttachStatServices(
+            statManagerResult.Sanity.ChangeService,
+            statManagerResult.Hunger.ChangeService
+        );
+        // 启动即预解码六个实例（音乐服务同款挂载时机）；开关关闭则只保持 seam、不加载。
+        _statusFeedback.SetEnabled(_statusFeedbackSoundsEnabled);
+        _trashCanSanity = new SmapiTrashCanSanityService(
+            Monitor,
+            ModManifest.UniqueID
+        );
+        _flowerCollectionSanity = new SmapiFlowerCollectionSanityService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _sanityLifecycle
+        );
+        return hungerDebugController;
+    }
+
     internal static ShadowCreatureSmapiSfxService? ActiveShadowCreatureSfx { get; private set; }
 
     void IDisposable.Dispose()
@@ -1241,12 +1281,18 @@ internal class ModEntry : Mod, IDisposable
         // MusicManager owns Dawn/Dusk and activity audio instances. Stop it before releasing
         // other world resources so owner-local SoundEffectInstances cannot outlive the mod.
         MusicManager.DisableAll();
+        if (_vanillaSanityTooltip is not null)
+            _vanillaSanityTooltip.Dispose();
         _minigameFishingInterruption?.Dispose();
         _minigameFishingInterruption = null;
+        _hungerFishingCastGate?.Dispose();
+        _hungerFishingCastGate = null;
         _minigameDangerGate?.Dispose();
         _minigameDangerGate = null;
         _shadowCreatureSfx?.Dispose();
         _shadowCreatureSfx = null;
+        _statusFeedback?.Dispose();
+        _statusFeedback = null;
         _taggedHudMessages?.Dispose();
         _taggedHudMessages = null;
         _seedEdibilityInteraction?.Dispose();
@@ -1255,6 +1301,8 @@ internal class ModEntry : Mod, IDisposable
         _trashCanSanity = null;
         _flowerCollectionSanity?.Dispose();
         _flowerCollectionSanity = null;
+        if (_sleepLifecycle is not null && _sanityTwoAmPassOut is not null)
+            _sleepLifecycle.HiddenHospitalWakeReady -= _sanityTwoAmPassOut.BeginHiddenHospitalHandoff;
         _sleepLifecycle?.Dispose();
         _sleepLifecycle = null;
         _survivalStateTime?.Dispose();
@@ -1499,6 +1547,21 @@ internal class ModEntry : Mod, IDisposable
             {
                 Monitor.Log(
                     $"EnableDangerMinigameBlocking is unavailable ({dangerMinigameBlocking.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var statusFeedbackSounds = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableStatusFeedbackSounds
+            );
+            if (statusFeedbackSounds.HasValue)
+            {
+                _statusFeedbackSoundsEnabled = statusFeedbackSounds.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableStatusFeedbackSounds is unavailable ({statusFeedbackSounds.Reason}); using its safe runtime default without overwriting the raw value.",
                     LogLevel.Warn
                 );
             }
@@ -1788,6 +1851,22 @@ internal class ModEntry : Mod, IDisposable
         {
             Monitor.Log(
                 $"EnableDangerMinigameBlocking remains unavailable after GMCM save ({savedDangerMinigameBlocking.Reason}); the active minigame danger gate state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
+        var savedStatusFeedbackSounds = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableStatusFeedbackSounds
+        );
+        if (savedStatusFeedbackSounds.HasValue)
+        {
+            _statusFeedbackSoundsEnabled = savedStatusFeedbackSounds.Value;
+            _statusFeedback?.SetEnabled(savedStatusFeedbackSounds.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableStatusFeedbackSounds remains unavailable after GMCM save ({savedStatusFeedbackSounds.Reason}); the active status feedback state was left unchanged.",
                 LogLevel.Warn
             );
         }

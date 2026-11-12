@@ -82,4 +82,32 @@ public sealed class SleepWakeEffectsDataTests
             data.HungerDeathDays.Count
         );
     }
+
+    [Fact]
+    public void Hidden_hospital_markers_are_read_without_changing_legacy_hunger_markers()
+    {
+        var data = new SleepWakeEffectsData
+        {
+            HungerDeaths = new List<string> { "1" },
+            HiddenHospitalDeaths = new List<string> { "2" },
+            HiddenHospitalDeathDays = new Dictionary<string, int> { ["2"] = 100 },
+        };
+
+        Assert.Equal(new[] { "1" }, data.Normalize(currentDay: 100).Keys);
+        Assert.Equal(new[] { "2" }, data.NormalizeHiddenHospital(currentDay: 100).Keys);
+    }
+
+    [Fact]
+    public void From_writes_hidden_hospital_markers_with_the_same_bounded_retention()
+    {
+        var data = SleepWakeEffectsData.From(
+            new Dictionary<string, int> { ["1"] = 100 },
+            new Dictionary<string, int> { ["2"] = 100 },
+            currentDay: 100
+        );
+
+        Assert.Equal(new[] { "1" }, data.HungerDeaths);
+        Assert.Equal(new[] { "2" }, data.HiddenHospitalDeaths);
+        Assert.Equal(100, data.HiddenHospitalDeathDays["2"]);
+    }
 }

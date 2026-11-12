@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using DontStarve.Resource.Sanity;
 
@@ -103,9 +104,36 @@ internal sealed class HostileAttackMotionPolicy
     }
 }
 
+/// <summary>
+/// One independent hit window inside a single attack instance. Each window owns its
+/// invincibility policy; the hit ledger claims players per window, so different windows may
+/// hit the same player again while one window never does (20261113 冻结决议 5)。
+/// </summary>
+internal sealed class HostileAttackHitWindow
+{
+    internal const string LegacyWindowId =
+        SanityHostileAttackHitWindowRules.LegacyWindowId;
+
+    internal HostileAttackHitWindow(
+        string windowId,
+        InvincibilityFramePolicy policy,
+        IReadOnlyList<int> activeFrames
+    )
+    {
+        WindowId = windowId;
+        Policy = policy;
+        ActiveFrames = activeFrames;
+    }
+
+    internal string WindowId { get; }
+    internal InvincibilityFramePolicy Policy { get; }
+    internal IReadOnlyList<int> ActiveFrames { get; }
+}
+
 internal sealed class HostileAttackRuntimeDefinition
 {
     private readonly HashSet<int> activeFrames;
+    private readonly Dictionary<int, HostileAttackHitWindow> hitWindowByFrame;
 
     private HostileAttackRuntimeDefinition(
         string assetBindingId,
@@ -116,6 +144,7 @@ internal sealed class HostileAttackRuntimeDefinition
         int attackFrameCount,
         int attackFrameDurationMilliseconds,
         IReadOnlyList<int> activeFrames,
+        IReadOnlyList<HostileAttackHitWindow> hitWindows,
         HostileAttackPoint actorOriginSourcePx,
         HostileAttackPoint hurtPivotSourcePx,
         HostileAttackRectangle hurtBoxSourcePx,
@@ -137,6 +166,14 @@ internal sealed class HostileAttackRuntimeDefinition
         AttackFrameCount = attackFrameCount;
         AttackFrameDurationMilliseconds = attackFrameDurationMilliseconds;
         this.activeFrames = new HashSet<int>(activeFrames);
+        // 窗口帧互斥由 SanityHostileAttackHitWindowRules 保证；这里用 Add 而不是索引赋值，
+        // 违反互斥时立即抛错而不是静默覆盖（fail-fast，绝不把重复帧编码成期望行为）。
+        hitWindowByFrame = new Dictionary<int, HostileAttackHitWindow>();
+        foreach (var hitWindow in hitWindows)
+        {
+            foreach (var frame in hitWindow.ActiveFrames)
+                hitWindowByFrame.Add(frame, hitWindow);
+        }
         ActorOriginSourcePx = actorOriginSourcePx;
         HurtPivotSourcePx = hurtPivotSourcePx;
         HurtBoxSourcePx = hurtBoxSourcePx;
@@ -179,6 +216,19 @@ internal sealed class HostileAttackRuntimeDefinition
     internal bool IsActiveFrame(int frameNumber)
     {
         return activeFrames.Contains(frameNumber);
+    }
+
+    /// <summary>
+    /// Resolves the hit window that owns an active frame. Every active frame belongs to exactly
+    /// one window (implicit legacy window for old metadata), so an active frame without a window
+    /// is an invariant violation the caller must treat as fail-closed.
+    /// </summary>
+    internal bool TryGetWindowForFrame(
+        int frameNumber,
+        out HostileAttackHitWindow? window
+    )
+    {
+        return hitWindowByFrame.TryGetValue(frameNumber, out window);
     }
 
     internal static bool TryCreate(
@@ -263,6 +313,36 @@ internal sealed class HostileAttackRuntimeDefinition
             return false;
         }
 
+        if (
+            !SanityHostileAttackHitWindowRules.TryCreateWindows(
+                metadata.Collision.AttackActiveFrames,
+                metadata.Attack.FrameCount,
+                metadata.Collision.AttackHitWindows,
+                out var windowSources,
+                out reason
+            )
+        )
+        {
+            return false;
+        }
+
+        var hitWindows = new List<HostileAttackHitWindow>();
+        foreach (var windowSource in windowSources)
+        {
+            if (!TryConvertPolicy(windowSource, out var policy, out reason))
+            {
+                return false;
+            }
+
+            hitWindows.Add(
+                new HostileAttackHitWindow(
+                    windowSource.WindowId,
+                    policy,
+                    windowSource.ActiveFrames
+                )
+            );
+        }
+
         definition = new HostileAttackRuntimeDefinition(
             metadata.AssetBindingId,
             metadata.AnimationProfileId,
@@ -272,6 +352,7 @@ internal sealed class HostileAttackRuntimeDefinition
             metadata.Attack.FrameCount,
             metadata.Attack.FrameDurationMilliseconds,
             metadata.Collision.AttackActiveFrames,
+            hitWindows,
             new HostileAttackPoint(
                 metadata.Collision.ActorOriginSourcePx.X,
                 metadata.Collision.ActorOriginSourcePx.Y
@@ -307,6 +388,39 @@ internal sealed class HostileAttackRuntimeDefinition
             metadata.HitResponseVisual
         );
         reason = "hostile-shadow.attack-runtime-metadata-available";
+        return true;
+    }
+
+    private static bool TryConvertPolicy(
+        SanityHostileAttackHitWindowDefinition source,
+        out InvincibilityFramePolicy policy,
+        out string reason
+    )
+    {
+        // 资源层只携带字符串/整数，这里是唯一的策略值对象转换点；
+        // 未知名称一律 fail-closed，绝不降级成 Normal（那会静默放大无敌帧）。
+        switch (source.IFramePolicyMode)
+        {
+            case "Normal":
+                policy = InvincibilityFramePolicy.Normal;
+                break;
+            case "Strong":
+                policy = InvincibilityFramePolicy.Strong(
+                    source.IFramePolicyDurationMilliseconds
+                );
+                break;
+            case "Weak":
+                policy = InvincibilityFramePolicy.Weak(
+                    source.IFramePolicyDurationMilliseconds
+                );
+                break;
+            default:
+                policy = InvincibilityFramePolicy.Normal;
+                reason = "hostile-shadow.attack-runtime-hit-window-policy-unknown";
+                return false;
+        }
+
+        reason = "hostile-shadow.attack-runtime-hit-window-policy-available";
         return true;
     }
 }

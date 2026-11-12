@@ -2,6 +2,7 @@
 
 using System;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Display;
 using DontStarve.Player.Death;
 using DontStarve.Player.Stats.Food;
@@ -25,6 +26,8 @@ internal sealed class Hunger : IStat
     private readonly TaggedHudMessageService hudMessages;
     private readonly string modId;
     private readonly IMonitor monitor;
+    private readonly IHungerStatusFeedbackSink? statusFeedbackSink;
+    private readonly FoodRestoreHudMessenger? foodRestoreHud;
     private HungerDeathDialogueService? deathDialogue;
     private SmapiHungerMultiplayerCoordinator multiplayer = null!;
     private HungerPersistenceResult? persistenceSession;
@@ -36,7 +39,9 @@ internal sealed class Hunger : IStat
         string modId,
         TaggedHudMessageService hudMessages,
         PlayerDeathCauseLedger deathCauseLedger,
-        Func<HungerDamageMode>? damageModeProvider = null
+        Func<HungerDamageMode>? damageModeProvider = null,
+        IHungerStatusFeedbackSink? statusFeedbackSink = null,
+        FoodRestoreHudMessenger? foodRestoreHud = null
     )
     {
         this.monitor = monitor;
@@ -44,6 +49,10 @@ internal sealed class Hunger : IStat
         this.hudMessages = hudMessages ?? throw new ArgumentNullException(nameof(hudMessages));
         this.deathCauseLedger = deathCauseLedger
             ?? throw new ArgumentNullException(nameof(deathCauseLedger));
+        this.statusFeedbackSink = statusFeedbackSink;
+        // 进食恢复弹窗提交器与 statusFeedbackSink 同为可选装配 seam：null 只发生在
+        // 测试构造或裁剪装配下，此时弹窗整体缺席，不影响结算语义本身。
+        this.foodRestoreHud = foodRestoreHud;
         hungerCycle = new HungerCycle(
             changeService,
             monitor,
@@ -59,6 +68,12 @@ internal sealed class Hunger : IStat
     }
 
     internal HungerDebugController DebugController => debugController;
+
+    /// <summary>
+    /// Hunger 唯一结算出口。状态反馈音效经 ModEntry 订阅其结算/回放事件；
+    /// 除暴露只读订阅入口外不得改动结算语义。
+    /// </summary>
+    internal HungerChangeService ChangeService => changeService;
 
     public void Init(
         IModHelper helper,
@@ -94,11 +109,18 @@ internal sealed class Hunger : IStat
         );
         eatFood.Init(helper);
 
+        // 进食恢复弹窗只订阅结算事实（唯一结算出口的观察事件），不改结算语义。
+        // 主机路径与客机回放路径共用同一套 FoodRestoreHudRule 门控；旧主机消息缺
+        // DeltaKind 附加字段时门控为 false，fail-safe 不弹。
+        changeService.HostStateChanged += OnHungerSettlementObserved;
+        changeService.ClientSnapshotApplied += OnHungerClientDeltaObserved;
+
         multiplayer = new SmapiHungerMultiplayerCoordinator(
             helper,
             monitor,
             modId,
-            changeService
+            changeService,
+            statusFeedbackSink
         );
         multiplayer.Initialize();
 
@@ -214,6 +236,52 @@ internal sealed class Hunger : IStat
             var playerKey = FromPlayerId(player.UniqueMultiplayerID);
             changeService.TryEnsureHostPlayer(playerKey, out _, out _);
         }
+    }
+
+    private void OnHungerSettlementObserved(HungerSettlementObservation observation)
+    {
+        // 主机结算出口唯一：主机自己吃（Harmony doneEating postfix 与旧本地边沿最终都走
+        // ApplyFood）与远程农场工的请求重算都从这里发布事实。弹窗按「本机玩家 + Food 种类」
+        // 双门控——主机不替远程农场工弹，农场工的变化由农场工自己的机器经回放路径弹。
+        ShowHungerFoodRestoreHud(
+            new FoodRestoreHudGate(
+                IsLocalPlayerKey(observation.Snapshot.PlayerKey),
+                observation.Kind == HungerChangeKind.Food
+            ),
+            observation.PreviousCurrent,
+            observation.Snapshot.Current
+        );
+    }
+
+    private void OnHungerClientDeltaObserved(HungerClientDeltaObservation observation)
+    {
+        // 客机回放：只对本机玩家的 Food 增量弹窗。DeltaKind 为附加字段，旧主机消息缺字段
+        // 反序列化为 Unknown → 门控 false，不弹（fail-safe）。
+        ShowHungerFoodRestoreHud(
+            new FoodRestoreHudGate(
+                IsLocalPlayerKey(observation.PlayerKey),
+                observation.Kind == HungerChangeKind.Food
+            ),
+            observation.PreviousCurrent,
+            observation.Current
+        );
+    }
+
+    private void ShowHungerFoodRestoreHud(
+        FoodRestoreHudGate gate,
+        double previousValue,
+        double currentValue
+    )
+    {
+        var decision = FoodRestoreHudRule.Decide(gate, previousValue, currentValue);
+        if (decision.Show)
+            foodRestoreHud?.ShowHungerRestore(decision.DisplayedAmount);
+    }
+
+    private static bool IsLocalPlayerKey(string playerKey)
+    {
+        return TryGetPlayerKey(Game1.player, out var localPlayerKey)
+            && string.Equals(playerKey, localPlayerKey, StringComparison.Ordinal);
     }
 
     private void ClearSession()
@@ -348,7 +416,7 @@ public static class HungerExtensions
             return HungerChangeResult.Rejected("hunger-death-recovery-is-unavailable");
 
         var reviveValue = HungerRules.CalculateReviveValue(farmer.GetMaxHunger());
-        return changeService.SetHostValue(playerKey, reviveValue);
+        return changeService.SetHostValue(playerKey, reviveValue, HungerChangeKind.Revive);
     }
 
     internal static HungerChangeResult ApplyFood(Farmer farmer, Item food)

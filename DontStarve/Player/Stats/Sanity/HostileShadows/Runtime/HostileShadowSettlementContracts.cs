@@ -2,7 +2,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
+using DontStarve.Player.Combat;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -137,7 +137,7 @@ internal static class HostileShadowSettlementSeed
         if (!key.IsValid)
             return 0;
 
-        return CreateFromCorrelation(key.SettlementId);
+        return VanillaKillRingSettlementSeed.Create(key.SettlementId);
     }
 
     internal static int CreateDerived(HostileShadowSettlementKey key, string purpose)
@@ -145,21 +145,7 @@ internal static class HostileShadowSettlementSeed
         if (!key.IsValid || string.IsNullOrWhiteSpace(purpose))
             return 0;
 
-        return CreateFromCorrelation(string.Concat(key.SettlementId, ":", purpose));
-    }
-
-    private static int CreateFromCorrelation(string correlation)
-    {
-        // FNV-1a is used only as a stable correlation seed, not for security.
-        var bytes = Encoding.UTF8.GetBytes(correlation);
-        var hash = 2166136261u;
-        foreach (var value in bytes)
-        {
-            hash ^= value;
-            hash *= 16777619u;
-        }
-        var seed = (int)(hash & 0x7fffffff);
-        return seed == 0 ? 1 : seed;
+        return VanillaKillRingSettlementSeed.CreateDerived(key.SettlementId, purpose);
     }
 }
 
@@ -172,26 +158,19 @@ internal static class HostileShadowSettlementItemSemanticIds
 
 internal static class HostileShadowVanillaRingIds
 {
-    internal const string Warrior = "521";
-    internal const string Vampire = "522";
-    internal const string Savage = "523";
-    internal const string Burglar = "526";
-    internal const string Amethyst = "529";
-    internal const string Napalm = "811";
-    internal const string Lucky = "859";
-    internal const string HotJava = "860";
-    internal const string SoulSapper = "862";
+    internal const string Warrior = VanillaKillRingCatalog.Warrior;
+    internal const string Vampire = VanillaKillRingCatalog.Vampire;
+    internal const string Savage = VanillaKillRingCatalog.Savage;
+    internal const string Burglar = VanillaKillRingCatalog.Burglar;
+    internal const string Amethyst = VanillaKillRingCatalog.Amethyst;
+    internal const string Napalm = VanillaKillRingCatalog.Napalm;
+    internal const string Lucky = VanillaKillRingCatalog.Lucky;
+    internal const string HotJava = VanillaKillRingCatalog.HotJava;
+    internal const string SoulSapper = VanillaKillRingCatalog.SoulSapper;
 
     internal static bool IsSettlementRelevant(string itemId)
     {
-        return itemId
-            is Warrior
-                or Vampire
-                or Savage
-                or Burglar
-                or Napalm
-                or HotJava
-                or SoulSapper;
+        return VanillaKillRingCatalog.IsRingSequenceRelevant(itemId);
     }
 }
 

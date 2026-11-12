@@ -63,8 +63,12 @@ internal sealed class HostileAttackInstance
 {
     private const int MaximumLedgerEntries = 256;
     private readonly HashSet<string> nonces = new(StringComparer.Ordinal);
-    private readonly HashSet<string> hitPlayerKeys = new(StringComparer.Ordinal);
-    private readonly HashSet<long> hitPlayerIds = new();
+    // 命中身份 = (命中窗口, 玩家)（20261113 冻结决议 5）：同一窗口内每个玩家只结算一次，
+    // 不同窗口（连击的第二记红框）允许再次命中同一玩家。nonce 仍按整个攻击实例去重。
+    private readonly HashSet<(string WindowId, string PlayerKey)> claimedWindowPlayerKeys =
+        new();
+    private readonly HashSet<(string WindowId, long PlayerId)> claimedWindowPlayerIds =
+        new();
 
     internal HostileAttackInstance(
         string instanceId,
@@ -103,7 +107,7 @@ internal sealed class HostileAttackInstance
     internal double DirectionY { get; }
     internal HostileAttackFacing Facing { get; }
     internal int FrameNumber { get; set; }
-    internal int HitPlayerCount => hitPlayerKeys.Count;
+    internal int HitPlayerCount => claimedWindowPlayerKeys.Count;
 
     internal bool TryTranslateOrigin(
         double deltaX,
@@ -132,29 +136,32 @@ internal sealed class HostileAttackInstance
         return true;
     }
 
-    internal bool HasSettledPlayer(long playerId)
+    /// <summary>
+    /// Window-scoped settled check: a player blocked for one hit window may still be hit by
+    /// another window of the same attack instance. Zero remains the no-player sentinel; every
+    /// non-zero signed long is a possible Stardew UniqueMultiplayerID, including negative IDs.
+    /// </summary>
+    internal bool HasSettledPlayerInWindow(string hitWindowId, long playerId)
     {
-        return playerId != 0 && hitPlayerIds.Contains(playerId);
-    }
-
-    internal bool TryClaimHit(string nonce, string playerKey, out string reason)
-    {
-        // Zero is the no-player sentinel for this overload; every non-zero signed long is a
-        // possible Stardew UniqueMultiplayerID, including negative IDs.
-        return TryClaimHit(nonce, playerKey, playerId: 0, out reason);
+        return !string.IsNullOrWhiteSpace(hitWindowId)
+            && playerId != 0
+            && claimedWindowPlayerIds.Contains((hitWindowId, playerId));
     }
 
     internal bool TryClaimHit(
         string nonce,
         string playerKey,
         long playerId,
+        string hitWindowId,
         out string reason
     )
     {
         if (
             string.IsNullOrWhiteSpace(nonce)
             || string.IsNullOrWhiteSpace(playerKey)
+            || string.IsNullOrWhiteSpace(hitWindowId)
             || nonce.Length > HostileShadowProtocol.MaximumIdentifierLength
+            || hitWindowId.Length > HostileShadowProtocol.MaximumIdentifierLength
         )
         {
             reason = "hostile-shadow.attack-hit-ledger-input-invalid";
@@ -166,8 +173,11 @@ internal sealed class HostileAttackInstance
             return false;
         }
         if (
-            hitPlayerKeys.Contains(playerKey)
-            || HasSettledPlayer(playerId)
+            claimedWindowPlayerKeys.Contains((hitWindowId, playerKey))
+            || (
+                playerId != 0
+                && claimedWindowPlayerIds.Contains((hitWindowId, playerId))
+            )
         )
         {
             reason = "hostile-shadow.attack-hit-player-already-settled";
@@ -175,8 +185,11 @@ internal sealed class HostileAttackInstance
         }
         if (
             nonces.Count >= MaximumLedgerEntries
-            || hitPlayerKeys.Count >= MaximumLedgerEntries
-            || (playerId != 0 && hitPlayerIds.Count >= MaximumLedgerEntries)
+            || claimedWindowPlayerKeys.Count >= MaximumLedgerEntries
+            || (
+                playerId != 0
+                && claimedWindowPlayerIds.Count >= MaximumLedgerEntries
+            )
         )
         {
             reason = "hostile-shadow.attack-hit-ledger-capacity";
@@ -184,9 +197,9 @@ internal sealed class HostileAttackInstance
         }
 
         nonces.Add(nonce);
-        hitPlayerKeys.Add(playerKey);
+        claimedWindowPlayerKeys.Add((hitWindowId, playerKey));
         if (playerId != 0)
-            hitPlayerIds.Add(playerId);
+            claimedWindowPlayerIds.Add((hitWindowId, playerId));
         reason = "hostile-shadow.attack-hit-ledger-claimed";
         return true;
     }

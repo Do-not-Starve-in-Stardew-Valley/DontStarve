@@ -1,3 +1,4 @@
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using Xunit;
@@ -117,6 +118,8 @@ public sealed class HostileShadowHitResponseTests
             oldInstance.TryClaimHit(
                 "claimed-before-hit",
                 HostileAttackTestFactory.PlayerTwo,
+                long.Parse(HostileAttackTestFactory.PlayerTwo),
+                HostileAttackHitWindow.LegacyWindowId,
                 out _
             )
         );
@@ -484,6 +487,8 @@ public sealed class HostileShadowHitResponseTests
             TargetStanding = new HostileAttackPoint(0, 0),
             MaximumRangePixels = 100,
             Damage = 20,
+            // 该用例只关心帧校验失败路径，窗口 ID 合法性不参与断言，补默认旧窗口。
+            HitWindowId = HostileAttackHitWindow.LegacyWindowId,
         };
 
         Assert.False(
@@ -830,7 +835,10 @@ public sealed class HostileShadowHitResponseTests
         public int CurrentHealth { get; private set; }
         internal int Calls { get; private set; }
 
-        public void ApplyOrdinaryDamage(int damage)
+        public void ApplyOrdinaryDamage(
+            int damage,
+            InvincibilityFramePolicy policy
+        )
         {
             Calls++;
             CurrentHealth = Math.Max(0, CurrentHealth - damage);

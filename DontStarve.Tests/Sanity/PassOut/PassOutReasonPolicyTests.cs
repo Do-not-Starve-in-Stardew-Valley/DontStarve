@@ -13,7 +13,7 @@ public sealed class PassOutReasonPolicyTests
     [InlineData(2590, -14f, (int)PassOutReasonClassificationStatus.Unavailable, (int)PassOutReason.Unknown)]
     [InlineData(2600, -14f, (int)PassOutReasonClassificationStatus.Available, (int)PassOutReason.TimeLimitPassOut)]
     [InlineData(2590, -15f, (int)PassOutReasonClassificationStatus.Available, (int)PassOutReason.ExhaustionPassOut)]
-    [InlineData(2600, -15f, (int)PassOutReasonClassificationStatus.Ambiguous, (int)PassOutReason.Unknown)]
+    [InlineData(2600, -15f, (int)PassOutReasonClassificationStatus.Available, (int)PassOutReason.TimeLimitPassOut)]
     public void SharedStartToPassOutBranchRequiresOneExclusivePredicate(
         int timeOfDay,
         float stamina,
@@ -304,7 +304,8 @@ public sealed class PassOutReasonPolicyTests
         Assert.Contains("ledger.ForgetPlayer(playerKey)", sleep, StringComparison.Ordinal);
         Assert.Contains("ReturnedToTitle", sleep, StringComparison.Ordinal);
         Assert.Contains("ledger.Clear()", sleep, StringComparison.Ordinal);
-        Assert.DoesNotContain("Game1.killScreen", special, StringComparison.Ordinal);
+        Assert.Contains("Game1.killScreen", special, StringComparison.Ordinal);
+        Assert.Contains("deathCauses.MarkDarkness", special, StringComparison.Ordinal);
         Assert.DoesNotContain("takeDamage", special, StringComparison.Ordinal);
     }
 

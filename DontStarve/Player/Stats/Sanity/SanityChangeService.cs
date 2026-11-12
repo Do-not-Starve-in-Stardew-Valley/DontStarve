@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 
 namespace DontStarve.Player.Stats.Sanity;
 
@@ -109,9 +110,28 @@ internal sealed class SanityChangeResult
     }
 }
 
+/// <summary>
+/// 主机一次 Sanity 结算的观察事实。PreviousCurrent 是结算前的权威值，
+/// 状态反馈音效据此判定方向；前值不可得时为 NaN（反馈端对非有限值静音）。
+/// </summary>
 internal readonly record struct SanityStateChanged(
     SanityChangeSource Source,
+    double PreviousCurrent,
     SanityPlayerSnapshot Snapshot
+);
+
+/// <summary>
+/// 客户端一次成功应用的增量快照回放事实（仅 AppliedDelta 发布）。
+/// PreviousCurrent 是应用前本机已知值，供状态反馈判定方向与防双响。
+/// Source 来自增量快照附加字段 DeltaSource：旧主机消息缺字段时为 Unknown，
+/// 消费端（进食恢复弹窗）必须按「不可弹」处理。
+/// </summary>
+internal readonly record struct SanityClientDeltaObservation(
+    string PlayerKey,
+    double PreviousCurrent,
+    double Current,
+    StatusFeedbackTriggerKind Hint,
+    SanityChangeSource Source
 );
 
 internal readonly record struct SanityRequestPolicy(
@@ -243,6 +263,13 @@ internal sealed class SanityChangeService
     }
 
     internal event Action<SanityStateChanged>? HostStateChanged;
+
+    /// <summary>
+    /// 客户端成功应用主机增量快照后的回放观察（仅 AppliedDelta、仅增量）。
+    /// 完整快照（入session/重连）不发布本事件。状态反馈音效据此对
+    /// "自己请求被主机接受"的事实恰当地播一次音；结前值在本方法应用前捕获。
+    /// </summary>
+    internal event Action<SanityClientDeltaObservation>? ClientSnapshotApplied;
 
     internal event Action<SanityChangeRequest>? ClientRequestCreated;
 
@@ -584,7 +611,7 @@ internal sealed class SanityChangeService
                     "sanity-change-result-must-be-finite",
                     source
                 );
-            return ApplyHostValue(playerKey, requested, source);
+            return ApplyHostValue(playerKey, requested, source, current);
         }
 
         if (state.Role != SanityAuthorityRole.Client)
@@ -830,7 +857,7 @@ internal sealed class SanityChangeService
                 source
             );
         }
-        return ApplyHostValue(playerKey, value, source);
+        return ApplyHostValue(playerKey, value, source, snapshot.Current);
     }
 
     internal SanityHostRequestResult HandleHostRequest(
@@ -946,6 +973,19 @@ internal sealed class SanityChangeService
         SanitySnapshotMessage message
     )
     {
+        // 回放反馈的结算前值必须在应用前捕获；完整快照（入session/重连）不参与反馈。
+        // message 允许为 null（网络解码结果），交由状态表按既有路径拒绝。
+        SanityPlayerSnapshot? previousDeltaPlayer = null;
+        if (
+            state.Role == SanityAuthorityRole.Client
+            && message is { IsFull: false, Players.Count: 1 }
+            && message.Players[0] is { } incoming
+            && state.TryGetSnapshot(incoming.PlayerKey, out var before)
+        )
+        {
+            previousDeltaPlayer = before;
+        }
+
         var result = state.ApplyClientSnapshot(message);
         if (
             result.Status
@@ -957,6 +997,30 @@ internal sealed class SanityChangeService
             foreach (var snapshot in message.Players)
                 ObserveTierSnapshot(snapshot);
         }
+
+        if (
+            result.Status == SanitySnapshotApplyStatus.AppliedDelta
+            && previousDeltaPlayer is not null
+            && message is { Players.Count: 1 }
+            && message.Players[0] is { } applied
+            && string.Equals(
+                applied.PlayerKey,
+                previousDeltaPlayer.PlayerKey,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            ClientSnapshotApplied?.Invoke(
+                new SanityClientDeltaObservation(
+                    applied.PlayerKey,
+                    previousDeltaPlayer.Current,
+                    applied.Current,
+                    message.FeedbackHint,
+                    message.DeltaSource
+                )
+            );
+        }
+
         return result;
     }
 
@@ -982,10 +1046,16 @@ internal sealed class SanityChangeService
         return state.TryGetSnapshot(playerKey, out snapshot);
     }
 
+    /// <summary>
+    /// 主机数值结算的唯一提交点。previousCurrent 必须由调用方在应用前捕获并传入
+    /// （Change/Set/ApplyGarbageHostPlan 手里都有当次结算的权威前值）；它只服务于
+    /// 状态反馈的方向判定，不影响结算本身。
+    /// </summary>
     private SanityChangeResult ApplyHostValue(
         string playerKey,
         double value,
-        SanityChangeSource source
+        SanityChangeSource source,
+        double previousCurrent
     )
     {
         if (
@@ -1005,7 +1075,7 @@ internal sealed class SanityChangeService
         {
             ObserveTierSnapshot(snapshot);
             HostStateChanged?.Invoke(
-                new SanityStateChanged(source, snapshot.Clone())
+                new SanityStateChanged(source, previousCurrent, snapshot.Clone())
             );
         }
         return SanityChangeResult.Applied(snapshot, changed, reason, source);
@@ -1045,7 +1115,8 @@ internal sealed class SanityChangeService
             var penalty = ApplyHostValue(
                 playerKey,
                 current + plan.Penalty,
-                SanityChangeSource.Garbage
+                SanityChangeSource.Garbage,
+                current
             );
             if (
                 penalty.Status is SanityChangeStatus.Rejected
@@ -1070,14 +1141,16 @@ internal sealed class SanityChangeService
                 : ApplyHostValue(
                     playerKey,
                     current,
-                    SanityChangeSource.Garbage
+                    SanityChangeSource.Garbage,
+                    current
                 );
         }
 
         return ApplyHostValue(
             playerKey,
             current + plan.Recovery,
-            SanityChangeSource.Garbage
+            SanityChangeSource.Garbage,
+            current
         );
     }
 

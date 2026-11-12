@@ -1,3 +1,4 @@
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -335,6 +336,7 @@ public sealed class TerrorbeakAttackAndCadenceTests
                 ),
                 MaximumRangePixels = started.Profile.AttackRangePixels,
                 Damage = started.Profile.BaseDamage,
+                HitWindowId = HostileAttackHitWindow.LegacyWindowId,
             },
             pipeline,
             out receipt
@@ -406,7 +408,10 @@ public sealed class TerrorbeakAttackAndCadenceTests
         internal int NonLethalCalls { get; private set; }
         internal int FloorCalls { get; private set; }
 
-        public void ApplyOrdinaryDamage(int damage)
+        public void ApplyOrdinaryDamage(
+            int damage,
+            InvincibilityFramePolicy policy
+        )
         {
             OrdinaryCalls++;
             CurrentHealth = Math.Max(0, CurrentHealth - damage);

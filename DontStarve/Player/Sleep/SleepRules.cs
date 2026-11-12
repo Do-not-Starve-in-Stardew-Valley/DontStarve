@@ -100,7 +100,7 @@ internal static class SleepRules
         var sanityRecovery = 0d;
         var hungerPaid = 0d;
 
-        if (snapshot.Mode == SleepMode.Voluntary)
+        if (snapshot.Mode == SleepMode.Voluntary && balance.SanityRecoveryEnabled)
         {
             var bedMultiplier = NormalizePositive(balance.BedSanityMultiplier, 1d);
             var baseRecovery = NormalizePositive(

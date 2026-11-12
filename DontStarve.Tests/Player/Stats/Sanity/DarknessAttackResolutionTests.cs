@@ -135,13 +135,43 @@ public sealed class DarknessAttackResolutionTests
         Assert.Equal(1, fixture.Sanity.Calls);
     }
 
+    [Fact]
+    public void DarknessAttackResolution_NonLethal_zero_hp_delta_still_applies_authorized_sanity()
+    {
+        // 【2026-11-11 原版口径对齐】DST grue.lua：血量已在地板及以下时袭击照常结算，
+        // 伤害钳制为 0、血量不动，扣理智与反馈照常发生（damage = max(0, current - floor)）。
+        var fixture = Fixture(30);
+        fixture.Damage.Handler = request => DarknessAttackDamageReceipt.Settled(
+            request,
+            beforeHealth: 30,
+            maximumHealth: 150,
+            actualDamage: 0,
+            afterHealth: 30,
+            "nonlethal.already-at-or-below-floor"
+        );
+
+        var result = fixture.Service.Resolve(Request(DarknessDamageMode.NonLethal));
+
+        Assert.Equal(DarknessAttackResolutionStatus.Settled, result.Status);
+        Assert.Equal(
+            DarknessAttackDamageOperation.ApplyDamageUpToFloor,
+            result.Receipt!.Operation
+        );
+        Assert.Equal(0, result.Receipt.DamageReceipt!.ActualDamage);
+        Assert.Equal(30, result.Receipt.DamageReceipt.AfterHealth);
+        Assert.Equal(SanityChangeSource.DarknessAttack, result.Receipt.SanityReceipt!.Source);
+        Assert.Equal(1, fixture.Damage.Calls);
+        Assert.Equal(1, fixture.Sanity.Calls);
+    }
+
     [Theory]
     [InlineData((int)DarknessDamageMode.Off, 150, 150, false, 0)]
     [InlineData((int)DarknessDamageMode.Default, 1, 150, true, 0)]
     [InlineData((int)DarknessDamageMode.NonLethal, 31, 150, true, 30)]
-    [InlineData((int)DarknessDamageMode.NonLethal, 30, 150, false, 30)]
-    [InlineData((int)DarknessDamageMode.NonLethal, 29, 150, false, 30)]
-    public void DarknessAttackResolution_Mode_policy_stops_nonlethal_at_floor(
+    [InlineData((int)DarknessDamageMode.NonLethal, 30, 150, true, 30)]
+    [InlineData((int)DarknessDamageMode.NonLethal, 29, 150, true, 30)]
+    [InlineData((int)DarknessDamageMode.NonLethal, 0, 150, false, 0)]
+    public void DarknessAttackResolution_Mode_policy_keeps_nonlethal_settleable_at_floor(
         int modeValue,
         int health,
         int maximumHealth,
@@ -149,12 +179,14 @@ public sealed class DarknessAttackResolutionTests
         int expectedFloor
     )
     {
+        // 【2026-11-11 原版口径对齐】nonlethal 不再因血量触地板停止倒计时；模式门只拦
+        // 血量为 0 与无效快照，地板钳制完全交给伤害结算 authority。
         var mode = (DarknessDamageMode)modeValue;
         var policy = DarknessAttackModePolicy.Evaluate(mode, health, maximumHealth);
 
         Assert.Equal(expectedCanSettle, policy.CanSettle);
         Assert.Equal(expectedFloor, policy.FloorHealth);
-        if (mode == DarknessDamageMode.NonLethal)
+        if (mode == DarknessDamageMode.NonLethal && expectedCanSettle)
         {
             Assert.True(
                 NonLethalDamageCalculator.TryCalculateFloor(

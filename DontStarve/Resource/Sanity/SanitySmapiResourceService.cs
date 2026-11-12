@@ -81,6 +81,7 @@ internal sealed class SanitySmapiResourceService
         );
         helper.Events.Display.RenderingHud += OnRenderingHud;
         helper.Events.Content.AssetsInvalidated += OnAssetsInvalidated;
+        helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
         // 当前 SMAPI API 没有 GameExiting 事件。ProcessExit 只记录进程回收分流，
         // 不在 SMAPI monitor 已关闭、线程也不确定的阶段触碰 helper/XNA 资源。
@@ -189,6 +190,7 @@ internal sealed class SanitySmapiResourceService
             previews.ClearAll();
             helper.Events.Display.RenderingHud -= OnRenderingHud;
             helper.Events.Content.AssetsInvalidated -= OnAssetsInvalidated;
+            helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
             helper.Events.GameLoop.ReturnedToTitle -= OnReturnedToTitle;
             AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
             loader.DiagnosticRecorded -= OnLoaderDiagnosticRecorded;
@@ -201,6 +203,18 @@ internal sealed class SanitySmapiResourceService
             disposalGate.Abort();
             throw;
         }
+    }
+
+    private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+    {
+        // ReturnedToTitle / 内容失效会清空 CueSet 运行时缓存，而音频只在 Entry 预热一次。
+        // 影怪音效池是首次生成该物种才借用的；不重新预热的话，回标题重进存档（或内容失效）
+        // 之后的每一类影怪，都会把整包 OGG 解码落在出生帧上。与投影/敌对贴图的 SaveLoaded
+        // 预热是同一个原则：重活留在读档阶段，不让第一次解码挪回游戏帧。
+        // PrimeAudioCueSets 自带守卫：系统关闭或已释放时直接返回，且失败不会写缓存，
+        // 因此这里无条件调用不会污染空池。失败诊断仍走 DiagnosticRecorded 既有通道，
+        // 这里不再打读档日志（20261111 用户反馈日志噪音，移除）。
+        _ = loader.PrimeAudioCueSets();
     }
 
     private void OnPreviewCommand(string command, string[] arguments)

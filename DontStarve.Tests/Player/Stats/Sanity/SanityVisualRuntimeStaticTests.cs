@@ -10,7 +10,7 @@ public sealed class SanityVisualRuntimeStaticTests
         var service = ReadVisual();
         var runtime = ReadRuntime("SanityWorldCompositionRuntimeAdapter.cs");
 
-        Assert.Contains("Events.Display.RenderingHud", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("Events.Display.RenderingHud", service, StringComparison.Ordinal);
         Assert.Contains("Game1.uiViewport.Width", service, StringComparison.Ordinal);
         Assert.Contains("Game1.uiViewport.Height", service, StringComparison.Ordinal);
         Assert.Contains("nameof(Game1.ShouldDrawOnBuffer)", runtime, StringComparison.Ordinal);
@@ -26,31 +26,23 @@ public sealed class SanityVisualRuntimeStaticTests
     }
 
     [Fact]
-    public void Steady_composition_and_hud_paths_only_draw_cached_resources()
+    public void Retired_danger_border_has_no_runtime_load_or_draw_path()
     {
         var service = ReadVisual();
-        var hudStart = service.IndexOf("private void OnRenderingHud", StringComparison.Ordinal);
-        var hudEnd = service.IndexOf("private void", hudStart + 1, StringComparison.Ordinal);
-        var hud = service[hudStart..hudEnd];
         var runtime = ReadRuntime("SanityWorldCompositionRuntimeAdapter.cs");
         var drawStart = runtime.IndexOf("private void DrawWorldAndUi", StringComparison.Ordinal);
         var drawEnd = runtime.IndexOf("private bool EnsureEffect", drawStart, StringComparison.Ordinal);
         var draw = runtime[drawStart..drawEnd];
 
-        Assert.Contains("DrawDangerBorder", hud, StringComparison.Ordinal);
-        Assert.Contains(
-            "SanityMinigameVisualRuntimeClassifier.ResolveCurrent()",
-            hud,
-            StringComparison.Ordinal
-        );
-        Assert.Contains("SanityMinigameVisualContext.Fishing", hud, StringComparison.Ordinal);
-        Assert.Contains("SanityMinigameVisualContext.Other", hud, StringComparison.Ordinal);
-        Assert.Contains("snapshot.MinigameContext != minigameContext", hud, StringComparison.Ordinal);
         Assert.Contains("worldEffect!", draw, StringComparison.Ordinal);
         Assert.Contains("Game1.spriteBatch.Draw", draw, StringComparison.Ordinal);
-        Assert.DoesNotContain("LoadVisualSlot", hud, StringComparison.Ordinal);
-        Assert.DoesNotContain("new Texture2D", hud, StringComparison.Ordinal);
-        Assert.DoesNotContain("new SpriteBatch", hud, StringComparison.Ordinal);
+        Assert.DoesNotContain("OnRenderingHud", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("DangerBorderSlotId", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryLoadDangerBorder", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrawDangerBorder", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("LoadVisualSlot", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("new Texture2D", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("new SpriteBatch", service, StringComparison.Ordinal);
         Assert.DoesNotContain("new RenderTarget2D", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("new Effect", draw, StringComparison.Ordinal);
         Assert.DoesNotContain("File.", draw, StringComparison.Ordinal);
@@ -182,21 +174,127 @@ public sealed class SanityVisualRuntimeStaticTests
     }
 
     [Fact]
-    public void Adapter_borrows_existing_loader_slot_and_never_disposes_texture()
+    public void Adapter_does_not_request_permanently_retired_danger_border_resource()
     {
         var source = ReadVisual();
 
-        Assert.Contains("DangerBorderSlotId", source, StringComparison.Ordinal);
-        Assert.Contains("resources.LoadVisualSlot(DangerBorderSlotId, 0)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("DangerBorderSlotId", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("resources.LoadVisualSlot", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("XnaSanityTextureResource", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("dangerBorderTexture", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("new SanityRuntimeResourceLoader", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Panic_loop_only_resets_the_sprite_when_no_vanilla_action_owns_it()
+    {
+        var source = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityIdlePanicLoopService.cs"
+            )
+        );
+        var cancelStart = source.IndexOf(
+            "private void CancelAndRecover",
+            StringComparison.Ordinal
+        );
+        var cancelEnd = source.IndexOf("private void HardCancel", cancelStart, StringComparison.Ordinal);
+
+        Assert.True(cancelStart >= 0);
+        Assert.True(cancelEnd > cancelStart);
+        var cancel = source[cancelStart..cancelEnd];
+        Assert.Contains(
+            "SanityIdlePanicInterruptionPolicy.ShouldReleasePlayerAnimation(reason)",
+            cancel,
+            StringComparison.Ordinal
+        );
+        var guard = cancel.IndexOf(
+            "SanityIdlePanicInterruptionPolicy.ShouldReleasePlayerAnimation(reason)",
+            StringComparison.Ordinal
+        );
+        var stop = cancel.IndexOf(
+            "player.completelyStopAnimatingOrDoingAction()",
+            StringComparison.Ordinal
+        );
+        Assert.True(stop > guard);
         Assert.DoesNotContain(
-            "resources.LoadVisualSlot(DangerBorderProfileId, 0)",
+            "player.completelyStopAnimatingOrDoingAction()",
+            cancel[..guard],
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Panic_loop_does_not_emit_per_tick_gate_diagnostics()
+    {
+        var source = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityIdlePanicLoopService.cs"
+            )
+        );
+
+        Assert.DoesNotContain("LogGate(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("blocked ({code})", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Panic_loop_suspends_on_menu_pause_focus_and_pre_releases_sprite_on_mouse_clicks()
+    {
+        var source = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityIdlePanicLoopService.cs"
+            )
+        );
+
+        // 挂起三信号齐全：菜单/暂停/失焦冻结循环而非取消（用户口径：暂停后恢复）。
+        Assert.Contains(
+            "IsGameInteractionSuspended",
             source,
             StringComparison.Ordinal
         );
-        Assert.Contains("XnaSanityTextureResource", source, StringComparison.Ordinal);
-        Assert.Contains("preview.IsPlaceholder", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("texture.Dispose", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("new SanityRuntimeResourceLoader", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "Game1.activeClickableMenu is not null",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("Game1.paused", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "!Game1.game1.IsActiveNoOverlay",
+            source,
+            StringComparison.Ordinal
+        );
+
+        // 原版右键进食入口有 !PauseForSingleAnimation 门：仅鼠标按键在原版输入处理前抢跑
+        // 让位；键盘/滚轮不订阅抢跑，菜单挂起-恢复语义与"非动画输入不算操作"口径保留。
+        Assert.Contains("SButton.MouseRight", source, StringComparison.Ordinal);
+        Assert.Contains("SButton.MouseLeft", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Events.Input.MouseWheelScrolled +=",
+            source,
+            StringComparison.Ordinal
+        );
+
+        // 事件覆盖：eventUp 之外还需识别 CurrentEvent 与 farmEvent，避免任何事件形态中触发。
+        Assert.Contains(
+            "Game1.CurrentEvent is not null",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("Game1.farmEvent is not null", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -237,7 +335,8 @@ public sealed class SanityVisualRuntimeStaticTests
         Assert.Contains("new SanityEffectiveOverlayKey(playerKey, screenId, lifecycle.SessionId)", source, StringComparison.Ordinal);
         Assert.Contains("RemoveScreen(change.Key.ScreenId)", source, StringComparison.Ordinal);
         Assert.Contains("pair.Key == Context.ScreenId", source, StringComparison.Ordinal);
-        Assert.Contains("ReleaseBorrowedDangerBorder(resetLoadAttempt: true)", source, StringComparison.Ordinal);
+        Assert.Contains("resources.VisualResourcesInvalidating -= OnVisualResourcesInvalidating", source, StringComparison.Ordinal);
+        Assert.Contains("resources.VisualResourcesInvalidating += OnVisualResourcesInvalidating", source, StringComparison.Ordinal);
         Assert.Contains("worldComposition.RemoveScreen(screenId)", source, StringComparison.Ordinal);
         Assert.Contains("idlePresentation.CancelAll()", source, StringComparison.Ordinal);
     }

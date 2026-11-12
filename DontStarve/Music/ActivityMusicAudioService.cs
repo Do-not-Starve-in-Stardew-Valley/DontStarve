@@ -193,21 +193,24 @@ internal static class ActivityMusicAudioService
 
         // Snapshot the values because a naturally completed instance may be replaced while this
         // pass is running. The old instance list is also advanced here for short crossfades.
-        foreach (var playback in new List<Playback>(playbacks.Values))
+        if (playbacks.Count > 0)
         {
-            if (!playbacks.TryGetValue(playback.OwnerId, out var current)
-                || !ReferenceEquals(current, playback))
+            foreach (var playback in new List<Playback>(playbacks.Values))
             {
-                continue;
-            }
+                if (!playbacks.TryGetValue(playback.OwnerId, out var current)
+                    || !ReferenceEquals(current, playback))
+                {
+                    continue;
+                }
 
-            if (playback.Instance.State == SoundState.Stopped)
-            {
-                RestartIfStillActive(playback);
-                continue;
-            }
+                if (playback.Instance.State == SoundState.Stopped)
+                {
+                    RestartIfStillActive(playback);
+                    continue;
+                }
 
-            AdvancePlayback(playback, elapsedSeconds);
+                AdvancePlayback(playback, elapsedSeconds);
+            }
         }
 
         AdvanceRetiringPlaybacks(elapsedSeconds, dawnDuskOnly: false);
@@ -227,6 +230,9 @@ internal static class ActivityMusicAudioService
 
     private static void AdvanceRetiringPlaybacks(double elapsedSeconds, bool dawnDuskOnly)
     {
+        if (retiringPlaybacks.Count == 0)
+            return;
+
         foreach (var playback in new List<Playback>(retiringPlaybacks))
         {
             if (

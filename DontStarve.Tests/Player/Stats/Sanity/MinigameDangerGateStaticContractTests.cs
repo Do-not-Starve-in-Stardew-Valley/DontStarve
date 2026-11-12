@@ -59,11 +59,53 @@ public sealed class MinigameDangerGateStaticContractTests
     public void First_blocked_message_is_not_suppressed_by_tick_deduplication()
     {
         var source = ReadServiceSource();
-        var method = ExtractMethod(source, "private void ShowBlockedMessage()");
+        var method = ExtractMethod(source, "private void ShowBlockedMessage(MinigameDangerReason reason)");
 
         Assert.Contains("lastBlockedMessageTick != long.MinValue", method, StringComparison.Ordinal);
-        Assert.Contains("helper.Translation.Get(BlockedMessageKey)", method, StringComparison.Ordinal);
+        Assert.Contains(
+            "helper.Translation.Get(ResolveBlockedMessageKey(reason))",
+            method,
+            StringComparison.Ordinal
+        );
         Assert.Contains("HUDMessage.error_type", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StarvationUsesItsOwnBlockedMessageAndKeepsTheGenericKey()
+    {
+        var source = ReadServiceSource();
+
+        Assert.Contains(
+            "private const string BlockedMessageKey = \"minigame-danger-blocked\";",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "private const string StarvingBlockedMessageKey = \"minigame-danger-blocked-starving\";",
+            source,
+            StringComparison.Ordinal
+        );
+
+        var resolver = ExtractMethod(
+            source,
+            "private static string ResolveBlockedMessageKey(MinigameDangerReason reason)"
+        );
+        Assert.Contains("MinigameDangerReason.Starving", resolver, StringComparison.Ordinal);
+        Assert.Contains("StarvingBlockedMessageKey", resolver, StringComparison.Ordinal);
+        Assert.Contains("BlockedMessageKey", resolver, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StarvationDangerKeepsTheSharedHungerBoundaryAndDisabledSystemGate()
+    {
+        var source = ReadServiceSource();
+        var method = ExtractMethod(source, "private static bool IsStarving(Farmer player)");
+
+        // 饥饿系统关闭时不得判定（与睡眠危险确认同一条边界）。
+        Assert.Contains("HungerExtensions.IsEnabled", method, StringComparison.Ordinal);
+        // 数值边界必须走共享纯规则，禁止在拦截门复制 hunger <= 0 表达式。
+        Assert.Contains("HungerStarvationRules.IsStarving(player.GetHunger())", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("hunger <= 0d", method, StringComparison.Ordinal);
     }
 
     private static string ReadServiceSource()

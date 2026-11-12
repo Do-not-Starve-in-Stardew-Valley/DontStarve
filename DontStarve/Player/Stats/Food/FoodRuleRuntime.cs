@@ -19,7 +19,8 @@ internal static class FoodRuleRuntime
 
     private static IReadOnlyDictionary<string, double> hungerValues = EmptyValues;
     private static IReadOnlyDictionary<string, double> sanityValues = EmptyValues;
-    private static FoodRuleResolver resolver = new(EmptyValues, EmptyValues);
+    private static IReadOnlyDictionary<string, double> healthValues = EmptyValues;
+    private static FoodRuleResolver resolver = new(EmptyValues, EmptyValues, EmptyValues);
 
     internal static void SetHunger(IReadOnlyDictionary<string, double> values)
     {
@@ -30,6 +31,12 @@ internal static class FoodRuleRuntime
     internal static void SetSanity(IReadOnlyDictionary<string, double> values)
     {
         sanityValues = values ?? throw new ArgumentNullException(nameof(values));
+        Rebuild();
+    }
+
+    internal static void SetHealth(IReadOnlyDictionary<string, double> values)
+    {
+        healthValues = values ?? throw new ArgumentNullException(nameof(values));
         Rebuild();
     }
 
@@ -49,6 +56,15 @@ internal static class FoodRuleRuntime
             return false;
 
         return resolver.TryResolve(GetFacts(item), FoodValueDimension.Sanity, out value);
+    }
+
+    internal static bool TryGetHealth(Item? item, out double value)
+    {
+        value = 0;
+        if (item is null || !IsObjectItem(item) || !CanResolveSeedFood(item))
+            return false;
+
+        return resolver.TryResolve(GetFacts(item), FoodValueDimension.Health, out value);
     }
 
     internal static bool TryGetHunger(string qualifiedItemId, out double value)
@@ -77,9 +93,22 @@ internal static class FoodRuleRuntime
         );
     }
 
+    internal static bool TryGetHealth(string qualifiedItemId, out double value)
+    {
+        value = 0;
+        if (!TryGetObjectItemId(qualifiedItemId, out var itemId))
+            return false;
+
+        return resolver.TryResolve(
+            new FoodItemFacts(itemId, FoodRuleSourceKind.None, null),
+            FoodValueDimension.Health,
+            out value
+        );
+    }
+
     private static void Rebuild()
     {
-        resolver = new FoodRuleResolver(hungerValues, sanityValues);
+        resolver = new FoodRuleResolver(hungerValues, sanityValues, healthValues);
     }
 
     private static Dictionary<string, double> Convert(

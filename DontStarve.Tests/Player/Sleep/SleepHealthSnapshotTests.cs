@@ -73,6 +73,45 @@ public sealed class SleepHealthSnapshotTests
         Assert.Contains("CalendarDay = Game1.dayOfMonth", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void UpdateTickedUsesReusableCleanupBuffersInsteadOfAllocatingSnapshots()
+    {
+        var source = ReadSource(
+            "DontStarve",
+            "Player",
+            "Sleep",
+            "SmapiSleepLifecycleAdapter.cs"
+        ).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var start = source.IndexOf(
+            "private void OnUpdateTicked",
+            StringComparison.Ordinal
+        );
+        var end = source.IndexOf(
+            "private void OnConfirmationAnswered",
+            start,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        var update = source[start..end];
+
+        Assert.Contains("activeCleanupBuffer.Clear();", update, StringComparison.Ordinal);
+        Assert.Contains("if (active.Count > 0)", update, StringComparison.Ordinal);
+        Assert.Contains(
+            "completedWakeDeathBuffer.Clear();",
+            update,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("if (pendingWakeDeaths.Count > 0)", update, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "new List<ActiveSleep>(active.Values)",
+            update,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain("new List<string>()", update, StringComparison.Ordinal);
+    }
+
     private static double Invoke(MethodInfo method, double trackedHealth, int nativeHealth, int maximumHealth)
     {
         return (double)method.Invoke(null, new object[] { trackedHealth, nativeHealth, maximumHealth })!;

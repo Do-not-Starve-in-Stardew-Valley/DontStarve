@@ -6,7 +6,7 @@ namespace DontStarve.Tests.Config;
 public sealed class ConfigSchemaLoaderTests
 {
     [Fact]
-    public void ShippedSchemaPublishesFrozenSeventeenOptionRegistry()
+    public void ShippedSchemaPublishesFrozenTwentyOptionRegistry()
     {
         var result = ConfigSchemaLoader.LoadFromFile(ConfigTestData.ShippedSchemaPath);
 
@@ -15,7 +15,7 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Empty(result.Diagnostics);
         var registry = Assert.IsType<ConfigRegistry>(result.Registry);
         Assert.Equal(1, registry.SchemaVersion);
-        Assert.Equal(17, registry.Options.Count);
+        Assert.Equal(20, registry.Options.Count);
 
         AssertBoolean(registry, ConfigKeys.EnableHungerSystem, true, false, true, 5);
         AssertEnum(
@@ -116,6 +116,14 @@ public sealed class ConfigSchemaLoaderTests
         );
         AssertBoolean(
             registry,
+            ConfigKeys.EnableStatusFeedbackSounds,
+            true,
+            false,
+            false,
+            92
+        );
+        AssertBoolean(
+            registry,
             ConfigKeys.EnableDawnDuskMusic,
             true,
             false,
@@ -123,6 +131,8 @@ public sealed class ConfigSchemaLoaderTests
             90
         );
         AssertBoolean(registry, ConfigKeys.EnableActivityMusic, true, false, false, 95);
+        AssertBoolean(registry, ConfigKeys.EnableDontStarveHealth, true, false, false, 15);
+        AssertBoolean(registry, ConfigKeys.EnableHealthEffectBalance, true, false, false, 55);
 
         Assert.Equal(
             "config.game-mechanics.page",
@@ -160,6 +170,22 @@ public sealed class ConfigSchemaLoaderTests
             "config.audio-effects.page",
             Get(registry, ConfigKeys.EnableActivityMusic).PageI18n
         );
+        Assert.Equal(
+            "config.game-mechanics.page",
+            Get(registry, ConfigKeys.EnableDontStarveHealth).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.health.page",
+            Get(registry, ConfigKeys.EnableDontStarveHealth).PageI18n
+        );
+        Assert.Equal(
+            "config.balance-compatibility.page",
+            Get(registry, ConfigKeys.EnableHealthEffectBalance).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.vanilla-balance.page",
+            Get(registry, ConfigKeys.EnableHealthEffectBalance).PageI18n
+        );
         Assert.All(
             registry.Options,
             option =>
@@ -168,8 +194,10 @@ public sealed class ConfigSchemaLoaderTests
                 Assert.Equal(
                     option.Key == ConfigKeys.MonsterDifficultyProfile
                         || option.Key == ConfigKeys.EnableJunimoBlessing
+                        || option.Key == ConfigKeys.EnableHealthEffectBalance
                         ? "config.balance-compatibility.page"
                         : option.Key == ConfigKeys.EnableSanityVignette
+                            || option.Key == ConfigKeys.EnableStatusFeedbackSounds
                             || option.Key == ConfigKeys.EnableDawnDuskMusic
                             || option.Key == ConfigKeys.EnableActivityMusic
                             ? "config.visuals-audio.page"

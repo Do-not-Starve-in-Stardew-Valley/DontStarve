@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -9,6 +10,7 @@ internal enum HostileAttackReceiptStatus
 {
     Applied,
     SettledWithoutHealthChange,
+    PendingRemote,
     Rejected,
     PipelineFailed,
 }
@@ -73,7 +75,10 @@ internal interface IHostileAttackLethalDamagePipeline
 {
     int CurrentHealth { get; }
 
-    void ApplyOrdinaryDamage(int damage);
+    void ApplyOrdinaryDamage(
+        int damage,
+        InvincibilityFramePolicy policy
+    );
 }
 
 internal sealed class HostileAttackHitContext
@@ -86,6 +91,13 @@ internal sealed class HostileAttackHitContext
     internal int CurrentFrameNumber { get; set; }
     // Zero is the no-player sentinel; every non-zero signed long is a legal Stardew player ID.
     internal long TargetPlayerId { get; set; }
+    internal InvincibilityFramePolicy DamagePolicy { get; set; } =
+        InvincibilityFramePolicy.Normal;
+    /// <summary>
+    /// 命中窗口 ID（冻结决议 5）。默认空串 + 校验强制非空：调用方忘记解析窗口时按
+    /// fail-closed 拒绝，绝不静默把命中记进任意窗口。
+    /// </summary>
+    internal string HitWindowId { get; set; } = string.Empty;
     internal HostileAttackInstance? Instance { get; set; }
     internal HostileAttackRuntimeDefinition? Definition { get; set; }
     internal HostileAttackRectangle AttackBox { get; set; }
@@ -102,15 +114,14 @@ internal sealed class HostileAttackHitContext
 /// </summary>
 internal static class HostileAttackHitProcessor
 {
-    internal static bool TryProcess(
+    internal static bool TryValidateAndClaim(
         ShadowAttackHitRequest? request,
         string expectedSenderPlayerKey,
         HostileAttackHitContext? context,
-        IHostileAttackLethalDamagePipeline? pipeline,
-        out HostileAttackReceipt receipt
+        out string reason
     )
     {
-        var reason = "hostile-shadow.attack-hit-context-missing";
+        reason = "hostile-shadow.attack-hit-context-missing";
         if (
             context is null
             || !HostileShadowProtocol.IsValidAttackHitRequest(
@@ -121,16 +132,15 @@ internal static class HostileAttackHitProcessor
             )
         )
         {
-            receipt = Rejected(request, context, reason);
             return false;
         }
 
-        var instance = context.Instance;
+        var instance = context.Instance!;
         var definition = context.Definition;
         if (
             instance is null
             || definition is null
-            || pipeline is null
+            || string.IsNullOrWhiteSpace(context.HitWindowId)
             || context.EntityId != request!.EntityId
             || context.CurrentEntityRevision != request.ObservedEntityRevision
             || !string.Equals(
@@ -167,20 +177,33 @@ internal static class HostileAttackHitProcessor
             )
         )
         {
-            receipt = Rejected(
-                request,
-                context,
-                "hostile-shadow.attack-hit-host-context-invalid"
-            );
+            reason = "hostile-shadow.attack-hit-host-context-invalid";
             return false;
         }
 
+        return instance.TryClaimHit(
+            request.Nonce,
+            request.TargetPlayerKey,
+            context.TargetPlayerId,
+            context.HitWindowId,
+            out reason
+        );
+    }
+
+    internal static bool TryProcess(
+        ShadowAttackHitRequest? request,
+        string expectedSenderPlayerKey,
+        HostileAttackHitContext? context,
+        IHostileAttackLethalDamagePipeline? pipeline,
+        out HostileAttackReceipt receipt
+    )
+    {
         if (
-            !instance.TryClaimHit(
-                request.Nonce,
-                request.TargetPlayerKey,
-                context.TargetPlayerId,
-                out reason
+            !TryValidateAndClaim(
+                request,
+                expectedSenderPlayerKey,
+                context,
+                out var reason
             )
         )
         {
@@ -188,17 +211,25 @@ internal static class HostileAttackHitProcessor
             return false;
         }
 
+        if (context is null || context.Instance is null || pipeline is null)
+        {
+            receipt = Rejected(request, context, "hostile-shadow.attack-hit-pipeline-invalid");
+            return false;
+        }
+
+        var instance = context.Instance;
+
         var healthBefore = pipeline.CurrentHealth;
         try
         {
-            pipeline.ApplyOrdinaryDamage(context.Damage);
+            pipeline.ApplyOrdinaryDamage(context.Damage, context.DamagePolicy);
         }
         catch (Exception exception)
         {
             receipt = new HostileAttackReceipt(
                 instance.InstanceId,
                 context.EntityId,
-                request.TargetPlayerKey,
+                request!.TargetPlayerKey,
                 context.CurrentEntityRevision,
                 new HostileAttackResult(
                     HostileAttackReceiptStatus.PipelineFailed,
@@ -219,7 +250,7 @@ internal static class HostileAttackHitProcessor
         receipt = new HostileAttackReceipt(
             instance.InstanceId,
             context.EntityId,
-            request.TargetPlayerKey,
+            request!.TargetPlayerKey,
             context.CurrentEntityRevision,
             new HostileAttackResult(
                 healthAfter == healthBefore

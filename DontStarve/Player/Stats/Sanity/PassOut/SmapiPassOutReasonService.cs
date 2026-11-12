@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 using StardewValley;
 using DontStarve.Player.Stats.Hunger;
 
@@ -12,7 +13,7 @@ namespace DontStarve.Player.Stats.Sanity.PassOut;
 
 /// <summary>
 /// Narrow Stardew 1.6 evidence adapter for ordinary sleep and protection-aware health death.
-/// The 2:00 startToPassOut prefix remains owned by the existing special-flow service, which calls
+/// The post-animation passOutFromTired seam remains owned by the special-flow service, which calls
 /// this adapter only to classify and capture the final reason it selected.
 /// </summary>
 internal sealed class SmapiPassOutReasonService : IDisposable
@@ -20,6 +21,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     private const int MaximumLoggedReasons = 64;
     private static SmapiPassOutReasonService? activePatchOwner;
 
+    private readonly IModHelper helper;
     private readonly IMonitor monitor;
     private readonly string modId;
     private readonly SanitySystemLifecycleCoordinator lifecycle;
@@ -31,14 +33,18 @@ internal sealed class SmapiPassOutReasonService : IDisposable
     private MethodInfo? checkForEventsMethod;
     private bool disposed;
     private bool knownStartSleepAttempt;
+    private bool pendingHealthDeathRecovery;
+    private string pendingHealthDeathRecoveryPlayerKey = string.Empty;
 
     internal SmapiPassOutReasonService(
+        IModHelper helper,
         IMonitor monitor,
         string modId,
         SanitySystemLifecycleCoordinator lifecycle,
         PassOutReasonLedger ledger
     )
     {
+        this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
         this.monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         this.modId = string.IsNullOrWhiteSpace(modId)
             ? throw new ArgumentException("A mod ID is required.", nameof(modId))
@@ -47,6 +53,9 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         this.ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
 
         InstallPatches();
+        helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+        helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
@@ -115,6 +124,8 @@ internal sealed class SmapiPassOutReasonService : IDisposable
         ledger.Clear();
         loggedReasons.Clear();
         knownStartSleepAttempt = false;
+        pendingHealthDeathRecovery = false;
+        pendingHealthDeathRecoveryPlayerKey = string.Empty;
     }
 
     public void Dispose()
@@ -123,6 +134,9 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             return;
         disposed = true;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
+        helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
+        helper.Events.GameLoop.ReturnedToTitle -= OnReturnedToTitle;
         ClearSession();
         UninstallPatches();
     }
@@ -414,8 +428,7 @@ internal sealed class SmapiPassOutReasonService : IDisposable
 
     private void ApplyHealthDeathRecovery(bool wasKillScreen)
     {
-        var farmer = Game1.player;
-        if (!CanApplyHostHealthDeath(farmer))
+        if (Game1.player is not Farmer farmer)
             return;
 
         var decision = PassOutReasonPolicy.ResolveHealthDeathRecovery(
@@ -424,6 +437,46 @@ internal sealed class SmapiPassOutReasonService : IDisposable
             farmer.health,
             farmer.maxHealth
         );
+        if (decision.Action != PassOutPolicyAction.SetToMaximumFraction)
+            return;
+
+        if (!CanApplyHostHealthDeath(farmer))
+        {
+            if (
+                HealthDeathRecoveryRetryPolicy.ShouldQueue(
+                    wasKillScreen,
+                    Game1.killScreen,
+                    farmer.health,
+                    Context.IsWorldReady,
+                    Context.IsMainPlayer,
+                    lifecycle.AuthorityRole == SanityAuthorityRole.Host,
+                    SanityProtocol.IsValidSessionId(lifecycle.SessionId),
+                    farmerAvailable: true
+                )
+            )
+            {
+                pendingHealthDeathRecovery = true;
+                pendingHealthDeathRecoveryPlayerKey = SanityPlayerKey.FromUniqueMultiplayerId(
+                    farmer.UniqueMultiplayerID
+                );
+                Log(
+                    "passout.reason.health-death-recovery-deferred",
+                    "Health-death Hunger/Sanity recovery was deferred until the loaded world became ready.",
+                    LogLevel.Debug
+                );
+            }
+            return;
+        }
+
+        ClearPendingHealthDeathRecovery();
+        ApplyHealthDeathRecoveryValues(farmer, decision);
+    }
+
+    private void ApplyHealthDeathRecoveryValues(
+        Farmer farmer,
+        PassOutPolicyDecision decision
+    )
+    {
         if (decision.Action != PassOutPolicyAction.SetToMaximumFraction)
             return;
 
@@ -454,6 +507,59 @@ internal sealed class SmapiPassOutReasonService : IDisposable
                 LogLevel.Warn
             );
         }
+    }
+
+    private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
+    {
+        if (!pendingHealthDeathRecovery || Game1.player is not Farmer farmer)
+            return;
+
+        var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(farmer.UniqueMultiplayerID);
+        if (!string.Equals(playerKey, pendingHealthDeathRecoveryPlayerKey, StringComparison.Ordinal))
+        {
+            ClearPendingHealthDeathRecovery();
+            return;
+        }
+
+        if (Game1.killScreen || farmer.health <= 0)
+        {
+            ClearPendingHealthDeathRecovery();
+            return;
+        }
+
+        if (
+            !HealthDeathRecoveryRetryPolicy.ShouldAttempt(
+                pendingHealthDeathRecovery,
+                farmer.health,
+                Game1.killScreen,
+                Context.IsWorldReady,
+                Context.IsMainPlayer,
+                lifecycle.AuthorityRole == SanityAuthorityRole.Host,
+                SanityProtocol.IsValidSessionId(lifecycle.SessionId)
+            )
+        )
+            return;
+
+        var decision = PassOutReasonPolicy.ResolveHealthDeathRecovery(
+            wasKillScreen: true,
+            isKillScreen: Game1.killScreen,
+            currentHealth: farmer.health,
+            maximumHealth: farmer.maxHealth
+        );
+        ClearPendingHealthDeathRecovery();
+        ApplyHealthDeathRecoveryValues(farmer, decision);
+    }
+
+    private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e) =>
+        ClearPendingHealthDeathRecovery();
+
+    private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e) =>
+        ClearPendingHealthDeathRecovery();
+
+    private void ClearPendingHealthDeathRecovery()
+    {
+        pendingHealthDeathRecovery = false;
+        pendingHealthDeathRecoveryPlayerKey = string.Empty;
     }
 
     private PassOutReasonCaptureResult Capture(

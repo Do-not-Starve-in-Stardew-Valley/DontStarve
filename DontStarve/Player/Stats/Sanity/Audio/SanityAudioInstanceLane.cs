@@ -93,11 +93,29 @@ internal sealed class SanityAudioInstanceLane : IDisposable
         if (disposed || continuous || failed || paused)
             return false;
 
+        // A normal gameplay trigger must never restart an in-flight one-shot. In particular,
+        // the darkness warning is an already-visible warning event: replacing its instance
+        // would truncate the audible cue whenever another ordinary trigger reaches this lane.
+        // Explicit lifecycle cleanup still uses StopPlayback/Dispose and may stop it.
+        if (current is not null)
+        {
+            try
+            {
+                // A naturally finished instance may still be waiting for Tick() cleanup. It is
+                // safe to release that silent object; a still-playing instance is never touched.
+                if (current.State != SanityAudioPlaybackState.Stopped)
+                    return false;
+            }
+            catch (Exception exception)
+            {
+                Fail("audio.lane.state-failed", exception);
+                return false;
+            }
+            StopAndDisposeCore();
+        }
+
         SetVolume(targetVolume);
-        StopAndDispose();
-        if (!failed)
-            return EnsurePlaying(effectIndex);
-        return false;
+        return !failed && EnsurePlaying(effectIndex);
     }
 
     internal void SetVolume(float targetVolume)

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Stats.Sanity;
 
 namespace DontStarve.Player.Sleep;
 
@@ -31,7 +32,9 @@ internal readonly record struct SleepRecoveryBalance(
     double BedSanityMultiplier,
     double HungerCostPerSanity,
     bool HungerEnabled = true,
-    bool SanityEnabled = true
+    bool SanityEnabled = true,
+    bool SanityRecoveryEnabled = true,
+    SanityChangeSource SanitySettlementSource = SanityChangeSource.VoluntarySleep
 )
 {
     internal static SleepRecoveryBalance Default => new(

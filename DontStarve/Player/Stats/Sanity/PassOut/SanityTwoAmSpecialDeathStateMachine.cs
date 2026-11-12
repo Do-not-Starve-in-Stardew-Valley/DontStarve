@@ -8,8 +8,8 @@ using DontStarve.Player.Stats.Sanity.Darkness;
 namespace DontStarve.Player.Stats.Sanity.PassOut;
 
 /// <summary>
-/// Host-owned, bounded transition authority for the 2:00 flow. It records decisions and emits
-/// one-shot directives, but never touches Farmer, mail, audio, events, or the save API directly.
+/// Host-owned, bounded transition authority for the owner-local darkness event. It only records
+/// phase and emits idempotent directives; Farmer, audio, event and save side effects stay outside.
 /// </summary>
 internal sealed class SanityTwoAmSpecialDeathStateMachine
 {
@@ -33,51 +33,24 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
         if (flows.TryGetValue(request.PlayerKey, out var existing))
         {
             if (
-                string.Equals(
-                    existing.Snapshot.CorrelationId,
-                    request.CorrelationId,
-                    StringComparison.Ordinal
-                )
-                && string.Equals(
-                    existing.Snapshot.SessionId,
-                    request.SessionId,
-                    StringComparison.Ordinal
-                )
+                string.Equals(existing.Snapshot.CorrelationId, request.CorrelationId, StringComparison.Ordinal)
+                && string.Equals(existing.Snapshot.SessionId, request.SessionId, StringComparison.Ordinal)
             )
             {
-                return Duplicate(
-                    existing.Snapshot,
-                    "passout.two-am.start-duplicate"
-                );
+                return Duplicate(existing.Snapshot, "passout.two-am.start-duplicate");
             }
-            if (
-                existing.Snapshot.Phase
-                    is SanityTwoAmSpecialDeathPhase.Recovered
-                        or SanityTwoAmSpecialDeathPhase.Completed
-            )
-            {
-                // The clinic consequence has already been applied. Retire that receipt so a
-                // later game day can start a fresh event; the permanent mail ID remains the
-                // one-time guard at the SMAPI boundary.
+            if (existing.Snapshot.Phase == SanityTwoAmSpecialDeathPhase.Completed)
                 flows.Remove(request.PlayerKey);
-            }
             else
-            {
-                return Rejected(
-                    "passout.two-am.player-correlation-conflict",
-                    existing.Snapshot
-                );
-            }
+                return Rejected("passout.two-am.player-correlation-conflict", existing.Snapshot);
         }
+
         if (flows.Count >= SanityTwoAmSpecialDeathContract.MaximumFlows)
             return Rejected("passout.two-am.flow-capacity-exceeded");
 
         var kind = request.Mode == DarknessDamageMode.NonLethal
             ? SanityTwoAmSpecialDeathFlowKind.NonLethalHome
-            : SanityTwoAmSpecialDeathFlowKind.DefaultClinic;
-        var phase = kind == SanityTwoAmSpecialDeathFlowKind.NonLethalHome
-            ? SanityTwoAmSpecialDeathPhase.NonLethalHomePending
-            : SanityTwoAmSpecialDeathPhase.PromptA;
+            : SanityTwoAmSpecialDeathFlowKind.DefaultDeath;
         var snapshot = new SanityTwoAmSpecialDeathSnapshot(
             request.SessionId,
             request.CorrelationId,
@@ -86,28 +59,19 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
             request.Authority,
             request.AuthorityRevision,
             kind,
-            phase,
+            SanityTwoAmSpecialDeathPhase.PromptEntered,
             request.CurrentHealth,
             request.MaximumHealth,
-            false,
-            SanityTwoAmSpecialDeathContract.MailId,
             1,
-            request.LocationReason
+            "passout.two-am.started"
         );
         flows.Add(request.PlayerKey, new FlowState(snapshot));
-
-        return kind == SanityTwoAmSpecialDeathFlowKind.NonLethalHome
-            ? Applied(
-                snapshot,
-                "passout.two-am.nonlethal-home-started",
-                Action(snapshot, SanityTwoAmSpecialDeathActionKind.ReduceToFloor)
-            )
-            : Applied(
-                snapshot,
-                "passout.two-am.default-special-started",
-                Action(snapshot, SanityTwoAmSpecialDeathActionKind.BeginSpecialOverlay),
-                Action(snapshot, SanityTwoAmSpecialDeathActionKind.ShowPromptA)
-            );
+        return Applied(
+            snapshot,
+            "passout.two-am.started",
+            Action(snapshot, SanityTwoAmSpecialDeathActionKind.BeginSpecialOverlay),
+            Action(snapshot, SanityTwoAmSpecialDeathActionKind.ShowPromptEntered)
+        );
     }
 
     internal SanityTwoAmSpecialDeathMutation Signal(
@@ -119,30 +83,20 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
     {
         if (!flows.TryGetValue(playerKey, out var state))
             return NoChange("passout.two-am.flow-not-found");
-        if (
-            !string.Equals(
-                state.Snapshot.CorrelationId,
-                correlationId,
-                StringComparison.Ordinal
-            )
-        )
-        {
-            return Rejected(
-                "passout.two-am.signal-correlation-conflict",
-                state.Snapshot
-            );
-        }
+        if (!string.Equals(state.Snapshot.CorrelationId, correlationId, StringComparison.Ordinal))
+            return Rejected("passout.two-am.signal-correlation-conflict", state.Snapshot);
+        if (signal != SanityTwoAmSpecialDeathSignal.AdvancePresentation)
+            return Rejected("passout.two-am.signal-unsupported", state.Snapshot);
         if (string.IsNullOrWhiteSpace(signalId) || signalId.Length > 128)
             return Rejected("passout.two-am.signal-id-invalid", state.Snapshot);
-        if (state.ProcessedSignalIds.Contains(signalId))
+        if (!state.ProcessedSignalIds.Add(signalId))
             return Duplicate(state.Snapshot, "passout.two-am.signal-duplicate");
 
-        var mutation = ApplySignal(state.Snapshot, signal);
+        var mutation = AdvancePresentation(state.Snapshot);
         if (mutation.Status == SanityTwoAmSpecialDeathMutationStatus.Applied)
-        {
-            state.ProcessedSignalIds.Add(signalId);
             state.Snapshot = mutation.Snapshot!;
-        }
+        else
+            state.ProcessedSignalIds.Remove(signalId);
         return mutation;
     }
 
@@ -162,6 +116,9 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
 
     internal IReadOnlyList<SanityTwoAmSpecialDeathSnapshot> SnapshotAll()
     {
+        if (flows.Count == 0)
+            return Array.Empty<SanityTwoAmSpecialDeathSnapshot>();
+
         var snapshots = new List<SanityTwoAmSpecialDeathSnapshot>(flows.Count);
         foreach (var state in flows.Values)
             snapshots.Add(state.Snapshot);
@@ -177,184 +134,79 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
     {
         if (!flows.TryGetValue(playerKey, out var state))
             return NoChange("passout.two-am.cancel-flow-not-found");
-        if (
-            !string.Equals(
-                state.Snapshot.CorrelationId,
-                correlationId,
-                StringComparison.Ordinal
-            )
-        )
-        {
-            return Rejected(
-                "passout.two-am.cancel-correlation-conflict",
-                state.Snapshot
-            );
-        }
+        if (!string.Equals(state.Snapshot.CorrelationId, correlationId, StringComparison.Ordinal))
+            return Rejected("passout.two-am.cancel-correlation-conflict", state.Snapshot);
         if (string.IsNullOrWhiteSpace(reason) || reason.Length > 128)
             return Rejected("passout.two-am.cancel-reason-invalid", state.Snapshot);
 
         flows.Remove(playerKey);
-        var snapshot = state.Snapshot with { Reason = reason };
-        return snapshot.Kind == SanityTwoAmSpecialDeathFlowKind.DefaultClinic
-            ? Applied(
-                snapshot,
-                reason,
-                Action(snapshot, SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay),
-                Action(snapshot, SanityTwoAmSpecialDeathActionKind.StopWarningCue)
-            )
-            : Applied(snapshot, reason);
+        return Applied(
+            state.Snapshot with { Reason = reason },
+            reason,
+            Action(state.Snapshot, SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay)
+        );
     }
 
-    internal void ClearSession()
-    {
-        flows.Clear();
-    }
+    internal void ClearSession() => flows.Clear();
 
+    /// <summary>
+    /// Old recovery records are deliberately not resumed. They are recognized as a safe discard
+    /// so a stale clinic/mail state cannot create a new side effect after this rewrite.
+    /// </summary>
     internal SanityTwoAmSpecialDeathMutation ImportRecovery(
         SanityTwoAmSpecialDeathPersistedFlow persisted,
         string currentSessionId
     )
     {
-        var validation = SanityTwoAmSpecialDeathPersistence.ValidateFlow(persisted);
-        if (validation is not null)
-            return Rejected(validation);
-        if (!SanityProtocol.IsValidSessionId(currentSessionId))
-            return Rejected("passout.two-am.recovery-session-invalid");
-        if (flows.ContainsKey(persisted.PlayerKey))
-        {
-            var existing = flows[persisted.PlayerKey].Snapshot;
-            return string.Equals(
-                    existing.CorrelationId,
-                    persisted.CorrelationId,
-                    StringComparison.Ordinal
-                )
-                ? Duplicate(existing, "passout.two-am.recovery-duplicate")
-                : Rejected("passout.two-am.recovery-player-conflict", existing);
-        }
-        if (flows.Count >= SanityTwoAmSpecialDeathContract.MaximumFlows)
-            return Rejected("passout.two-am.flow-capacity-exceeded");
-
-        var phase = Enum.Parse<SanityTwoAmSpecialDeathPhase>(persisted.Phase);
-        var snapshot = new SanityTwoAmSpecialDeathSnapshot(
-            currentSessionId,
-            persisted.CorrelationId,
-            persisted.PlayerKey,
-            persisted.ScreenId,
-            SanityAuthorityRole.Host,
-            persisted.AuthorityRevision,
-            SanityTwoAmSpecialDeathFlowKind.DefaultClinic,
-            phase,
-            0,
-            0,
-            persisted.MailQueued,
-            persisted.MailId,
-            Math.Max(1, persisted.Revision),
-            "passout.two-am.recovery-imported"
-        );
-        flows.Add(persisted.PlayerKey, new FlowState(snapshot));
-        return Applied(snapshot, "passout.two-am.recovery-imported");
+        _ = persisted;
+        _ = currentSessionId;
+        return NoChange("passout.two-am.legacy-recovery-discarded");
     }
 
-    private static SanityTwoAmSpecialDeathMutation ApplySignal(
-        SanityTwoAmSpecialDeathSnapshot snapshot,
-        SanityTwoAmSpecialDeathSignal signal
+    private static SanityTwoAmSpecialDeathMutation AdvancePresentation(
+        SanityTwoAmSpecialDeathSnapshot snapshot
     )
     {
-        if (signal == SanityTwoAmSpecialDeathSignal.MailQueued)
+        return snapshot.Phase switch
         {
-            if (snapshot.Kind != SanityTwoAmSpecialDeathFlowKind.DefaultClinic)
-                return Rejected("passout.two-am.mail-not-valid-for-flow", snapshot);
-            if (snapshot.MailQueued)
-                return Duplicate(snapshot, "passout.two-am.mail-already-queued");
-            var queued = Next(snapshot, snapshot.Phase, true, "passout.two-am.mail-queued");
-            return Applied(queued, queued.Reason);
-        }
-
-        return (snapshot.Phase, signal) switch
-        {
-            (
-                SanityTwoAmSpecialDeathPhase.PromptA,
-                SanityTwoAmSpecialDeathSignal.AdvancePresentation
-            ) => Transition(
+            SanityTwoAmSpecialDeathPhase.PromptEntered => Transition(
                 snapshot,
-                SanityTwoAmSpecialDeathPhase.WarningCue,
-                "passout.two-am.warning-cue",
-                SanityTwoAmSpecialDeathActionKind.PlayWarningCue
+                SanityTwoAmSpecialDeathPhase.PromptWarning,
+                "passout.two-am.warning",
+                SanityTwoAmSpecialDeathActionKind.PlayWarningCue,
+                SanityTwoAmSpecialDeathActionKind.ShowPromptWarning
             ),
-            (
-                SanityTwoAmSpecialDeathPhase.WarningCue,
-                SanityTwoAmSpecialDeathSignal.AdvancePresentation
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.PromptB,
-                "passout.two-am.prompt-b",
-                SanityTwoAmSpecialDeathActionKind.StopWarningCue,
-                SanityTwoAmSpecialDeathActionKind.ShowPromptB
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.PromptB,
-                SanityTwoAmSpecialDeathSignal.AdvancePresentation
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.PromptC,
-                "passout.two-am.prompt-c",
-                SanityTwoAmSpecialDeathActionKind.ShowPromptC,
-                SanityTwoAmSpecialDeathActionKind.ReportMissingDeathCue
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.PromptC,
-                SanityTwoAmSpecialDeathSignal.AdvancePresentation
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.AwaitingDayEnding,
-                "passout.two-am.official-new-day-requested",
-                SanityTwoAmSpecialDeathActionKind.QueueMail,
-                SanityTwoAmSpecialDeathActionKind.BeginOfficialNewDay
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.NonLethalHomePending,
-                SanityTwoAmSpecialDeathSignal.NonLethalSettled
-            ) => Transition(
+            SanityTwoAmSpecialDeathPhase.PromptWarning => snapshot.Kind
+                == SanityTwoAmSpecialDeathFlowKind.DefaultDeath
+                ? Transition(
+                    snapshot,
+                    SanityTwoAmSpecialDeathPhase.PromptResolved,
+                    "passout.two-am.default-resolved",
+                    SanityTwoAmSpecialDeathActionKind.PlayHurtAndAttack,
+                    SanityTwoAmSpecialDeathActionKind.PlayDeathSound,
+                    SanityTwoAmSpecialDeathActionKind.ShowPromptResolved
+                )
+                : Transition(
+                    snapshot,
+                    SanityTwoAmSpecialDeathPhase.PromptResolved,
+                    "passout.two-am.nonlethal-resolved",
+                    SanityTwoAmSpecialDeathActionKind.PlayHurtAndAttack,
+                    SanityTwoAmSpecialDeathActionKind.ShowPromptResolved
+                ),
+            SanityTwoAmSpecialDeathPhase.PromptResolved => Transition(
                 snapshot,
                 SanityTwoAmSpecialDeathPhase.Completed,
-                "passout.two-am.nonlethal-home-settled"
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.AwaitingDayEnding,
-                SanityTwoAmSpecialDeathSignal.DayEnding
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.AwaitingSaving,
-                "passout.two-am.day-ending-observed"
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.AwaitingSaving,
-                SanityTwoAmSpecialDeathSignal.Saving
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.AwaitingRecovery,
-                "passout.two-am.saving-observed"
-            ),
-            (
-                SanityTwoAmSpecialDeathPhase.AwaitingRecovery,
-                SanityTwoAmSpecialDeathSignal.DayStarted
-            ) => Transition(
-                snapshot,
-                SanityTwoAmSpecialDeathPhase.Recovered,
-                "passout.two-am.clinic-recovery",
-                SanityTwoAmSpecialDeathActionKind.RecoverAtHarveyClinic,
+                "passout.two-am.outcome-started",
                 SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay,
-                SanityTwoAmSpecialDeathActionKind.StopWarningCue
+                snapshot.Kind == SanityTwoAmSpecialDeathFlowKind.DefaultDeath
+                    ? SanityTwoAmSpecialDeathActionKind.BeginHiddenHospitalPassOut
+                    : SanityTwoAmSpecialDeathActionKind.BeginNonLethalPassOut
             ),
-            (
-                SanityTwoAmSpecialDeathPhase.Recovered,
-                SanityTwoAmSpecialDeathSignal.LaterSaving
-            ) => Transition(
+            SanityTwoAmSpecialDeathPhase.Completed => Duplicate(
                 snapshot,
-                SanityTwoAmSpecialDeathPhase.Completed,
-                "passout.two-am.recovery-persisted"
+                "passout.two-am.already-completed"
             ),
-            _ => NoChange("passout.two-am.signal-not-applicable", snapshot),
+            _ => Rejected("passout.two-am.phase-cannot-advance", snapshot),
         };
     }
 
@@ -362,26 +214,26 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
     {
         if (!SanityProtocol.IsValidSessionId(request.SessionId))
             return "passout.two-am.session-invalid";
-        if (!NonLethalDamageContract.IsValidCorrelationId(request.CorrelationId))
+        if (string.IsNullOrWhiteSpace(request.CorrelationId) || request.CorrelationId.Length > 128)
             return "passout.two-am.correlation-invalid";
         if (!SanityPlayerKey.IsCanonical(request.PlayerKey))
-            return "passout.two-am.player-invalid";
+            return "passout.two-am.player-key-invalid";
         if (request.ScreenId < 0)
-            return "passout.two-am.screen-invalid";
-        if (request.Authority != SanityAuthorityRole.Host || request.AuthorityRevision < 0)
+            return "passout.two-am.screen-id-invalid";
+        if (request.Authority != SanityAuthorityRole.Host)
             return "passout.two-am.host-authority-required";
+        if (request.AuthorityRevision < 0)
+            return "passout.two-am.authority-revision-invalid";
         if (!Enum.IsDefined(typeof(DarknessDamageMode), request.Mode))
             return "passout.two-am.mode-invalid";
-        if (string.IsNullOrWhiteSpace(request.LocationReason))
-            return "passout.two-am.location-reason-missing";
+        if (string.IsNullOrWhiteSpace(request.LocationReason) || request.LocationReason.Length > 128)
+            return "passout.two-am.location-reason-invalid";
         if (
-            request.CurrentHealth < 0
-            || request.MaximumHealth <= 0
+            request.MaximumHealth <= 0
+            || request.CurrentHealth < 0
             || request.CurrentHealth > request.MaximumHealth
         )
-        {
             return "passout.two-am.health-snapshot-invalid";
-        }
         return null;
     }
 
@@ -390,93 +242,64 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
         SanityTwoAmSpecialDeathPhase phase,
         string reason,
         params SanityTwoAmSpecialDeathActionKind[] actionKinds
+    ) => Applied(
+        Next(snapshot, phase, reason),
+        reason,
+        CreateActions(snapshot, actionKinds)
+    );
+
+    private static SanityTwoAmSpecialDeathAction[] CreateActions(
+        SanityTwoAmSpecialDeathSnapshot snapshot,
+        IReadOnlyList<SanityTwoAmSpecialDeathActionKind> kinds
     )
     {
-        var next = Next(snapshot, phase, snapshot.MailQueued, reason);
-        var actions = new SanityTwoAmSpecialDeathAction[actionKinds.Length];
-        for (var index = 0; index < actionKinds.Length; index++)
-            actions[index] = Action(next, actionKinds[index]);
-        return Applied(next, reason, actions);
+        var actions = new SanityTwoAmSpecialDeathAction[kinds.Count];
+        for (var index = 0; index < kinds.Count; index++)
+            actions[index] = Action(snapshot, kinds[index]);
+        return actions;
     }
 
     private static SanityTwoAmSpecialDeathSnapshot Next(
         SanityTwoAmSpecialDeathSnapshot snapshot,
         SanityTwoAmSpecialDeathPhase phase,
-        bool mailQueued,
         string reason
-    )
+    ) => snapshot with
     {
-        return snapshot with
-        {
-            Phase = phase,
-            MailQueued = mailQueued,
-            Revision = checked(snapshot.Revision + 1),
-            Reason = reason,
-        };
-    }
+        Phase = phase,
+        Revision = snapshot.Revision + 1,
+        Reason = reason,
+    };
 
     private static SanityTwoAmSpecialDeathAction Action(
         SanityTwoAmSpecialDeathSnapshot snapshot,
         SanityTwoAmSpecialDeathActionKind kind
-    )
-    {
-        return new SanityTwoAmSpecialDeathAction(
-            kind,
-            snapshot.PlayerKey,
-            snapshot.ScreenId,
-            snapshot.CorrelationId
-        );
-    }
+    ) => new(kind, snapshot.PlayerKey, snapshot.ScreenId, snapshot.CorrelationId);
 
     private static SanityTwoAmSpecialDeathMutation Applied(
         SanityTwoAmSpecialDeathSnapshot snapshot,
         string reason,
         params SanityTwoAmSpecialDeathAction[] actions
-    )
-    {
-        return new SanityTwoAmSpecialDeathMutation(
-            SanityTwoAmSpecialDeathMutationStatus.Applied,
-            reason,
-            snapshot,
-            actions
-        );
-    }
+    ) => new(
+        SanityTwoAmSpecialDeathMutationStatus.Applied,
+        reason,
+        snapshot,
+        actions
+    );
 
     private static SanityTwoAmSpecialDeathMutation Duplicate(
         SanityTwoAmSpecialDeathSnapshot snapshot,
         string reason
-    )
-    {
-        return new SanityTwoAmSpecialDeathMutation(
-            SanityTwoAmSpecialDeathMutationStatus.Duplicate,
-            reason,
-            snapshot
-        );
-    }
+    ) => new(SanityTwoAmSpecialDeathMutationStatus.Duplicate, reason, snapshot);
 
     private static SanityTwoAmSpecialDeathMutation NoChange(
         string reason,
         SanityTwoAmSpecialDeathSnapshot? snapshot = null
-    )
-    {
-        return new SanityTwoAmSpecialDeathMutation(
-            SanityTwoAmSpecialDeathMutationStatus.NoChange,
-            reason,
-            snapshot
-        );
-    }
+    ) => new(SanityTwoAmSpecialDeathMutationStatus.NoChange, reason, snapshot);
 
     private static SanityTwoAmSpecialDeathMutation Rejected(
         string reason,
         SanityTwoAmSpecialDeathSnapshot? snapshot = null
-    )
-    {
-        return new SanityTwoAmSpecialDeathMutation(
-            SanityTwoAmSpecialDeathMutationStatus.Rejected,
-            reason,
-            snapshot
-        );
-    }
+    ) => new(SanityTwoAmSpecialDeathMutationStatus.Rejected, reason, snapshot);
 
     private sealed class FlowState
     {
@@ -487,7 +310,6 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
 
         internal SanityTwoAmSpecialDeathSnapshot Snapshot { get; set; }
 
-        internal HashSet<string> ProcessedSignalIds { get; } =
-            new(StringComparer.Ordinal);
+        internal HashSet<string> ProcessedSignalIds { get; } = new(StringComparer.Ordinal);
     }
 }

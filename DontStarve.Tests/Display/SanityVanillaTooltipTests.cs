@@ -48,6 +48,14 @@ public sealed class SanityVanillaTooltipTests
             "DisplayManager.cs"
         );
 
+    private static string ModEntrySourcePath =>
+        Path.Combine(
+            AppContext.BaseDirectory,
+            "Contracts",
+            "ShadowProjection",
+            "ModEntry.cs"
+        );
+
     private static string BrainAssetPath =>
         Path.Combine(
             AppContext.BaseDirectory,
@@ -153,9 +161,10 @@ public sealed class SanityVanillaTooltipTests
         Assert.Same(rows, layout.Rows);
         Assert.Equal(2, layout.SurvivalRowCount);
         Assert.Equal(1, layout.ExtraBuffRowCount);
-        Assert.Equal(4 + 3 * 39, layout.GetAdditionalHeight(vanillaBuffSectionPresent: true));
+        Assert.Equal(2 * 34 + 39, layout.GetAdditionalHeight(vanillaBuffSectionPresent: true));
+        // 分隔线与小节留白移除后，原版 Buff 区存在与否不再影响高度增量。
         Assert.Equal(
-            4 + 2 * 39 + 4 + 39,
+            2 * 34 + 39,
             layout.GetAdditionalHeight(vanillaBuffSectionPresent: false)
         );
         Assert.Equal(0, SanityTooltipRowLayout.Empty.GetAdditionalHeight(false));
@@ -267,6 +276,7 @@ public sealed class SanityVanillaTooltipTests
             SanityTooltipLayoutContract.SupportedBuffAttributes
         );
         Assert.Equal(39, SanityTooltipLayoutContract.CustomRowHeight);
+        Assert.Equal(34, SanityTooltipLayoutContract.CustomSurvivalRowHeight);
         Assert.Equal(10, SanityTooltipLayoutContract.VanillaTooltipIconSourcePixels);
         Assert.Equal(3, SanityTooltipLayoutContract.VanillaTooltipIconScale);
         Assert.Equal(30, SanityTooltipLayoutContract.TooltipIconPixels);
@@ -276,19 +286,19 @@ public sealed class SanityVanillaTooltipTests
         Assert.Contains("TextureLoader.HungerIcon", runtimeSource, StringComparison.Ordinal);
         Assert.Contains("icon.Width", runtimeSource, StringComparison.Ordinal);
         Assert.Equal(
-            4 + 3 * 39,
-            SanityTooltipLayoutContract.GetAdditionalHeight(3)
+            3 * 34,
+            SanityTooltipLayoutContract.GetAdditionalHeight(3, 0, vanillaBuffSectionPresent: true)
         );
         Assert.Equal(
             7 * 39,
-            SanityTooltipLayoutContract.GetAdditionalHeight(0, 7)
+            SanityTooltipLayoutContract.GetAdditionalHeight(0, 7, vanillaBuffSectionPresent: true)
         );
         Assert.Equal(
-            4 + 3 * 39 + 7 * 39,
-            SanityTooltipLayoutContract.GetAdditionalHeight(3, 7)
+            3 * 34 + 7 * 39,
+            SanityTooltipLayoutContract.GetAdditionalHeight(3, 7, vanillaBuffSectionPresent: true)
         );
         Assert.Equal(
-            4 + 2 * 39 + 4 + 3 * 39,
+            2 * 34 + 3 * 39,
             SanityTooltipLayoutContract.GetAdditionalHeight(2, 3, vanillaBuffSectionPresent: false)
         );
     }
@@ -644,5 +654,22 @@ public sealed class SanityVanillaTooltipTests
         Assert.Contains("item is Ring", source, StringComparison.Ordinal);
         Assert.Contains("using StardewValley.Objects;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("StartsWith(\"(R)\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ModEntryDisposesTheVanillaTooltipHarmonyOwner()
+    {
+        var source = File.ReadAllText(ModEntrySourcePath);
+        var disposeStart = source.IndexOf(
+            "void IDisposable.Dispose()",
+            StringComparison.Ordinal
+        );
+
+        Assert.True(disposeStart >= 0);
+        Assert.Contains(
+            "_vanillaSanityTooltip.Dispose();",
+            source[disposeStart..],
+            StringComparison.Ordinal
+        );
     }
 }

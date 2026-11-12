@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Player.Stats.Food;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -20,19 +21,22 @@ internal sealed class SmapiHungerMultiplayerCoordinator
     private readonly IMonitor monitor;
     private readonly string modId;
     private readonly HungerChangeService service;
+    private readonly IHungerStatusFeedbackSink? statusFeedbackSink;
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
 
     internal SmapiHungerMultiplayerCoordinator(
         IModHelper helper,
         IMonitor monitor,
         string modId,
-        HungerChangeService service
+        HungerChangeService service,
+        IHungerStatusFeedbackSink? statusFeedbackSink = null
     )
     {
         this.helper = helper;
         this.monitor = monitor;
         this.modId = modId;
         this.service = service;
+        this.statusFeedbackSink = statusFeedbackSink;
     }
 
     internal void Initialize()
@@ -44,6 +48,7 @@ internal sealed class SmapiHungerMultiplayerCoordinator
         helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
         helper.Events.Multiplayer.ModMessageReceived += OnModMessageReceived;
         service.HostStateChanged += OnHostStateChanged;
+        service.ClientSnapshotApplied += OnClientSnapshotApplied;
         service.ClientFoodRequestCreated += OnClientFoodRequestCreated;
     }
 
@@ -195,13 +200,21 @@ internal sealed class SmapiHungerMultiplayerCoordinator
 
         var message = e.ReadAs<HungerSnapshotMessage>();
         var result = service.ApplyClientSnapshot(message);
+        // 回放播音事实（含结算前值）由 service 的 ClientSnapshotApplied 唯一发布，
+        // 已在 Initialize 中转发给状态反馈 seam；这里只处理快照修复与诊断。
         if (result.NeedsFullSnapshot)
             RequestFullSnapshot();
         else if (result.Status == HungerSnapshotApplyStatus.Rejected)
             LogOnce(result.Reason, LogLevel.Warn);
     }
 
-    private void OnHostStateChanged(HungerPlayerSnapshot snapshot)
+    private void OnClientSnapshotApplied(HungerClientDeltaObservation observation)
+    {
+        // 客户端防双响：回放事实先经 sink 过滤（本机玩家 + Hint=Discrete）再播音。
+        statusFeedbackSink?.ObserveClientDelta(observation);
+    }
+
+    private void OnHostStateChanged(HungerSettlementObservation observation)
     {
         if (service.Role != HungerAuthorityRole.Host)
             return;
@@ -209,8 +222,15 @@ internal sealed class SmapiHungerMultiplayerCoordinator
         service.SetHostFoodCompletionSupported(
             service.HostFoodCompletionPatchInstalled
         );
+        var delta = service.CreateDeltaSnapshot(observation.Snapshot);
+        // FeedbackHint 是协议事实（客户端据此对自身离散变化播音一次），与本机开关无关。
+        delta.FeedbackHint = statusFeedbackSink?.ResolveDeltaHint(observation.Kind)
+            ?? StatusFeedbackTriggerKind.Unknown;
+        // DeltaKind 是进食恢复弹窗的事实来源：客户端只在 Kind=Food 且本机玩家时弹窗。
+        // 完整快照不带本字段（默认 Unknown=不弹），旧客户端忽略未知 JSON 字段。
+        delta.DeltaKind = observation.Kind;
         helper.Multiplayer.SendMessage(
-            service.CreateDeltaSnapshot(snapshot),
+            delta,
             SnapshotMessageType,
             new[] { modId },
             null

@@ -322,18 +322,21 @@ internal sealed class SmapiTrashCanSanityService : IDisposable
         }
     }
 
-    private static SearchState CheckGarbagePrefix(
+    // Harmony 前缀只允许 void / bool 返回类型（SMAPI 自带 Harmony 在 MethodPatcher 里硬校验，
+    // 其它返回类型会在 harmony.Patch 时直接抛异常并让整个垃圾桶功能 fail-closed 禁用）。
+    // 状态必须走 ref __state 参数传给 postfix，不能用 return 携带。
+    private static void CheckGarbagePrefix(
         GameLocation __instance,
         string id,
         Vector2 tile,
         Farmer who,
-        bool reactNpcs
+        bool reactNpcs,
+        ref SearchState __state
     )
     {
         searchStack ??= new Stack<SearchState>();
-        var state = new SearchState(__instance, id, tile, who, reactNpcs);
-        searchStack.Push(state);
-        return state;
+        __state = new SearchState(__instance, id, tile, who, reactNpcs);
+        searchStack.Push(__state);
     }
 
     private static void TryGetGarbageItemPostfix(

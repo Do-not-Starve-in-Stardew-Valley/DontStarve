@@ -2,12 +2,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using DontStarve.Player.Combat;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
-using StardewValley.Objects;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 
@@ -23,10 +22,9 @@ internal sealed class SmapiHostileShadowSettlementEffects
         IHostileShadowKillEffectAuthority
 {
     internal const string VoidEssenceQualifiedItemId = "(O)769";
-    internal const string CoffeeQualifiedItemId = "(O)395";
-    internal const string TripleShotEspressoQualifiedItemId = "(O)253";
-    internal const string WarriorBuffId = "20";
-    internal const string AdrenalineRushBuffId = "22";
+    internal const string CoffeeQualifiedItemId = "(O)" + VanillaKillRingCatalog.CoffeeItemId;
+    internal const string TripleShotEspressoQualifiedItemId =
+        "(O)" + VanillaKillRingCatalog.TripleShotEspressoItemId;
 
     private readonly SanitySystemLifecycleCoordinator lifecycle;
 
@@ -166,20 +164,13 @@ internal sealed class SmapiHostileShadowSettlementEffects
             return HostileShadowRingSnapshotReceipt.Invalid(reason);
         }
 
-        var ringIds = new List<string>(8);
-        AppendSettlementRingIds(player!.leftRing.Value, ringIds);
-        AppendSettlementRingIds(player.rightRing.Value, ringIds);
-        var sequence = string.Join(",", ringIds);
-        var hasBurglar = ringIds.Contains(
-            HostileShadowVanillaRingIds.Burglar,
-            StringComparer.Ordinal
-        );
+        var sharedSnapshot = SmapiVanillaKillRingEffects.CaptureSnapshot(player!);
         return HostileShadowRingSnapshotReceipt.Valid(
             new HostileShadowRingSnapshot(
-                sequence,
-                hasBurglar,
-                player.stats.Get("Book_Void") != 0,
-                player.LuckLevel
+                sharedSnapshot.MonsterSlayRingSequence,
+                sharedSnapshot.HasBurglarRing,
+                sharedSnapshot.HasMonsterBook,
+                sharedSnapshot.LuckLevel
             ),
             "hostile-shadow.settlement-ring-snapshot-captured"
         );
@@ -219,45 +210,28 @@ internal sealed class SmapiHostileShadowSettlementEffects
             return RejectedKillEffects(request, reason);
         }
 
-        player!.health = Math.Min(
-            player.maxHealth,
-            player.health + request.VampireHealth
-        );
-        player.Stamina = Math.Min(
-            player.MaxStamina,
-            player.Stamina + request.SoulSapperEnergy
-        );
-        for (var index = 0; index < request.WarriorTriggerCount; index++)
-        {
-            player.applyBuff(WarriorBuffId);
-            if (player.IsLocalPlayer)
-                Game1.playSound("warrior");
-        }
-        for (var index = 0; index < request.SavageTriggerCount; index++)
-            player.applyBuff(AdrenalineRushBuffId);
-
-        var location = player.currentLocation;
+        var location = player!.currentLocation;
         if (location is null)
             return RejectedKillEffects(
                 request,
                 "hostile-shadow.settlement-kill-effects-location-missing"
             );
-        for (var index = 0; index < request.NapalmExplosionCount; index++)
-        {
-            // This is the vanilla Ring.onMonsterSlay call. In Farm/SlimeHutch the call still
-            // happens; only destroyObjects is false, so nearby monsters can still be affected.
-            location.explode(
-                new Vector2(
-                    (float)request.ExplosionTileX,
-                    (float)request.ExplosionTileY
-                ),
-                2,
-                player,
-                damageFarmers: false,
-                damage_amount: -1,
-                destroyObjects: location is not Farm && location is not SlimeHutch
-            );
-        }
+        SmapiVanillaKillRingEffects.ApplyPlan(
+            player,
+            location,
+            new VanillaKillRingEffectPlan(
+                request.VampireHealth,
+                request.SoulSapperEnergy,
+                request.WarriorTriggerCount,
+                request.SavageTriggerCount,
+                request.NapalmExplosionCount,
+                Array.Empty<string>()
+            ),
+            new Vector2(
+                (float)request.ExplosionTileX,
+                (float)request.ExplosionTileY
+            )
+        );
         return new HostileShadowKillEffectReceipt(
             HostileShadowKillEffectStatus.Applied,
             request.PlayerKey,
@@ -268,22 +242,6 @@ internal sealed class SmapiHostileShadowSettlementEffects
             request.NapalmExplosionCount,
             "hostile-shadow.settlement-kill-effects-applied"
         );
-    }
-
-    private static void AppendSettlementRingIds(
-        Ring? ring,
-        List<string> result
-    )
-    {
-        if (ring is null)
-            return;
-        if (ring is CombinedRing combined)
-        {
-            foreach (var child in combined.combinedRings)
-                AppendSettlementRingIds(child, result);
-        }
-        if (HostileShadowVanillaRingIds.IsSettlementRelevant(ring.ItemId))
-            result.Add(ring.ItemId);
     }
 
     private static bool TryGetQualifiedItemId(

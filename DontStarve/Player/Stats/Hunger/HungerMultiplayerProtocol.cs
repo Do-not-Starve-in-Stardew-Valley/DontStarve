@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 
 namespace DontStarve.Player.Stats.Hunger;
 
@@ -43,6 +44,20 @@ internal sealed class HungerSnapshotMessage
 
     // Optional for older hosts/clients: false preserves the request-based food fallback.
     public bool HostFoodCompletionSupported { get; set; }
+
+    /// <summary>
+    /// 主机对该次变化的播音分类（仅增量快照有意义；完整快照恒为 Unknown）。
+    /// wire 契约：Unknown=0 表示没有可播音事实，接收端必须静音，缺字段同样反序列化为 0。
+    /// </summary>
+    public StatusFeedbackTriggerKind FeedbackHint { get; set; }
+
+    /// <summary>
+    /// 主机对该次增量变化标注的结算种类（仅增量快照有意义；完整快照恒为 Unknown）。
+    /// 进食恢复弹窗据此识别 Food 结算；wire 契约：Unknown=0 表示没有种类事实
+    /// （完整快照、旧主机消息缺字段），接收端必须按「不可弹」处理——缺字段反序列化为 0，
+    /// 旧端忽略本附加字段，对旧协议是安全默认（fail-safe）。
+    /// </summary>
+    public HungerChangeKind DeltaKind { get; set; }
 
     public List<HungerPlayerSnapshot> Players { get; set; } = new();
 }

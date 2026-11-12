@@ -1,3 +1,4 @@
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -502,6 +503,7 @@ public sealed class CreeperFearCombatAndHitTeleportTests
                 ),
                 MaximumRangePixels = profile.AttackRangePixels,
                 Damage = profile.BaseDamage,
+                HitWindowId = HostileAttackHitWindow.LegacyWindowId,
             },
             pipeline,
             out receipt
@@ -580,7 +582,10 @@ public sealed class CreeperFearCombatAndHitTeleportTests
         public int CurrentHealth { get; private set; }
         internal int Calls { get; private set; }
 
-        public void ApplyOrdinaryDamage(int damage)
+        public void ApplyOrdinaryDamage(
+            int damage,
+            InvincibilityFramePolicy policy
+        )
         {
             Calls++;
             CurrentHealth = Math.Max(0, CurrentHealth - damage);

@@ -114,7 +114,8 @@ internal sealed class SanityHostileCollisionDefinition
         SanityResourceRectangle hurtBoxSourcePx,
         SanityResourceRectangle attackBoxSourcePx,
         SanityHostilePushBoxDefinition pushBox,
-        IReadOnlyList<int> attackActiveFrames
+        IReadOnlyList<int> attackActiveFrames,
+        IReadOnlyList<SanityHostileAttackHitWindowDefinition>? attackHitWindows = null
     )
     {
         CoordinateSpace = coordinateSpace;
@@ -123,6 +124,10 @@ internal sealed class SanityHostileCollisionDefinition
         AttackBoxSourcePx = attackBoxSourcePx;
         PushBox = pushBox;
         AttackActiveFrames = Copy(attackActiveFrames);
+        // 无敌帧抑制（20261113 冻结决议）：窗口列表是可选资源字段；空/缺省由
+        // SanityHostileAttackHitWindowRules 统一折叠成单个隐式 Normal 窗口，
+        // 保证旧的单次命中资源行为逐字节不变。
+        AttackHitWindows = attackHitWindows ?? Array.Empty<SanityHostileAttackHitWindowDefinition>();
     }
 
     internal string CoordinateSpace { get; }
@@ -131,6 +136,7 @@ internal sealed class SanityHostileCollisionDefinition
     internal SanityResourceRectangle AttackBoxSourcePx { get; }
     internal SanityHostilePushBoxDefinition PushBox { get; }
     internal IReadOnlyList<int> AttackActiveFrames { get; }
+    internal IReadOnlyList<SanityHostileAttackHitWindowDefinition> AttackHitWindows { get; }
 
     private static IReadOnlyList<int> Copy(IReadOnlyList<int> values)
     {
@@ -166,6 +172,186 @@ internal sealed class SanityHostileAttackMotionDefinition
     internal double TotalAdvanceTiles { get; }
     internal IReadOnlyList<double> FrameAdvanceTiles { get; }
     internal bool ResetAfterAnimation { get; }
+}
+
+/// <summary>
+/// One independent hit window of an attack, as declared by optional resource metadata
+/// (Collision.AttackHitWindows). The resource layer keeps the policy as raw strings/ints so it
+/// never depends on the gameplay layer; HostileAttackRuntimeDefinition converts it into the
+/// shared InvincibilityFramePolicy value object.
+/// </summary>
+internal sealed class SanityHostileAttackHitWindowDefinition
+{
+    internal SanityHostileAttackHitWindowDefinition(
+        string windowId,
+        IReadOnlyList<int> activeFrames,
+        string iframePolicyMode,
+        int iframePolicyDurationMilliseconds
+    )
+    {
+        WindowId = windowId;
+        ActiveFrames = Copy(activeFrames);
+        IFramePolicyMode = iframePolicyMode;
+        IFramePolicyDurationMilliseconds = iframePolicyDurationMilliseconds;
+    }
+
+    internal string WindowId { get; }
+    internal IReadOnlyList<int> ActiveFrames { get; }
+    internal string IFramePolicyMode { get; }
+    internal int IFramePolicyDurationMilliseconds { get; }
+
+    private static IReadOnlyList<int> Copy(IReadOnlyList<int> values)
+    {
+        var copy = new int[values.Count];
+        for (var index = 0; index < values.Count; index++)
+            copy[index] = values[index];
+        return Array.AsReadOnly(copy);
+    }
+}
+
+/// <summary>
+/// Pure validation for optional attack hit windows. Rules (frozen 2026-11-13):
+/// - absent/empty window list collapses into one implicit legacy window covering every active
+///   frame with a Normal policy, so legacy single-hit metadata keeps identical runtime behavior;
+/// - present windows must have bounded unique ids, non-empty in-range frames, disjoint frames
+///   across windows, and their union must exactly cover the attack's active frames;
+/// - policy strings are strict ordinal ("Normal"/"Strong"/"Weak"); Normal forces duration 0.
+/// </summary>
+internal static class SanityHostileAttackHitWindowRules
+{
+    internal const string LegacyWindowId = "single";
+    internal const int MaximumWindows = 8;
+    internal const int MaximumWindowIdLength = 64;
+
+    internal static bool TryCreateWindows(
+        IReadOnlyList<int> activeFrames,
+        int attackFrameCount,
+        IReadOnlyList<SanityHostileAttackHitWindowDefinition>? windows,
+        out IReadOnlyList<SanityHostileAttackHitWindowDefinition> created,
+        out string reason
+    )
+    {
+        created = Array.Empty<SanityHostileAttackHitWindowDefinition>();
+        if (windows is null || windows.Count == 0)
+        {
+            created = new[]
+            {
+                new SanityHostileAttackHitWindowDefinition(
+                    LegacyWindowId,
+                    activeFrames,
+                    "Normal",
+                    0
+                ),
+            };
+            reason = "resource.hostile-attack-metadata.hit-window-legacy";
+            return true;
+        }
+
+        if (windows.Count > MaximumWindows)
+        {
+            reason = "resource.hostile-attack-metadata.hit-window-count";
+            return false;
+        }
+
+        var distinctActiveFrames = new HashSet<int>(activeFrames);
+        var claimedFrames = new HashSet<int>();
+        var seenWindowIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var window in windows)
+        {
+            if (
+                window is null
+                || !IsValidWindowId(window.WindowId)
+                || !seenWindowIds.Add(window.WindowId)
+            )
+            {
+                reason = "resource.hostile-attack-metadata.hit-window-id-invalid";
+                return false;
+            }
+
+            if (window.ActiveFrames.Count == 0)
+            {
+                reason = "resource.hostile-attack-metadata.hit-window-frames-empty";
+                return false;
+            }
+
+            foreach (var frame in window.ActiveFrames)
+            {
+                if (frame < 1 || frame > attackFrameCount)
+                {
+                    reason = "resource.hostile-attack-metadata.hit-window-frame-out-of-range";
+                    return false;
+                }
+
+                if (!claimedFrames.Add(frame))
+                {
+                    reason = "resource.hostile-attack-metadata.hit-window-frame-shared";
+                    return false;
+                }
+            }
+
+            if (!IsValidPolicy(window.IFramePolicyMode, window.IFramePolicyDurationMilliseconds))
+            {
+                reason = "resource.hostile-attack-metadata.hit-window-policy-invalid";
+                return false;
+            }
+        }
+
+        // 窗口并集必须与攻击激活帧集合完全相等：既不允许漏帧（否则该帧无法归属窗口），
+        // 也不允许窗口声明非激活帧（否则窗口会扩大命中判定范围）。
+        if (!claimedFrames.SetEquals(distinctActiveFrames))
+        {
+            reason = "resource.hostile-attack-metadata.hit-window-coverage-invalid";
+            return false;
+        }
+
+        created = windows;
+        reason = "resource.hostile-attack-metadata.hit-window-available";
+        return true;
+    }
+
+    private static bool IsValidWindowId(string windowId)
+    {
+        if (
+            string.IsNullOrWhiteSpace(windowId)
+            || windowId.Length > MaximumWindowIdLength
+        )
+        {
+            return false;
+        }
+
+        // 资源层用比协议更严的字符集（ASCII 字母/数字/._-），保证 window id 可以安全进入
+        // 命中 nonce（instanceId:playerKey:frame）与多人命令而不破坏分隔符语义。
+        // .NET 6 没有 char.IsAsciiLetterOrDigit，这里显式枚举 ASCII 区间。
+        foreach (var character in windowId)
+        {
+            var isAsciiLetterOrDigit =
+                (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            if (
+                !isAsciiLetterOrDigit
+                && character != '-'
+                && character != '_'
+                && character != '.'
+            )
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsValidPolicy(string mode, int durationMilliseconds)
+    {
+        return mode switch
+        {
+            "Normal" => durationMilliseconds == 0,
+            "Strong" => durationMilliseconds >= 0,
+            "Weak" => durationMilliseconds >= 0,
+            _ => false,
+        };
+    }
 }
 
 internal sealed class SanityHostileAttackMetadataCatalog
@@ -253,6 +439,20 @@ internal sealed class SanityHostileAttackMetadataCatalog
                 var activeFrames = ReadIntArray(
                     collisionElement.GetProperty("AttackActiveFrames")
                 );
+                IReadOnlyList<SanityHostileAttackHitWindowDefinition>? hitWindows = null;
+                if (
+                    collisionElement.TryGetProperty(
+                        "AttackHitWindows",
+                        out var hitWindowsElement
+                    )
+                )
+                {
+                    if (hitWindowsElement.ValueKind != JsonValueKind.Array)
+                        throw new InvalidOperationException(
+                            "Expected a hit-window array."
+                        );
+                    hitWindows = ReadHitWindows(hitWindowsElement);
+                }
                 var states = Index(profile.GetProperty("States"), "AnimationId");
                 var idle = ReadState(FindState(states, ".idle"));
                 var chase = ReadState(FindState(states, ".move"));
@@ -290,6 +490,19 @@ internal sealed class SanityHostileAttackMetadataCatalog
                     return false;
                 }
 
+                if (
+                    !SanityHostileAttackHitWindowRules.TryCreateWindows(
+                        activeFrames,
+                        attack.FrameCount,
+                        hitWindows,
+                        out var validatedHitWindows,
+                        out reason
+                    )
+                )
+                {
+                    return false;
+                }
+
                 var definition = new SanityHostileAttackMetadataDefinition(
                     bindingId,
                     animationProfileId,
@@ -306,7 +519,8 @@ internal sealed class SanityHostileAttackMetadataCatalog
                         hurtBox,
                         attackBox,
                         pushBox,
-                        activeFrames
+                        activeFrames,
+                        validatedHitWindows
                     ),
                     motion
                 );
@@ -526,6 +740,25 @@ internal sealed class SanityHostileAttackMetadataCatalog
         if (element.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("Expected an integer array.");
         return Array.AsReadOnly(element.EnumerateArray().Select(value => value.GetInt32()).ToArray());
+    }
+
+    private static IReadOnlyList<SanityHostileAttackHitWindowDefinition> ReadHitWindows(
+        JsonElement element
+    )
+    {
+        var windows = new List<SanityHostileAttackHitWindowDefinition>();
+        foreach (var item in element.EnumerateArray())
+        {
+            var policy = item.GetProperty("IFramePolicy");
+            windows.Add(new SanityHostileAttackHitWindowDefinition(
+                RequiredString(item, "WindowId"),
+                ReadIntArray(item.GetProperty("ActiveFrames")),
+                RequiredString(policy, "Mode"),
+                policy.GetProperty("DurationMilliseconds").GetInt32()
+            ));
+        }
+
+        return windows;
     }
 
     private static IReadOnlyList<double> ReadDoubleArray(JsonElement element)

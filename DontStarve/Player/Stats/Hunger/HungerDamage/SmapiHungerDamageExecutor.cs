@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using DontStarve.Audio.StatusFeedback;
 using Microsoft.Xna.Framework;
 using StardewValley;
 
@@ -39,6 +40,13 @@ internal sealed class SmapiHungerDamageExecutor
         if (result.Damage <= 0)
             return false;
 
+        // 空腹伤害是 overtime 扣血：对齐 DST 语义（持续扣血完全无声），
+        // 在写值前抑制健康差分 watcher 的当次播音；一次性伤害路径不经此处。
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            player.UniqueMultiplayerID,
+            player.health,
+            result.RemainingHealth
+        );
         player.health = result.RemainingHealth;
         if (player.health <= 0)
             lethalDamageHandler?.Invoke(player);

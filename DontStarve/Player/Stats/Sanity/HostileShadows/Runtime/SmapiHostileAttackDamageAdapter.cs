@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using DontStarve.Player.Combat.InvincibilityFrames;
 using StardewValley;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
@@ -14,22 +15,31 @@ internal sealed class SmapiHostileAttackDamageAdapter
 {
     private readonly Farmer target;
     private readonly HostileShadowMonster damager;
+    private readonly SmapiInvincibilityFrameDamageService damageService;
 
     internal SmapiHostileAttackDamageAdapter(
         Farmer target,
-        HostileShadowMonster damager
+        HostileShadowMonster damager,
+        SmapiInvincibilityFrameDamageService damageService
     )
     {
         this.target = target ?? throw new ArgumentNullException(nameof(target));
         this.damager = damager ?? throw new ArgumentNullException(nameof(damager));
+        this.damageService = damageService
+            ?? throw new ArgumentNullException(nameof(damageService));
     }
 
     public int CurrentHealth => target.health;
 
-    public void ApplyOrdinaryDamage(int damage)
+    public void ApplyOrdinaryDamage(
+        int damage,
+        InvincibilityFramePolicy policy
+    )
     {
         if (damage <= 0)
             throw new ArgumentOutOfRangeException(nameof(damage));
-        target.takeDamage(damage, overrideParry: false, damager);
+        // target.takeDamage remains the sole vanilla damage seam; the shared service owns the
+        // post-hit policy so this adapter cannot grow a second combat implementation.
+        damageService.Apply(target, damage, damager, policy);
     }
 }

@@ -346,7 +346,7 @@ public sealed class HostileShadowRuntimeBoundaryTests
             StringComparison.Ordinal
         );
         var settledOffset = process.IndexOf(
-            "instance.HasSettledPlayer(playerId)",
+            "instance.HasSettledPlayerInWindow(",
             StringComparison.Ordinal
         );
         var targetBoundsOffset = process.IndexOf(
@@ -397,8 +397,16 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.DoesNotContain("Enumerable.", geometry, StringComparison.Ordinal);
         Assert.Contains("Math.Min(", geometry, StringComparison.Ordinal);
         Assert.Contains("Math.Max(", geometry, StringComparison.Ordinal);
-        Assert.Contains("private readonly HashSet<long> hitPlayerIds", instance, StringComparison.Ordinal);
-        Assert.Contains("internal bool HasSettledPlayer(long playerId)", instance, StringComparison.Ordinal);
+        Assert.Contains(
+            "private readonly HashSet<(string WindowId, long PlayerId)> claimedWindowPlayerIds",
+            instance,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "internal bool HasSettledPlayerInWindow(string hitWindowId, long playerId)",
+            instance,
+            StringComparison.Ordinal
+        );
         Assert.Contains("context.TargetPlayerId", damage, StringComparison.Ordinal);
         Assert.Contains(
             "TargetPlayerId = farmer.UniqueMultiplayerID",
@@ -408,7 +416,7 @@ public sealed class HostileShadowRuntimeBoundaryTests
         Assert.Contains("if (playerId == 0)", combat, StringComparison.Ordinal);
         Assert.DoesNotContain("playerId < 0", combat, StringComparison.Ordinal);
         Assert.Contains(
-            "return playerId != 0 && hitPlayerIds.Contains(playerId);",
+            "&& claimedWindowPlayerIds.Contains((hitWindowId, playerId))",
             instance,
             StringComparison.Ordinal
         );
@@ -1025,6 +1033,30 @@ public sealed class HostileShadowRuntimeBoundaryTests
             source,
             StringComparison.Ordinal
         );
+    }
+
+    [Fact]
+    public void MaterializationVisualFallbackReportsTheFailureWithoutBreakingSpawn()
+    {
+        var source = Contract("SmapiHostileShadowWorldRuntime.cs");
+        var start = source.IndexOf(
+            "var spriteResource = resourceService.LoadVisualSlot",
+            StringComparison.Ordinal
+        );
+        var end = source.IndexOf(
+            "monster.Name = helper.Translation.Get(profile.DisplayNameKey).ToString();",
+            start,
+            StringComparison.Ordinal
+        );
+
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        var visualLoad = source[start..end];
+        Assert.Contains("if (!spriteResource.Success)", visualLoad, StringComparison.Ordinal);
+        Assert.Contains("spriteResource.Diagnostic.Code", visualLoad, StringComparison.Ordinal);
+        Assert.Contains("LogOnce(", visualLoad, StringComparison.Ordinal);
+        Assert.Contains("hostile-shadow.visual-load-failed", visualLoad, StringComparison.Ordinal);
+        Assert.Contains("保持占位 Sprite", visualLoad, StringComparison.Ordinal);
     }
 
     private static void AssertPair(string source, string eventName, string handler)

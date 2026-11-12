@@ -29,6 +29,7 @@ internal sealed class SmapiHostileShadowHost
         IHostileShadowConversionRequestHandler,
         IHostileShadowAggroHintHandler,
         IHostileShadowAttackHitHandler,
+        IHostileShadowDamageCommandHandler,
         IHostileShadowPhysicalCapabilityHandler,
         IHostileShadowPushBoxIntentHandler,
         IHostileShadowPushBoxResultHandler,
@@ -217,8 +218,21 @@ internal sealed class SmapiHostileShadowHost
             this,
             this,
             this,
+            this,
             this
         );
+        if (
+            !world.BindRemoteDamageTransport(
+                multiplayer,
+                out var damageTransportReason
+            )
+        )
+        {
+            monitor.Log(
+                $"Hostile shadow damage transport binding failed ({damageTransportReason}).",
+                LogLevel.Error
+            );
+        }
         if (!multiplayer.BindPushBoxHandlers(this, this, out var pushBoxTransportReason))
         {
             monitor.Log(
@@ -425,6 +439,34 @@ internal sealed class SmapiHostileShadowHost
             request,
             senderPlayerId,
             out receipt,
+            out reason
+        );
+    }
+
+    public bool HandleAttackDamageCommand(
+        ShadowAttackDamageCommand command,
+        long senderPlayerId,
+        out ShadowAttackDamageResult result,
+        out string reason
+    )
+    {
+        return world.HandleAttackDamageCommand(
+            command,
+            senderPlayerId,
+            out result,
+            out reason
+        );
+    }
+
+    public bool HandleAttackDamageResult(
+        ShadowAttackDamageResult result,
+        long senderPlayerId,
+        out string reason
+    )
+    {
+        return world.HandleAttackDamageResult(
+            result,
+            senderPlayerId,
             out reason
         );
     }

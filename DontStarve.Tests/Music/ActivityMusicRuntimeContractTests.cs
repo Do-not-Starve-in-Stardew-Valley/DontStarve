@@ -325,6 +325,29 @@ public sealed class ActivityMusicRuntimeContractTests
     }
 
     [Fact]
+    public void AudioUpdateSkipsPlaybackSnapshotAllocationWhenThereIsNothingToAdvance()
+    {
+        var source = ReadContract("ActivityMusicAudioService.cs");
+
+        Assert.Contains("if (playbacks.Count > 0)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (retiringPlaybacks.Count == 0)",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "new List<Playback>(playbacks.Values)",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "new List<Playback>(retiringPlaybacks)",
+            source,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
     public void ServiceUsesHardCleanupForExternalMusicAndFadedStateExpiry()
     {
         var service = ReadContract("ActivityMusicService.cs");

@@ -28,14 +28,19 @@ internal static class SanityTwoAmSpecialDeathPersistence
     )
     {
         if (data is null)
-        {
-            return new SanityTwoAmSpecialDeathPersistenceResult(
+            return new(
                 SanityTwoAmSpecialDeathPersistenceStatus.Missing,
                 "passout.two-am.save-missing",
                 null
             );
-        }
-        if (data.SchemaVersion != SanityTwoAmSpecialDeathSaveData.CurrentSchemaVersion)
+
+        // Schema 1 was the old clinic/mail flow. It is safe to read and discard: no new code
+        // resumes its recovery, queues its mail, or warps the player. This lets the next save
+        // replace it with the empty schema-2 payload.
+        if (
+            data.SchemaVersion != 1
+            && data.SchemaVersion != SanityTwoAmSpecialDeathSaveData.CurrentSchemaVersion
+        )
             return Invalid("passout.two-am.save-schema-unsupported");
         if (data.Flows is null || data.Flows.Count > SanityTwoAmSpecialDeathContract.MaximumFlows)
             return Invalid("passout.two-am.save-flow-count-invalid");
@@ -53,9 +58,11 @@ internal static class SanityTwoAmSpecialDeathPersistence
                 return Invalid("passout.two-am.save-correlation-duplicated");
         }
 
-        return new SanityTwoAmSpecialDeathPersistenceResult(
+        return new(
             SanityTwoAmSpecialDeathPersistenceStatus.Available,
-            "passout.two-am.save-valid",
+            data.SchemaVersion == 1
+                ? "passout.two-am.legacy-save-valid-discardable"
+                : "passout.two-am.save-valid",
             data
         );
     }
@@ -65,42 +72,12 @@ internal static class SanityTwoAmSpecialDeathPersistence
     )
     {
         ArgumentNullException.ThrowIfNull(snapshots);
-        var data = new SanityTwoAmSpecialDeathSaveData();
-        foreach (var snapshot in snapshots)
-        {
-            if (
-                snapshot.Kind != SanityTwoAmSpecialDeathFlowKind.DefaultClinic
-                || snapshot.Phase
-                    is not (
-                        SanityTwoAmSpecialDeathPhase.AwaitingRecovery
-                        or SanityTwoAmSpecialDeathPhase.Recovered
-                    )
-            )
-            {
-                continue;
-            }
-            data.Flows.Add(
-                new SanityTwoAmSpecialDeathPersistedFlow
-                {
-                    SessionId = snapshot.SessionId,
-                    CorrelationId = snapshot.CorrelationId,
-                    PlayerKey = snapshot.PlayerKey,
-                    ScreenId = snapshot.ScreenId,
-                    AuthorityRevision = snapshot.AuthorityRevision,
-                    Kind = snapshot.Kind.ToString(),
-                    Phase = snapshot.Phase.ToString(),
-                    MailQueued = snapshot.MailQueued,
-                    MailId = snapshot.MailId,
-                    Revision = snapshot.Revision,
-                }
-            );
-        }
-        return data;
+        // The new chain completes through vanilla death or PassOutNewDay and has no custom
+        // recovery/mail phase. Always write an empty current payload to retire schema-1 data.
+        return new SanityTwoAmSpecialDeathSaveData();
     }
 
-    internal static string? ValidateFlow(
-        SanityTwoAmSpecialDeathPersistedFlow? flow
-    )
+    internal static string? ValidateFlow(SanityTwoAmSpecialDeathPersistedFlow? flow)
     {
         if (flow is null)
             return "passout.two-am.save-flow-null";
@@ -112,46 +89,20 @@ internal static class SanityTwoAmSpecialDeathPersistence
             return "passout.two-am.save-player-invalid";
         if (flow.ScreenId < 0 || flow.AuthorityRevision < 0 || flow.Revision <= 0)
             return "passout.two-am.save-revision-invalid";
-        if (!string.Equals(
-                flow.Kind,
-                SanityTwoAmSpecialDeathFlowKind.DefaultClinic.ToString(),
-                StringComparison.Ordinal
-            ))
-        {
-            return "passout.two-am.save-kind-invalid";
-        }
         if (
-            !Enum.TryParse<SanityTwoAmSpecialDeathPhase>(
-                flow.Phase,
-                ignoreCase: false,
-                out var phase
-            )
-            || phase
-                is not (
-                    SanityTwoAmSpecialDeathPhase.AwaitingRecovery
-                    or SanityTwoAmSpecialDeathPhase.Recovered
-                )
+            !string.Equals(flow.Kind, "DefaultClinic", StringComparison.Ordinal)
         )
-        {
+            return "passout.two-am.save-kind-invalid";
+        if (
+            !string.Equals(flow.Phase, "AwaitingRecovery", StringComparison.Ordinal)
+            && !string.Equals(flow.Phase, "Recovered", StringComparison.Ordinal)
+        )
             return "passout.two-am.save-phase-invalid";
-        }
-        if (!string.Equals(
-                flow.MailId,
-                SanityTwoAmSpecialDeathContract.MailId,
-                StringComparison.Ordinal
-            ))
-        {
+        if (!string.Equals(flow.MailId, "Yurin.DontStarve_SanityDarknessSpecialDeath", StringComparison.Ordinal))
             return "passout.two-am.save-mail-id-invalid";
-        }
         return null;
     }
 
-    private static SanityTwoAmSpecialDeathPersistenceResult Invalid(string reason)
-    {
-        return new SanityTwoAmSpecialDeathPersistenceResult(
-            SanityTwoAmSpecialDeathPersistenceStatus.Invalid,
-            reason,
-            null
-        );
-    }
+    private static SanityTwoAmSpecialDeathPersistenceResult Invalid(string reason) =>
+        new(SanityTwoAmSpecialDeathPersistenceStatus.Invalid, reason, null);
 }

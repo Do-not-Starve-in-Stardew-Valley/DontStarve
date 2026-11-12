@@ -4,8 +4,6 @@ using System;
 using System.Collections.Generic;
 using DontStarve.Player.Stats.Sanity.Events;
 using DontStarve.Resource.Sanity;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -19,10 +17,6 @@ namespace DontStarve.Player.Stats.Sanity.Visual;
 /// </summary>
 internal sealed class SanitySmapiVisualService : IDisposable
 {
-    // animations.json keeps the profile ID as metadata, but the shared loader seam accepts the
-    // manifest SlotId. Keep this value aligned with the overlay profile's TextureSlotId.
-    private const string DangerBorderSlotId =
-        "sanity.asset.danger-border.overlay";
     private const int MaximumLoggedDiagnostics = 32;
 
     private readonly IModHelper helper;
@@ -36,9 +30,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
     private readonly Dictionary<int, OwnerBinding> ownersByScreen = new();
     private readonly HashSet<string> loggedDiagnostics =
         new(StringComparer.Ordinal);
-    private XnaSanityTextureResource? dangerBorderTexture;
-    private SanityVisualPreviewDefinition? dangerBorderPreview;
-    private bool dangerBorderLoadAttempted;
     private bool enabled;
     private bool screenDistortionEnabled;
     private bool disposed;
@@ -78,7 +69,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         resources.WorldResourcesReleasing += OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
-        helper.Events.Display.RenderingHud += OnRenderingHud;
         helper.Events.Input.ButtonPressed += OnButtonPressed;
         helper.Events.Input.MouseWheelScrolled += OnMouseWheelScrolled;
 
@@ -97,7 +87,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         controller.SetEnabled(value);
         worldComposition.SetEnabled(value);
         ownersByScreen.Clear();
-        ReleaseBorrowedDangerBorder(resetLoadAttempt: true);
     }
 
     internal void SetScreenDistortionEnabled(bool value)
@@ -126,14 +115,12 @@ internal sealed class SanitySmapiVisualService : IDisposable
         resources.WorldResourcesReleasing -= OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         helper.Events.GameLoop.DayEnding -= OnDayEnding;
-        helper.Events.Display.RenderingHud -= OnRenderingHud;
         helper.Events.Input.ButtonPressed -= OnButtonPressed;
         helper.Events.Input.MouseWheelScrolled -= OnMouseWheelScrolled;
         idlePresentation.CancelAll();
         worldComposition.Dispose();
         controller.ClearAll();
         ownersByScreen.Clear();
-        ReleaseBorrowedDangerBorder(resetLoadAttempt: false);
     }
 
     private void OnStateEventPublished(SanityStateEvent stateEvent)
@@ -231,7 +218,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
             return;
 
         ClearAllOwnerState();
-        ReleaseBorrowedDangerBorder(resetLoadAttempt: true);
     }
 
     private void OnWorldResourcesReleasing(SanityResourceReleaseReason reason)
@@ -246,7 +232,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         }
 
         ClearAllOwnerState();
-        ReleaseBorrowedDangerBorder(resetLoadAttempt: true);
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -332,11 +317,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         }
 
         ObserveCurrentOwnerIdle(key, snapshot);
-
-        if ((snapshot.RenderableLayers & SanityVisualLayerMask.DangerBorder) != 0)
-        {
-            TryLoadDangerBorder();
-        }
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
@@ -373,118 +353,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         );
         if (idlePresentation.CancelScreen(screenId, key))
             controller.ResetIdle(key, "idle.interrupted.real-input");
-    }
-
-    private void OnRenderingHud(object? sender, RenderingHudEventArgs e)
-    {
-        if (
-            disposed
-            || !enabled
-            || !lifecycle.IsEnabled
-            || !Context.IsWorldReady
-            || dangerBorderTexture is null
-            || dangerBorderPreview is null
-        )
-        {
-            return;
-        }
-
-        var minigameContext = SanityMinigameVisualRuntimeClassifier.ResolveCurrent();
-        if (
-            minigameContext == SanityMinigameVisualContext.Other
-            || (Game1.eventUp && minigameContext != SanityMinigameVisualContext.Fishing)
-            || (
-                Game1.activeClickableMenu is not null
-                && minigameContext != SanityMinigameVisualContext.Fishing
-            )
-        )
-        {
-            return;
-        }
-
-        var screenId = Context.ScreenId;
-        if (!ownersByScreen.TryGetValue(screenId, out var binding))
-            return;
-        var key = new SanityVisualOwnerKey(
-            binding.PlayerKey,
-            screenId,
-            binding.SessionId
-        );
-        if (
-            !controller.TryGetSnapshot(key, out var snapshot)
-            || (snapshot.RenderableLayers & SanityVisualLayerMask.DangerBorder) == 0
-            || snapshot.MinigameContext != minigameContext
-            || snapshot.ViewportWidth != Game1.uiViewport.Width
-            || snapshot.ViewportHeight != Game1.uiViewport.Height
-        )
-        {
-            return;
-        }
-
-        try
-        {
-            DrawDangerBorder(
-                e.SpriteBatch,
-                dangerBorderTexture.Texture,
-                dangerBorderPreview,
-                snapshot.DangerBorderLayout
-            );
-        }
-        catch (Exception exception)
-        {
-            RemoveScreen(screenId);
-            ReleaseBorrowedDangerBorder(resetLoadAttempt: false);
-            LogOnce(
-                "visual.danger-border-draw-failed",
-                $"Sanity danger border draw failed closed ({exception.GetType().Name}: {exception.Message}).",
-                LogLevel.Error
-            );
-        }
-    }
-
-    private void DrawDangerBorder(
-        SpriteBatch spriteBatch,
-        Texture2D texture,
-        SanityVisualPreviewDefinition preview,
-        SanityNineSliceLayout layout
-    )
-    {
-        var tint = Color.White * SanityVisualController.DangerBorderOpacity;
-        for (var index = 0; index < layout.Slices.Count; index++)
-            DrawSlice(spriteBatch, texture, preview, layout.Slices[index], tint);
-    }
-
-    private static void DrawSlice(
-        SpriteBatch spriteBatch,
-        Texture2D texture,
-        SanityVisualPreviewDefinition preview,
-        SanityVisualSlice slice,
-        Color tint
-    )
-    {
-        if (
-            slice.Source.Width <= 0
-            || slice.Source.Height <= 0
-            || slice.Destination.Width <= 0
-            || slice.Destination.Height <= 0
-        )
-        {
-            return;
-        }
-
-        var source = new Rectangle(
-            preview.SourceRectangle.X + slice.Source.X,
-            preview.SourceRectangle.Y + slice.Source.Y,
-            slice.Source.Width,
-            slice.Source.Height
-        );
-        var destination = new Rectangle(
-            slice.Destination.X,
-            slice.Destination.Y,
-            slice.Destination.Width,
-            slice.Destination.Height
-        );
-        spriteBatch.Draw(texture, destination, source, tint);
     }
 
     private void SubmitSnapshot(
@@ -681,79 +549,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         return true;
     }
 
-    private void TryLoadDangerBorder()
-    {
-        if (
-            dangerBorderLoadAttempted
-            || dangerBorderTexture is not null
-            || disposed
-        )
-        {
-            return;
-        }
-
-        dangerBorderLoadAttempted = true;
-        SanitySlotResourceResult result;
-        try
-        {
-            result = resources.LoadVisualSlot(DangerBorderSlotId, 0);
-        }
-        catch (Exception exception)
-        {
-            LogOnce(
-                "visual.danger-border-load-threw",
-                $"Sanity danger border load failed closed ({exception.GetType().Name}: {exception.Message}).",
-                LogLevel.Error
-            );
-            return;
-        }
-        if (
-            !result.Success
-            || result.PhysicalResource is not XnaSanityTextureResource texture
-            || result.VisualPreview is not { } preview
-            || !IsDangerBorderContract(preview, texture.Texture)
-        )
-        {
-            LogOnce(
-                "visual.danger-border-resource-unavailable",
-                $"Sanity danger border failed closed (code={result.Diagnostic.Code}, reason={result.Diagnostic.Reason}).",
-                LogLevel.Error
-            );
-            return;
-        }
-
-        dangerBorderTexture = texture;
-        dangerBorderPreview = preview;
-        if (preview.IsPlaceholder)
-        {
-            LogOnce(
-                "visual.danger-border-placeholder-active",
-                "Sanity danger border is using the explicit DEV-PLACEHOLDER nine-slice contract; it is not release-eligible.",
-                LogLevel.Warn
-            );
-        }
-    }
-
-    private static bool IsDangerBorderContract(
-        SanityVisualPreviewDefinition preview,
-        Texture2D texture
-    )
-    {
-        return preview.Kind == SanityVisualPreviewKind.NineSliceOverlay
-            && preview.OwnerLocalOnly
-            && preview.SourceRectangle.Width
-                == SanityVisualController.DangerBorderSourceWidth
-            && preview.SourceRectangle.Height
-                == SanityVisualController.DangerBorderSourceHeight
-            && preview.SliceSourcePx is { } slice
-            && slice.X == SanityVisualController.DangerBorderSliceLeft
-            && slice.Y == SanityVisualController.DangerBorderSliceTop
-            && slice.Width == SanityVisualController.DangerBorderSliceRight
-            && slice.Height == SanityVisualController.DangerBorderSliceBottom
-            && texture.Width >= preview.SourceRectangle.X + preview.SourceRectangle.Width
-            && texture.Height >= preview.SourceRectangle.Y + preview.SourceRectangle.Height;
-    }
-
     private void CleanupInvalidScreens()
     {
         controller.ClearInvalidScreens(Context.HasScreenId);
@@ -817,16 +612,6 @@ internal sealed class SanitySmapiVisualService : IDisposable
         worldComposition.Clear();
         controller.ClearAll();
         ownersByScreen.Clear();
-    }
-
-    private void ReleaseBorrowedDangerBorder(bool resetLoadAttempt)
-    {
-        // The stage-03 loader owns and disposes the texture after its release event. This service
-        // only drops borrowed references before that point.
-        dangerBorderTexture = null;
-        dangerBorderPreview = null;
-        if (resetLoadAttempt)
-            dangerBorderLoadAttempted = false;
     }
 
     private void LogCapabilityMatrix()

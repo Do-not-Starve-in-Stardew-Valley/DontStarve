@@ -242,6 +242,20 @@
       "Order": 65
     },
     {
+      "Key": "EnableStatusFeedbackSounds",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.visuals-audio.page",
+      "PageI18n": "config.audio-effects.page",
+      "ParentPageOrder": 30,
+      "PageOrder": 20,
+      "NameI18n": "config.enable-status-feedback-sounds.name",
+      "TooltipI18n": "config.enable-status-feedback-sounds.tooltip",
+      "Order": 92
+    },
+    {
       "Key": "EnableDawnDuskMusic",
       "Type": "Boolean",
       "Default": true,
@@ -268,6 +282,34 @@
       "NameI18n": "config.enable-activity-music.name",
       "TooltipI18n": "config.enable-activity-music.tooltip",
       "Order": 95
+    },
+    {
+      "Key": "EnableDontStarveHealth",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.game-mechanics.page",
+      "PageI18n": "config.health.page",
+      "ParentPageOrder": 10,
+      "PageOrder": 25,
+      "NameI18n": "config.enable-dont-starve-health.name",
+      "TooltipI18n": "config.enable-dont-starve-health.tooltip",
+      "Order": 15
+    },
+    {
+      "Key": "EnableHealthEffectBalance",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.balance-compatibility.page",
+      "PageI18n": "config.vanilla-balance.page",
+      "ParentPageOrder": 20,
+      "PageOrder": 10,
+      "NameI18n": "config.enable-health-effect-balance.name",
+      "TooltipI18n": "config.enable-health-effect-balance.tooltip",
+      "Order": 55
     }
   ]
 }

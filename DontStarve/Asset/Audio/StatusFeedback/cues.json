@@ -1,0 +1,47 @@
+{
+  "FormatVersion": 1,
+  "Cues": [
+    {
+      "id": "health-down",
+      "path": "Asset/Audio/StatusFeedback/health-down.ogg",
+      "system": "health",
+      "direction": "down",
+      "durationSeconds": 0.711
+    },
+    {
+      "id": "health-up",
+      "path": "Asset/Audio/StatusFeedback/health-up.ogg",
+      "system": "health",
+      "direction": "up",
+      "durationSeconds": 0.739
+    },
+    {
+      "id": "hunger-down",
+      "path": "Asset/Audio/StatusFeedback/hunger-down.ogg",
+      "system": "hunger",
+      "direction": "down",
+      "durationSeconds": 0.583
+    },
+    {
+      "id": "hunger-up",
+      "path": "Asset/Audio/StatusFeedback/hunger-up.ogg",
+      "system": "hunger",
+      "direction": "up",
+      "durationSeconds": 0.488
+    },
+    {
+      "id": "sanity-down",
+      "path": "Asset/Audio/StatusFeedback/sanity-down.ogg",
+      "system": "sanity",
+      "direction": "down",
+      "durationSeconds": 0.646
+    },
+    {
+      "id": "sanity-up",
+      "path": "Asset/Audio/StatusFeedback/sanity-up.ogg",
+      "system": "sanity",
+      "direction": "up",
+      "durationSeconds": 0.54
+    }
+  ]
+}

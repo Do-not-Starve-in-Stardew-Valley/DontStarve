@@ -9,6 +9,7 @@ internal enum FoodValueDimension
 {
     Hunger,
     Sanity,
+    Health,
 }
 
 internal enum FoodRuleSourceKind
@@ -42,14 +43,19 @@ internal sealed class FoodRuleResolver
 {
     private readonly IReadOnlyDictionary<string, double> hungerValues;
     private readonly IReadOnlyDictionary<string, double> sanityValues;
+    private readonly IReadOnlyDictionary<string, double> healthValues;
 
     internal FoodRuleResolver(
         IReadOnlyDictionary<string, double> hungerValues,
-        IReadOnlyDictionary<string, double> sanityValues
+        IReadOnlyDictionary<string, double> sanityValues,
+        IReadOnlyDictionary<string, double>? healthValues = null
     )
     {
         this.hungerValues = hungerValues ?? throw new ArgumentNullException(nameof(hungerValues));
         this.sanityValues = sanityValues ?? throw new ArgumentNullException(nameof(sanityValues));
+        // 健康表后接入（新生命值系统）；旧调用点只传两表，缺省为空表 = 健康维度无任何条目。
+        this.healthValues = healthValues
+            ?? new Dictionary<string, double>(StringComparer.Ordinal);
     }
 
     internal bool TryResolve(
@@ -62,9 +68,12 @@ internal sealed class FoodRuleResolver
         if (string.IsNullOrWhiteSpace(facts.ItemId))
             return false;
 
-        var values = dimension == FoodValueDimension.Hunger
-            ? this.hungerValues
-            : this.sanityValues;
+        var values = dimension switch
+        {
+            FoodValueDimension.Hunger => this.hungerValues,
+            FoodValueDimension.Sanity => this.sanityValues,
+            _ => this.healthValues,
+        };
         var defaultKey = GetDefaultKey(facts);
 
         // A product-specific composite key is allowed to be more specific than its preserve
@@ -127,6 +136,11 @@ internal sealed class FoodRuleResolver
     )
     {
         value = 0;
+        // 健康维度 v1 不做家族公式推导：只认精确键与基键（初始交付为空表），
+        // 家族公式语义不臆造，留给后续轮与用户数值一起定。
+        if (dimension == FoodValueDimension.Health)
+            return false;
+
         if (string.IsNullOrWhiteSpace(facts.SourceItemId))
             return false;
 

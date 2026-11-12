@@ -196,7 +196,7 @@ internal interface ISanityProcessAudioOutput : IDisposable
     /// <summary>
     /// Plays the settled darkness-attack one-shot. This lane is deliberately independent from
     /// process pause, designated minigames, and window focus, so the current instance can finish
-    /// naturally.
+    /// naturally. A normal trigger never replaces an already-playing instance.
     /// </summary>
     void TriggerDarknessAttack() { }
 

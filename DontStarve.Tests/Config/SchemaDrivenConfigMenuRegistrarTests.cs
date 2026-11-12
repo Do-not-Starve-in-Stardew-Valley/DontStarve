@@ -41,6 +41,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 "dontstarve.config.config.game-mechanics.page",
                 "dontstarve.config.config.hunger.page",
                 "dontstarve.config.config.sanity.page",
+                "dontstarve.config.config.health.page",
                 "dontstarve.config.config.darkness.page",
                 "dontstarve.config.config.detail-adjustments.page",
                 "dontstarve.config.config.balance-compatibility.page",
@@ -59,6 +60,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 "dontstarve.config.config.visuals-audio.page",
                 "dontstarve.config.config.hunger.page",
                 "dontstarve.config.config.sanity.page",
+                "dontstarve.config.config.health.page",
                 "dontstarve.config.config.darkness.page",
                 "dontstarve.config.config.detail-adjustments.page",
                 "dontstarve.config.config.vanilla-balance.page",
@@ -71,7 +73,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             registry.Options.Select(option => option.Key),
             menu.FieldOrder
         );
-        Assert.Equal(12, menu.BooleanFields.Count);
+        Assert.Equal(15, menu.BooleanFields.Count);
         Assert.Equal(5, menu.EnumFields.Count);
         Assert.True(
             menu.BooleanFields[ConfigKeys.EnableHungerSystem].GetValue()
@@ -325,7 +327,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 );
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
-                Assert.Equal(17, document.RootElement.EnumerateObject().Count(property =>
+                Assert.Equal(20, document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 ));
             }
@@ -434,7 +436,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
 
         Assert.Equal(ConfigMenuRegistrationStatus.Degraded, partial.Status);
-        Assert.Equal(16, partial.RegisteredKeys.Count);
+        Assert.Equal(19, partial.RegisteredKeys.Count);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, partial.RegisteredKeys);
         Assert.Equal(
             new[] { $"gmcm.option-registration-failed:{ConfigKeys.DarkHandMode}" },

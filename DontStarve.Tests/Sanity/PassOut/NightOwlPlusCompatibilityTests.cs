@@ -45,6 +45,29 @@ public sealed class NightOwlPlusCompatibilityTests
     }
 
     [Theory]
+    [InlineData("Omegasis.NightOwl", "1.11.0", "Nexus:433")]
+    [InlineData("Su226.StayUp", "1.1.3", "Nexus:7592")]
+    public void OriginalNightOwlAndStayUpIdentitiesAlsoSuppressTheConflictingChain(
+        string uniqueId,
+        string version,
+        string updateKey
+    )
+    {
+        var result = Resolve(
+            Manifest(uniqueId, version, updateKey),
+            Array.Empty<NightOwlPlusManifestEvidence>()
+        );
+
+        Assert.Equal(
+            NightOwlPlusCompatibilityStatus.InstalledSupported,
+            result.Status
+        );
+        Assert.False(result.AllowsConflictingSpecialDeathChain);
+        Assert.True(result.ExactUidDetected);
+        Assert.Equal(version, result.DetectedVersion);
+    }
+
+    [Theory]
     [InlineData("1.0.1")]
     [InlineData("2.0.0")]
     [InlineData("1.0.0-beta")]
@@ -145,6 +168,26 @@ public sealed class NightOwlPlusCompatibilityTests
         );
     }
 
+    [Theory]
+    [InlineData("Nexus:433")]
+    [InlineData("Nexus:7592")]
+    public void OriginalNightOwlAndStayUpUpdateKeysAlsoFailClosedWithoutExactUid(
+        string updateKey
+    )
+    {
+        var result = Resolve(
+            null,
+            new[] { Manifest("Example.WrongUid", "1.0.0", updateKey) }
+        );
+
+        Assert.Equal(
+            NightOwlPlusCompatibilityStatus.FactsUnavailable,
+            result.Status
+        );
+        Assert.True(result.DiagnosticUpdateKeyObserved);
+        Assert.False(result.AllowsConflictingSpecialDeathChain);
+    }
+
     [Fact]
     public void RegistryInconsistencyAndUnboundedDiagnosticsFailClosed()
     {
@@ -230,7 +273,11 @@ public sealed class NightOwlPlusCompatibilityTests
             compatibility,
             StringComparison.Ordinal
         );
+        Assert.Contains("Omegasis.NightOwl", compatibility, StringComparison.Ordinal);
+        Assert.Contains("Su226.StayUp", compatibility, StringComparison.Ordinal);
         Assert.Contains("Nexus:29714", compatibility, StringComparison.Ordinal);
+        Assert.Contains("Nexus:433", compatibility, StringComparison.Ordinal);
+        Assert.Contains("Nexus:7592", compatibility, StringComparison.Ordinal);
         Assert.DoesNotContain("Reflection", compatibility, StringComparison.Ordinal);
         Assert.DoesNotContain("Directory.", compatibility, StringComparison.Ordinal);
         Assert.DoesNotContain("File.", compatibility, StringComparison.Ordinal);
@@ -245,7 +292,13 @@ public sealed class NightOwlPlusCompatibilityTests
         IReadOnlyList<NightOwlPlusManifestEvidence> loaded
     )
     {
-        return NightOwlPlusCompatibility.Resolve(_ => exact, () => loaded);
+        return NightOwlPlusCompatibility.Resolve(
+            uid => exact is { } manifest
+                && string.Equals(uid, manifest.UniqueId, StringComparison.Ordinal)
+                ? manifest
+                : null,
+            () => loaded
+        );
     }
 
     private static NightOwlPlusManifestEvidence Manifest(

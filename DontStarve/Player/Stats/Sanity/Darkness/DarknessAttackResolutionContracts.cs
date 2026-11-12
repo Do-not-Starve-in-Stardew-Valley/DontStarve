@@ -135,8 +135,11 @@ internal static class DarknessAttackModePolicy
             );
         }
 
-        // Consume the stage-04 calculator directly; the mode gate must not become a second floor
-        // authority merely because it needs to stop new countdowns at the same boundary.
+        // 【2026-11-11 原版口径对齐】DST grue.lua 的 nonlethal 分支不因血量触地板停止袭击：
+        // 倒计时与袭击循环照常继续，伤害被钳制到地板（地板及以下结算为 0 伤害），扣理智与
+        // 袭击反馈照常发生。因此模式门只拦血量为 0 / 无效健康快照，地板判断完全交给伤害
+        // 结算 authority（ApplyDamageUpToFloor）；这里不得成为第二套地板 authority，否则会
+        // 退回“到地板即取消倒计时”的旧行为。FloorHealth 只作诊断保留。
         if (
             !NonLethalDamageCalculator.TryCalculateFloor(
                 maximumHealth,
@@ -147,17 +150,11 @@ internal static class DarknessAttackModePolicy
         {
             return new DarknessAttackModePolicyResult(false, floorReason, 0);
         }
-        return currentHealth > floorHealth
-            ? new DarknessAttackModePolicyResult(
-                true,
-                "darkness.mode.nonlethal-above-floor",
-                floorHealth
-            )
-            : new DarknessAttackModePolicyResult(
-                false,
-                "darkness.mode.nonlethal-floor-reached",
-                floorHealth
-            );
+        return new DarknessAttackModePolicyResult(
+            true,
+            "darkness.mode.nonlethal-settleable",
+            floorHealth
+        );
     }
 }
 

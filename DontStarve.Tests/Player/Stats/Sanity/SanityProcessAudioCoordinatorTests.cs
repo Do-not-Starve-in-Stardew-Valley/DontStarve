@@ -645,6 +645,24 @@ public sealed class SanityProcessAudioCoordinatorTests
     }
 
     [Fact]
+    public void Active_one_shot_is_not_interrupted_by_a_normal_retrigger()
+    {
+        var effect = new FakeEffect("warning");
+        var lane = Lane(SanityAudioLaneKind.DarknessWarning, new[] { effect }, false);
+
+        Assert.True(lane.TriggerOneShot(0.8f));
+        var instance = Assert.Single(effect.Instances);
+
+        Assert.False(lane.TriggerOneShot(0.8f));
+
+        Assert.Single(effect.Instances);
+        Assert.Same(instance, effect.Instances[0]);
+        Assert.False(instance.Disposed);
+        Assert.Equal(1, instance.PlayCount);
+        Assert.Equal(SanityAudioPlaybackState.Playing, instance.State);
+    }
+
+    [Fact]
     public void Wrong_thread_fails_closed_with_one_stable_diagnostic_and_no_create_call()
     {
         var thread = new FakeThreadContext { IsOnOwningThread = false };

@@ -34,6 +34,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Food\StarfruitFoodRules.cs" Link="Player\Stats\Food\StarfruitFoodRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerRules.cs" Link="Player\Stats\Hunger\HungerRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerStarvationRules.cs" Link="Player\Stats\Hunger\HungerStarvationRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerFishingCastGatePolicy.cs" Link="Player\Stats\Hunger\HungerFishingCastGatePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerWarningRules.cs" Link="Player\Stats\Hunger\HungerWarningRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerEquipmentRules.cs" Link="Player\Stats\Hunger\HungerEquipmentRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDebugController.cs" Link="Player\Stats\Hunger\HungerDebugController.cs" />
@@ -41,18 +42,31 @@
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerSaveData.cs" Link="Player\Stats\Hunger\HungerSaveData.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerPersistenceStore.cs" Link="Player\Stats\Hunger\HungerPersistenceStore.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerMultiplayerProtocol.cs" Link="Player\Stats\Hunger\HungerMultiplayerProtocol.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerChangeKind.cs" Link="Player\Stats\Hunger\HungerChangeKind.cs" />
+    <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackContracts.cs" Link="Audio\StatusFeedback\StatusFeedbackContracts.cs" />
+    <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackTriggerPolicy.cs" Link="Audio\StatusFeedback\StatusFeedbackTriggerPolicy.cs" />
+    <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackHealthWatcherRule.cs" Link="Audio\StatusFeedback\StatusFeedbackHealthWatcherRule.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" Link="Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthLedgerRules.cs" Link="Player\Stats\Health\HealthLedgerRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthRules.cs" Link="Player\Stats\Health\HealthRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthEffectResolution.cs" Link="Player\Stats\Health\HealthEffectResolution.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthEquipmentRules.cs" Link="Player\Stats\Health\HealthEquipmentRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthPersistenceStore.cs" Link="Player\Stats\Health\HealthPersistenceStore.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Health\HealthMultiplayerProtocol.cs" Link="Player\Stats\Health\HealthMultiplayerProtocol.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageCalculator.cs" Link="Player\Stats\Hunger\HungerDamage\HungerDamageCalculator.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerDamage\HungerDamageService.cs" Link="Player\Stats\Hunger\HungerDamage\HungerDamageService.cs" />
     <Compile Include="..\DontStarve\Debug\DebugCommandValueParser.cs" Link="Debug\DebugCommandValueParser.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepContracts.cs" Link="Player\Sleep\SleepContracts.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepRules.cs" Link="Player\Sleep\SleepRules.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SleepSanitySettlementPolicy.cs" Link="Player\Sleep\SleepSanitySettlementPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepOvernightSettlement.cs" Link="Player\Sleep\SleepOvernightSettlement.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepOwnerHealthState.cs" Link="Player\Sleep\SleepOwnerHealthState.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepLifecycleProtocol.cs" Link="Player\Sleep\SleepLifecycleProtocol.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepLifecycleState.cs" Link="Player\Sleep\SleepLifecycleState.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsData.cs" Link="Player\Sleep\SleepWakeEffectsData.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsPolicy.cs" Link="Player\Sleep\SleepWakeEffectsPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\WakeDeathLoadGatePolicy.cs" Link="Player\Sleep\WakeDeathLoadGatePolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\WakeDeathPresentationPolicy.cs" Link="Player\Sleep\WakeDeathPresentationPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Death\PlayerDeathCausePolicy.cs" Link="Player\Death\PlayerDeathCausePolicy.cs" />
     <Compile Include="..\DontStarve\Interface\ITimeAPI.cs" Link="Interface\ITimeAPI.cs" />
     <Compile Include="..\DontStarve\Player\Stats\SurvivalStateTimeOwner.cs" Link="Player\Stats\SurvivalStateTimeOwner.cs" />
@@ -142,6 +156,11 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathStateMachine.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathStateMachine.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathPersistence.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathPersistence.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\PassOutReasonPolicy.cs" Link="Player\Stats\Sanity\PassOut\PassOutReasonPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SpecialPassOutRoutePolicy.cs" Link="Player\Stats\Sanity\PassOut\SpecialPassOutRoutePolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SpecialPassOutSanitySettlement.cs" Link="Player\Stats\Sanity\PassOut\SpecialPassOutSanitySettlement.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmVanillaPassOutPolicy.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmVanillaPassOutPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\HealthDeathRecoveryRetryPolicy.cs" Link="Player\Stats\Sanity\PassOut\HealthDeathRecoveryRetryPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\LateNightBehaviorEvidence.cs" Link="Player\Stats\Sanity\PassOut\LateNightBehaviorEvidence.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\Compatibility\NightOwlPlusCompatibility.cs" Link="Player\Stats\Sanity\PassOut\Compatibility\NightOwlPlusCompatibility.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Darkness\DarknessAttackContracts.cs" Link="Player\Stats\Sanity\Darkness\DarknessAttackContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Darkness\EnvironmentLightMultiplayerProtocol.cs" Link="Player\Stats\Sanity\Darkness\EnvironmentLightMultiplayerProtocol.cs" />
@@ -166,6 +185,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdleDetector.cs" Link="Player\Stats\Sanity\Visual\SanityIdleDetector.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePresentationContract.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePanicLoopRules.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePanicLoopRules.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePanicInterruptionPolicy.cs" Link="Player\Stats\Sanity\Visual\SanityIdlePanicInterruptionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityVisualController.cs" Link="Player\Stats\Sanity\Visual\SanityVisualController.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityMinigameVisualClassifier.cs" Link="Player\Stats\Sanity\Visual\SanityMinigameVisualClassifier.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Minigames\MinigameDangerGatePolicy.cs" Link="Player\Stats\Sanity\Minigames\MinigameDangerGatePolicy.cs" />
@@ -214,6 +234,7 @@
     <Compile Include="..\DontStarve\Display\HudStatusBarFrameRules.cs" Link="Display\HudStatusBarFrameRules.cs" />
     <Compile Include="..\DontStarve\Display\HungerHudRules.cs" Link="Display\HungerHudRules.cs" />
     <Compile Include="..\DontStarve\Display\SanityHudRules.cs" Link="Display\SanityHudRules.cs" />
+    <Compile Include="..\DontStarve\Display\FoodRestoreHudRule.cs" Link="Display\FoodRestoreHudRule.cs" />
     <Compile Include="..\DontStarve\Display\UIElements\LocalizedValueFormatter.cs" Link="Display\UIElements\LocalizedValueFormatter.cs" />
     <Compile Include="..\DontStarve\Display\UIElements\SanityTooltipContracts.cs" Link="Display\UIElements\SanityTooltipContracts.cs" />
     <None Include="..\DontStarve\i18n\default.json" Link="I18n\default.json">
@@ -264,6 +285,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Asset\Sanity\Sprites\Illusions\dark-hand.png" Link="ShippedMod\Asset\Sanity\Sprites\Illusions\dark-hand.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Asset\Audio\StatusFeedback\**\*">
+      <Link>ShippedMod\Asset\Audio\StatusFeedback\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Asset\Sanity\Sprites\Illusions\dark-watcher.png" Link="ShippedMod\Asset\Sanity\Sprites\Illusions\dark-watcher.png">
@@ -412,6 +437,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Hunger\HungerRuntimeState.cs" Link="Contracts\OnlinePersistence\HungerRuntimeState.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\SanityChangeService.cs" Link="Contracts\OnlinePersistence\SanityChangeService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Hunger\HungerSaveData.cs" Link="Contracts\OnlinePersistence\HungerSaveData.cs">
@@ -617,6 +645,9 @@
     <None Include="..\DontStarve\Display\TaggedHudMessageService.cs" Link="Contracts\HudMessages\TaggedHudMessageService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Display\FoodRestoreHudMessenger.cs" Link="Contracts\HudMessages\FoodRestoreHudMessenger.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Resource\Sanity\SanitySmapiResourceService.cs" Link="Contracts\AudioVisualFact\SanitySmapiResourceService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -627,6 +658,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\Audio\SanityGameMusicRuntimeAdapter.cs" Link="Contracts\GameMusic\SanityGameMusicRuntimeAdapter.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackAudioService.cs" Link="Contracts\StatusFeedback\StatusFeedbackAudioService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- 05-04 copies the SMAPI adapter for narrow-target/static-boundary tests only. -->
@@ -768,6 +802,22 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Fixtures\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\DontStarve\Player\Combat\VanillaKillRingContracts.cs" Link="Player\Combat\VanillaKillRingContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\VanillaKillRingRules.cs" Link="Player\Combat\VanillaKillRingRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\InvincibilityFrames\InvincibilityFrameContracts.cs" Link="Player\Combat\InvincibilityFrames\InvincibilityFrameContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\InvincibilityFrames\InvincibilityFrameRules.cs" Link="Player\Combat\InvincibilityFrames\InvincibilityFrameRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\InvincibilityFrames\InvincibilityFrameBonusRules.cs" Link="Player\Combat\InvincibilityFrames\InvincibilityFrameBonusRules.cs" />
+    <None Include="..\DontStarve\Player\Combat\InvincibilityFrames\ProtectiveRingInvincibilityFrameBonusSource.cs" Link="Contracts\PlayerCombat\ProtectiveRingInvincibilityFrameBonusSource.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\InvincibilityFrames\SmapiInvincibilityFrameDamageService.cs" Link="Contracts\PlayerCombat\SmapiInvincibilityFrameDamageService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\SmapiVanillaKillRingEffects.cs" Link="Contracts\PlayerCombat\SmapiVanillaKillRingEffects.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

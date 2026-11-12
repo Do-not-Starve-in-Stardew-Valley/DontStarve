@@ -1,3 +1,4 @@
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Runtime;
 using Xunit;
@@ -16,7 +17,8 @@ public sealed class HostileAttackHitProcessorTests
         Assert.Equal(80, pipeline.CurrentHealth);
         Assert.Equal(20, first.Result.AppliedDamage);
         Assert.True(
-            fixture.Instance.HasSettledPlayer(
+            fixture.Instance.HasSettledPlayerInWindow(
+                HostileAttackHitWindow.LegacyWindowId,
                 long.Parse(HostileAttackTestFactory.PlayerOne)
             )
         );
@@ -37,7 +39,8 @@ public sealed class HostileAttackHitProcessorTests
 
         Assert.True(fixture.Process(HostileAttackTestFactory.PlayerOne, "p1", first, out _));
         Assert.False(
-            fixture.Instance.HasSettledPlayer(
+            fixture.Instance.HasSettledPlayerInWindow(
+                HostileAttackHitWindow.LegacyWindowId,
                 long.Parse(HostileAttackTestFactory.PlayerTwo)
             )
         );
@@ -46,7 +49,8 @@ public sealed class HostileAttackHitProcessorTests
         Assert.Equal(80, second.CurrentHealth);
         Assert.Equal(2, fixture.Instance.HitPlayerCount);
         Assert.True(
-            fixture.Instance.HasSettledPlayer(
+            fixture.Instance.HasSettledPlayerInWindow(
+                HostileAttackHitWindow.LegacyWindowId,
                 long.Parse(HostileAttackTestFactory.PlayerTwo)
             )
         );
@@ -63,7 +67,12 @@ public sealed class HostileAttackHitProcessorTests
             fixture.Process(negativePlayerKey, "negative-1", pipeline, out _)
         );
         Assert.Equal(80, pipeline.CurrentHealth);
-        Assert.True(fixture.Instance.HasSettledPlayer(-101));
+        Assert.True(
+            fixture.Instance.HasSettledPlayerInWindow(
+                HostileAttackHitWindow.LegacyWindowId,
+                -101
+            )
+        );
 
         fixture.AdvanceToFrame(4);
         Assert.False(
@@ -195,6 +204,52 @@ public sealed class HostileAttackHitProcessorTests
         Assert.Equal(0, fixture.Instance.HitPlayerCount);
     }
 
+    [Fact]
+    public void Missing_hit_window_id_fails_closed_without_claiming_or_damaging()
+    {
+        var fixture = FixtureAtActiveFrame();
+        var pipeline = new FakeLethalPipeline(100);
+        var request = fixture.Request(HostileAttackTestFactory.PlayerOne, "no-window");
+        var context = fixture.Context(HostileAttackTestFactory.PlayerOne);
+        context.HitWindowId = string.Empty;
+
+        Assert.False(
+            HostileAttackHitProcessor.TryProcess(
+                request,
+                HostileAttackTestFactory.PlayerOne,
+                context,
+                pipeline,
+                out var receipt
+            )
+        );
+        Assert.Equal("hostile-shadow.attack-hit-host-context-invalid", receipt.Result.Reason);
+        Assert.Equal(0, pipeline.Calls);
+        Assert.Equal(0, fixture.Instance.HitPlayerCount);
+    }
+
+    [Fact]
+    public void Context_policy_flows_through_the_pipeline_unchanged()
+    {
+        var fixture = FixtureAtActiveFrame();
+        var pipeline = new FakeLethalPipeline(100);
+        var context = fixture.Context(HostileAttackTestFactory.PlayerOne);
+        context.DamagePolicy = InvincibilityFramePolicy.Strong(250);
+
+        // 夹具的 Process 会按默认字段重建上下文，这里必须直接调用处理器以保留自定义策略。
+        Assert.True(
+            HostileAttackHitProcessor.TryProcess(
+                fixture.Request(HostileAttackTestFactory.PlayerOne, "strong-policy"),
+                HostileAttackTestFactory.PlayerOne,
+                context,
+                pipeline,
+                out _
+            )
+        );
+        Assert.NotNull(pipeline.LastPolicy);
+        Assert.Equal(InvincibilityFramePolicyMode.Strong, pipeline.LastPolicy!.Value.Mode);
+        Assert.Equal(250, pipeline.LastPolicy!.Value.DurationMilliseconds);
+    }
+
     private static void AssertRejected(
         Action<ShadowAttackHitRequest, HostileAttackHitContext> mutate,
         string nonce
@@ -312,6 +367,8 @@ public sealed class HostileAttackHitProcessorTests
                 TargetStanding = new HostileAttackPoint(96d, 64d),
                 MaximumRangePixels = 128d,
                 Damage = damage,
+                // 随出厂元数据（无 AttackHitWindows）解析出的隐式旧窗口。
+                HitWindowId = HostileAttackHitWindow.LegacyWindowId,
             };
         }
     }
@@ -328,10 +385,15 @@ public sealed class HostileAttackHitProcessorTests
 
         public int CurrentHealth { get; private set; }
         internal int Calls { get; private set; }
+        internal InvincibilityFramePolicy? LastPolicy { get; private set; }
 
-        public void ApplyOrdinaryDamage(int damage)
+        public void ApplyOrdinaryDamage(
+            int damage,
+            InvincibilityFramePolicy policy
+        )
         {
             Calls++;
+            LastPolicy = policy;
             if (!suppressHealthChange)
                 CurrentHealth = Math.Max(0, CurrentHealth - damage);
         }

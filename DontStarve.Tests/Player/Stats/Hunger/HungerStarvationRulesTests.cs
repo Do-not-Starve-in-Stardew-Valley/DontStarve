@@ -55,4 +55,16 @@ public sealed class HungerStarvationRulesTests
         Assert.False(step.IsStarving);
         Assert.False(step.DamageDue);
     }
+
+    [Theory]
+    [InlineData(-1d, true)]
+    [InlineData(0d, true)]
+    [InlineData(0.001d, false)]
+    [InlineData(150d, false)]
+    [InlineData(double.NaN, false)]
+    [InlineData(double.PositiveInfinity, false)]
+    public void SharedStarvationBoundaryFollowsFiniteZero(double hunger, bool expected)
+    {
+        Assert.Equal(expected, HungerStarvationRules.IsStarving(hunger));
+    }
 }

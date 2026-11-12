@@ -10,10 +10,16 @@ internal sealed class SleepWakeEffectsData
     public int SchemaVersion { get; set; } = 1;
     public List<string> HungerDeaths { get; set; } = new();
     public Dictionary<string, int> HungerDeathDays { get; set; } = new();
+    public List<string> HiddenHospitalDeaths { get; set; } = new();
+    public Dictionary<string, int> HiddenHospitalDeathDays { get; set; } = new();
 
     internal bool IsValid()
     {
-        return SchemaVersion == 1 && HungerDeaths is not null && HungerDeathDays is not null;
+        return SchemaVersion == 1
+            && HungerDeaths is not null
+            && HungerDeathDays is not null
+            && HiddenHospitalDeaths is not null
+            && HiddenHospitalDeathDays is not null;
     }
 
     internal Dictionary<string, int> Normalize(int currentDay)
@@ -21,16 +27,44 @@ internal sealed class SleepWakeEffectsData
         return SleepWakeEffectsPolicy.Normalize(HungerDeaths, HungerDeathDays, currentDay);
     }
 
+    internal Dictionary<string, int> NormalizeHiddenHospital(int currentDay)
+    {
+        return SleepWakeEffectsPolicy.Normalize(
+            HiddenHospitalDeaths,
+            HiddenHospitalDeathDays,
+            currentDay
+        );
+    }
+
     internal static SleepWakeEffectsData From(
         IReadOnlyDictionary<string, int> markers,
+        int currentDay
+    ) => From(markers, new Dictionary<string, int>(), currentDay);
+
+    internal static SleepWakeEffectsData From(
+        IReadOnlyDictionary<string, int> hungerMarkers,
+        IReadOnlyDictionary<string, int> hiddenHospitalMarkers,
         int currentDay
     )
     {
         var data = new SleepWakeEffectsData();
-        foreach (var pair in SleepWakeEffectsPolicy.Normalize(markers.Keys, markers, currentDay))
+        foreach (var pair in SleepWakeEffectsPolicy.Normalize(
+            hungerMarkers.Keys,
+            hungerMarkers,
+            currentDay
+        ))
         {
             data.HungerDeaths.Add(pair.Key);
             data.HungerDeathDays[pair.Key] = pair.Value;
+        }
+        foreach (var pair in SleepWakeEffectsPolicy.Normalize(
+            hiddenHospitalMarkers.Keys,
+            hiddenHospitalMarkers,
+            currentDay
+        ))
+        {
+            data.HiddenHospitalDeaths.Add(pair.Key);
+            data.HiddenHospitalDeathDays[pair.Key] = pair.Value;
         }
         return data;
     }

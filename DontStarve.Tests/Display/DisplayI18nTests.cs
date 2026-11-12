@@ -42,9 +42,36 @@ public sealed class DisplayI18nTests
             "饥饿",
             chinese.RootElement.GetProperty("hunger-hud.label").GetString()
         );
+        // 2026-11-13 用户定稿：tooltip 用词与 HUD 一致，用「饥饿」而不是「饥饿值」。
         Assert.Equal(
-            "{{value}} 饥饿值",
+            "{{value}} 饥饿",
             chinese.RootElement.GetProperty("hunger-tooltip").GetString()
+        );
+        Assert.Equal(
+            "{{value}} 饥饿",
+            chinese.RootElement.GetProperty("hunger-tooltip.percent").GetString()
+        );
+    }
+
+    [Theory]
+    [InlineData("default.json", "+{{value}} Hunger", "+{{value}} Sanity")]
+    [InlineData("zh.json", "+{{value}} 饥饿", "+{{value}} 理智")]
+    public void FoodRestorePopupTemplatesOwnTheVanillaPlusAmountShape(
+        string localeFile,
+        string expectedHunger,
+        string expectedSanity
+    )
+    {
+        using var locale = ReadLocale(localeFile);
+
+        // 进食恢复弹窗文案：模仿原版 doneEating 的 "+X" HUD 消息形状，default 与 zh 成对。
+        Assert.Equal(
+            expectedHunger,
+            locale.RootElement.GetProperty("food-restore.hunger").GetString()
+        );
+        Assert.Equal(
+            expectedSanity,
+            locale.RootElement.GetProperty("food-restore.sanity").GetString()
         );
     }
 
@@ -117,7 +144,7 @@ public sealed class DisplayI18nTests
 
     [Theory]
     [InlineData("default.json", "Hunger", "Sanity", "when eaten")]
-    [InlineData("zh.json", "饥饿值", "理智", "食用时")]
+    [InlineData("zh.json", "饥饿", "理智", "食用时")]
     public void DescriptiveSurvivalTemplatesRetainTheirContextualLabels(
         string localeFile,
         string hungerLabel,

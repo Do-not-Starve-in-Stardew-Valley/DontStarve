@@ -24,7 +24,7 @@ public sealed class EnvironmentLightClassificationRuleTests
 
         Assert.True(load.IsAvailable, load.Reason);
         Assert.Equal(4, load.Catalog.ContractVersion);
-        Assert.Equal(44, load.Catalog.Count);
+        Assert.Equal(46, load.Catalog.Count);
 
         var farm = load.Catalog.Resolve(Location("StardewValley.Farm", "Farm", outdoors: true));
         Assert.Equal(EnvironmentLightLocationRuleStatus.Matched, farm.Status);

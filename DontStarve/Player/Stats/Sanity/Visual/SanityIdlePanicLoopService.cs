@@ -12,13 +12,18 @@ namespace DontStarve.Player.Stats.Sanity.Visual;
 /// SMAPI adapter for the low-sanity idle panic loop. When the local player's Sanity ratio is
 /// below 50% and they have been idle for one second, the loop alternates two vanilla reactions:
 /// the passout collapse motion with an Angry emote bubble, then the vanilla "surprised" startle
-/// animation (jump + jitter + Surprised bubble). Any real input immediately interrupts the loop
-/// and returns control; the genuine vanilla 2:00/exhaustion passout always takes priority.
+/// animation (shock pose + screech + visible hop + jitter + Surprised bubble). Semantics:
+/// operations that change the character's animation state interrupt (moving/tool/eating/warp/
+/// riding/sitting/swimming/events); menus, game pause and window focus SUSPEND the loop in
+/// place and resume afterwards; a mouse click pre-releases the sprite before the vanilla input
+/// pass so the very first click eats/swings (the vanilla right-click eat gate requires
+/// !PauseForSingleAnimation). The genuine vanilla 2:00/exhaustion passout always takes priority.
 /// </summary>
 internal sealed class SanityIdlePanicLoopService : IDisposable
 {
     private const string AngryEmoteName = "angry";
     private const string SurprisedEmoteName = "surprised";
+    private const string LogPrefix = "[sanity-panic-loop]";
 
     // Farmer.EMOTES contract (1.6.15): "angry" is icon 12 with no animation frames; "surprised"
     // is icon 16 whose frame-94 action performs the vanilla startle (batScreech +
@@ -32,11 +37,11 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
     private readonly IModHelper helper;
     private readonly IMonitor monitor;
     private readonly SanitySystemLifecycleCoordinator lifecycle;
-    private readonly SanityIdleDetector idleDetector = new();
     private readonly SanityIdlePanicLoopRules rules = new();
     private readonly HashSet<string> loggedDiagnostics = new(StringComparer.Ordinal);
     private bool vanillaEmotesProbed;
     private bool vanillaEmotesAvailable;
+    private bool sessionDisabled;
     private bool disposed;
 
     internal SanityIdlePanicLoopService(
@@ -54,8 +59,10 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         lifecycle.SessionClearing += OnSessionClearing;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
+        // 仅订阅鼠标点击用于"抢跑让位"（见 OnButtonPressed）；键盘/滚轮不订阅——打开菜单的
+        // 按键必须保持"挂起-恢复"语义，滚轮不改变角色动画状态。
         helper.Events.Input.ButtonPressed += OnButtonPressed;
-        helper.Events.Input.MouseWheelScrolled += OnMouseWheelScrolled;
+        monitor.Log($"{LogPrefix} service ready.", LogLevel.Info);
     }
 
     public void Dispose()
@@ -70,8 +77,6 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         helper.Events.GameLoop.DayEnding -= OnDayEnding;
         helper.Events.Input.ButtonPressed -= OnButtonPressed;
-        helper.Events.Input.MouseWheelScrolled -= OnMouseWheelScrolled;
-        CancelIfActive("panic.interrupted.disposed");
     }
 
     private void OnStateEventPublished(SanityStateEvent stateEvent)
@@ -111,26 +116,47 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
     {
-        if (disposed)
+        if (disposed || sessionDisabled || !rules.IsActive)
             return;
-
-        // 任何真实输入都视为玩家接管操作：循环中立刻打断，等待中重置 1 秒计时。
-        CancelIfActive("panic.interrupted.real-input");
-    }
-
-    private void OnMouseWheelScrolled(object? sender, MouseWheelScrolledEventArgs e)
-    {
-        if (disposed)
+        // 只抢跑鼠标点击：键盘按键（打开背包等）不在此处让位，菜单挂起-恢复语义得以保留；
+        // 挂起期间的点击属于界面点击，同样忽略。
+        if (e.Button is not (SButton.MouseLeft or SButton.MouseRight))
             return;
-
-        CancelIfActive("panic.interrupted.real-input");
+        if (IsGameInteractionSuspended())
+            return;
+        var player = Game1.player;
+        if (player is null || !player.IsLocalPlayer)
+            return;
+        // 原版右键进食入口（Game1 输入轮询）明确要求 !FarmerSprite.PauseForSingleAnimation，
+        // 工具/武器路径无此门——这正是"能挥刀、不能吃东西"的根因。SMAPI 按键事件先于原版
+        // 同帧输入处理：此刻让出精灵，原版本帧看到的已是干净角色，点击正常生效。此刻
+        // UsingTool/isEating 尚未置位，completelyStop 只会清掉自有倒地/受惊动画。
+        CancelAndRecover(player, "panic.interrupted.mouse-click");
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
-        if (disposed)
+        if (disposed || sessionDisabled)
             return;
 
+        try
+        {
+            TickCore();
+        }
+        catch (Exception exception)
+        {
+            // 表现层绝不能反复抛错拖垮游戏：首次异常记录完整堆栈并本会话自禁用。
+            sessionDisabled = true;
+            HardCancel("panic.crashed");
+            monitor.Log(
+                $"{LogPrefix} crashed and disabled for this session. {exception}",
+                LogLevel.Error
+            );
+        }
+    }
+
+    private void TickCore()
+    {
         if (!lifecycle.IsEnabled || !Context.IsWorldReady)
         {
             HardCancel("panic.system-unavailable");
@@ -144,10 +170,18 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
             return;
         }
 
+        // 挂起：菜单（背包/设置/对话）、游戏暂停、窗口失焦期间冻结相位机与待机计时——
+        // 不取消、不清理、不推进，解除后原地恢复（用户口径：暂停后循环也暂停）。
+        if (IsGameInteractionSuspended())
+            return;
+
         var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(player.UniqueMultiplayerID);
+        SanityTierOwnerStateSnapshot? tier = null;
+        var playerKeyCanonical = SanityPlayerKey.IsCanonical(playerKey);
+        var tierRegistered = playerKeyCanonical
+            && lifecycle.TryGetTierState(playerKey, out tier);
         if (
-            !SanityPlayerKey.IsCanonical(playerKey)
-            || !lifecycle.TryGetTierState(playerKey, out var tier)
+            !tierRegistered
             || tier is null
             || !tier.IsAvailable
             || tier.Maximum <= 0d
@@ -165,22 +199,28 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         )
         {
             rules.Cancel();
-            idleDetector.Reset("panic.interrupted.vanilla-passout");
+            rules.ResetIdle();
+            LogOnce(
+                "panic.vanilla-passout-standby",
+                $"{LogPrefix} vanilla passout took over the sprite; loop stood down.",
+                LogLevel.Info
+            );
             return;
         }
 
         var elapsed = Game1.currentGameTime?.ElapsedGameTime ?? TimeSpan.Zero;
-        var idle = idleDetector.Observe(elapsed, BuildObservation(player, rules.IsActive));
+        var interruption = DescribePanicInterruption(player);
+        rules.ObserveIdle(elapsed, interrupted: interruption is not null);
 
         if (!rules.IsActive)
         {
-            ObserveIdleStart(player, idle, tier.Current, tier.Maximum);
+            ObserveIdleStart(player, interruption, tier.Current, tier.Maximum);
             return;
         }
 
-        if (!idle.ThresholdReached)
+        if (interruption is not null)
         {
-            CancelAndRecover(player, idle.Reason);
+            CancelAndRecover(player, interruption);
             return;
         }
         if (!SanityIdlePanicLoopRules.IsSanityEligible(tier.Current, tier.Maximum))
@@ -193,48 +233,106 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         {
             case SanityIdlePanicLoopCommand.BeginFaint:
                 BeginFaint(player);
+                monitor.Log(
+                    $"{LogPrefix} phase=faint (sanity={tier.Current:0.#}/{tier.Maximum:0.#}).",
+                    LogLevel.Info
+                );
                 break;
             case SanityIdlePanicLoopCommand.BeginStartled:
                 BeginStartled(player);
+                monitor.Log(
+                    $"{LogPrefix} phase=startled (sanity={tier.Current:0.#}/{tier.Maximum:0.#}).",
+                    LogLevel.Info
+                );
                 break;
         }
     }
 
     private void ObserveIdleStart(
         Farmer player,
-        SanityIdleSnapshot idle,
+        string? interruption,
         double currentSanity,
         double maximumSanity
     )
     {
-        if (!idle.ThresholdReached)
+        if (interruption is not null)
+            return;
+        if (!rules.IdleThresholdReached)
             return;
         if (!SanityIdlePanicLoopRules.IsSanityEligible(currentSanity, maximumSanity))
         {
-            idleDetector.Reset("panic.sanity-ineligible");
+            rules.ResetIdle();
             return;
         }
-        if (!TryVerifyVanillaEmotes() || IsStartBlocked(player))
+        if (!TryVerifyVanillaEmotes())
         {
-            idleDetector.Reset("panic.start-blocked");
+            // 原版表情契约不匹配时 fail-closed（探测内部已记 Warn），不进入循环。
+            rules.ResetIdle();
             return;
         }
 
         rules.Start();
         BeginFaint(player);
+        monitor.Log(
+            $"{LogPrefix} started (sanity={currentSanity:0.#}/{maximumSanity:0.#}).",
+            LogLevel.Info
+        );
     }
 
-    private static bool IsStartBlocked(Farmer player)
+    /// <summary>
+    /// 惊恐循环专用的"操作中"判定。按用户口径只保留会改变角色动画状态的操作信号：
+    /// 移动、使用工具/弹弓、进食、传送与画面过渡、事件/小游戏、骑马、坐家具、游泳、
+    /// 引擎控制锁（freezePause/CanMove）。菜单开关、窗口失焦走"挂起"（见
+    /// IsGameInteractionSuspended），不在此打断；受击无敌与原始按键输入同样不算操作。
+    /// 基础动画/foreign single-animation 姿势不在判定内：原版 IsPlayingBasicAnimation 的
+    /// 静立判定要求呼吸帧，不能当空闲信号；循环是接管式表现，启动时自己 completelyStop
+    /// 精灵。
+    /// </summary>
+    /// <summary>
+    /// 挂起判定：存在可交互菜单（背包/设置/确认对话）、游戏暂停或窗口失焦时，惊恐循环整体
+    /// 冻结——相位与待机计时都不推进，解除后原地恢复。与打断不同：打断会取消循环并重置
+    /// 计时，挂起只冻结现场。
+    /// </summary>
+    private static bool IsGameInteractionSuspended()
     {
-        // 原版力竭昏睡前会先下马/起身/停止进食；本循环不复刻这些状态迁移，等姿势结束
-        // 再开始，避免倒地帧覆盖坐骑/座位姿态。freezePause 期间输入被引擎锁定（含原版
-        // 2 点/力竭昏睡的 7000ms 冻结），同样不开始。
-        return player.isRidingHorse()
-            || player.IsSitting()
-            || player.isEating
-            || player.swimming.Value
-            || player.usingSlingshot
-            || player.freezePause > 0;
+        return Game1.activeClickableMenu is not null
+            || Game1.paused
+            || (Game1.game1 is not null && !Game1.game1.IsActiveNoOverlay);
+    }
+
+    private static string? DescribePanicInterruption(Farmer player)
+    {
+        if (!Context.IsWorldReady)
+            return "world-not-ready";
+        if (Game1.eventUp || Game1.CurrentEvent is not null || Game1.farmEvent is not null)
+            return "event-active";
+        if (Game1.currentMinigame is not null)
+            return "minigame";
+        if (Game1.isWarping)
+            return "warping";
+        if (Game1.fadeToBlack)
+            return "fade-to-black";
+        if (Game1.killScreen)
+            return "kill-screen";
+        if (player.UsingTool)
+            return SanityIdlePanicInterruptionPolicy.UsingToolReason;
+        if (player.usingSlingshot)
+            return SanityIdlePanicInterruptionPolicy.UsingSlingshotReason;
+        if (player.isEating)
+            return SanityIdlePanicInterruptionPolicy.EatingReason;
+        if (player.freezePause > 0)
+            return $"freezePause={player.freezePause}";
+        if (!player.CanMove)
+            return "cannot-move";
+        if (player.isMoving() || player.movementDirections.Count > 0)
+            return "moving";
+        if (player.isRidingHorse())
+            return "riding-horse";
+        if (player.IsSitting())
+            return "sitting";
+        if (player.swimming.Value)
+            return "swimming";
+        return null;
     }
 
     private static void BeginFaint(Farmer player)
@@ -251,10 +349,15 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
     private static void BeginStartled(Farmer player)
     {
         // performPlayerEmote("surprised") 一次调用复刻原版受惊链：94 帧受惊姿势 +
-        // batScreech + jumpWithoutSound(4) + 抖动 + Surprised(16) 气泡。先停掉昏迷动画，
-        // 否则 CanEmote 的 PauseForSingleAnimation 门会拒绝表演。
+        // batScreech + 帧首跳跃 + 抖动 + Surprised(16) 气泡。先停掉昏迷动画，否则 CanEmote
+        // 的 PauseForSingleAnimation 门会拒绝表演。
         player.completelyStopAnimatingOrDoingAction();
         player.performPlayerEmote(SurprisedEmoteName);
+        // 实机反馈：原版惊讶帧动作自带的是 4f 微跳（约 10px/0.15s），肉眼几乎不可见。
+        // 这里按 Character.jumpWithoutSound 的原版默认力度 8f（约半格、0.6s）显式补跳，
+        // 让"跳起惊吓"真正可读；后调用覆盖帧动作的 4f，jumpWithoutSound 本身无守卫。
+        player.jumpWithoutSound(8f);
+        player.jitterStrength = 1f;
     }
 
     private static FarmerSprite.AnimationFrame[] BuildFaintFrames()
@@ -266,55 +369,6 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         for (var index = 0; index < durations.Count; index++)
             frames[index] = new FarmerSprite.AnimationFrame(frameIds[index], durations[index]);
         return frames;
-    }
-
-    private static SanityIdleObservation BuildObservation(
-        Farmer player,
-        bool ownLoopActive
-    )
-    {
-        var sprite = player.FarmerSprite;
-        var isBusy = ownLoopActive
-            ? IsInterruptedOutsidePanicLoop(player)
-            : player.IsBusyDoingSomething();
-        var interactionWorldReady =
-            Context.IsWorldReady
-            && !Game1.paused
-            && (Game1.game1 is null || Game1.game1.IsActiveNoOverlay);
-        return new SanityIdleObservation(
-            interactionWorldReady,
-            player.IsLocalPlayer,
-            player.CanMove,
-            isBusy,
-            player.isMoving(),
-            player.movementDirections.Count > 0,
-            player.UsingTool,
-            player.temporarilyInvincible,
-            sprite.PauseForSingleAnimation,
-            sprite.IsPlayingBasicAnimation(player.FacingDirection, player.IsCarrying()),
-            Game1.activeClickableMenu is not null,
-            Game1.CurrentEvent is not null || Game1.eventUp,
-            Game1.isWarping,
-            ownLoopActive
-        );
-    }
-
-    private static bool IsInterruptedOutsidePanicLoop(Farmer player)
-    {
-        // Farmer.IsBusyDoingSomething 会把我们自己的 single-animation 也判成 busy；循环
-        // 占用精灵期间只保留这些硬中断，其余边界由现有 idle 观测字段判断。freezePause
-        // 覆盖原版 2 点/力竭昏睡的强制冻结：循环立刻让位，保证原版重试时精灵是干净的。
-        return Game1.eventUp
-            || Game1.paused
-            || (Game1.game1 is not null && !Game1.game1.IsActiveNoOverlay)
-            || Game1.fadeToBlack
-            || Game1.currentMinigame is not null
-            || Game1.activeClickableMenu is not null
-            || Game1.isWarping
-            || Game1.killScreen
-            || player.UsingTool
-            || player.freezePause > 0
-            || !player.CanMove;
     }
 
     private void CancelIfActive(string reason)
@@ -334,26 +388,30 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
     private void CancelAndRecover(Farmer player, string reason)
     {
         rules.Cancel();
-        idleDetector.Reset(reason);
-        try
+        rules.ResetIdle();
+        if (SanityIdlePanicInterruptionPolicy.ShouldReleasePlayerAnimation(reason))
         {
-            // 立即清掉昏迷/受惊动画并交还操作；completelyStop 会把 CanMove 恢复为非事件状态。
-            player.completelyStopAnimatingOrDoingAction();
+            try
+            {
+                // 没有原版动作接管精灵时才清理自有动画；移动/边界/理智恢复必须立即交还控制。
+                player.completelyStopAnimatingOrDoingAction();
+            }
+            catch (Exception exception)
+            {
+                LogOnce(
+                    "panic.recover-failed",
+                    $"{LogPrefix} recovery failed ({exception.GetType().Name}: {exception.Message}).",
+                    LogLevel.Error
+                );
+            }
         }
-        catch (Exception exception)
-        {
-            LogOnce(
-                "panic.recover-failed",
-                $"Low-sanity panic loop recovery failed ({exception.GetType().Name}: {exception.Message}).",
-                LogLevel.Error
-            );
-        }
+        monitor.Log($"{LogPrefix} interrupted ({reason}).", LogLevel.Info);
     }
 
     private void HardCancel(string reason)
     {
         rules.Cancel();
-        idleDetector.Reset(reason);
+        rules.ResetIdle();
     }
 
     private bool TryVerifyVanillaEmotes()
@@ -398,7 +456,7 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
             vanillaEmotesAvailable = false;
             LogOnce(
                 "panic.emote-probe-failed",
-                $"Low-sanity panic loop could not read the vanilla emote table ({exception.GetType().Name}: {exception.Message}).",
+                $"{LogPrefix} could not read the vanilla emote table ({exception.GetType().Name}: {exception.Message}).",
                 LogLevel.Warn
             );
         }
@@ -407,7 +465,7 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         {
             LogOnce(
                 "panic.vanilla-emotes-mismatch",
-                "Low-sanity panic loop disabled fail-closed: the vanilla angry/surprised emote contract did not match.",
+                $"{LogPrefix} disabled fail-closed: the vanilla angry/surprised emote contract did not match.",
                 LogLevel.Warn
             );
         }

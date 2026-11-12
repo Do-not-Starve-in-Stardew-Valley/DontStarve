@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using DontStarve.Interface;
+using DontStarve.Player.Combat.InvincibilityFrames;
 using DontStarve.Player.Stats.Sanity.Audio;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 using DontStarve.Player.Stats.Sanity.HostileShadows.Profiles;
@@ -32,7 +33,9 @@ internal interface IHostileShadowProjectionPushBoxBridge
 /// Owns the host's real GameLocation.characters instances and their bounded targeting loop. The
 /// location reference is frozen at spawn: owner warp never migrates or teleports the entity.
 /// </summary>
-internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
+internal sealed class SmapiHostileShadowWorldRuntime
+    : IHostileShadowDamageCommandHandler,
+        IDisposable
 {
     private const long MinutesPerGameHour = 60;
     private const double FixedUpdateSeconds =
@@ -181,6 +184,7 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     private readonly SanitySmapiResourceService resourceService;
     private readonly HostileShadowMonsterRenderer renderer;
     private readonly SmapiHostileAttackCombatService attackCombat;
+    private readonly SmapiInvincibilityFrameDamageService damageService;
     private readonly Func<HostileShadowMonster, int, int, int, Farmer?, int>
         incomingHitHandler;
     private readonly HostileShadowPeerVisibilityGate peerGate;
@@ -205,6 +209,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     );
     private readonly Dictionary<string, HostileShadowCrowdCollisionResolutionEntry>
         crowdResolutions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ShadowAttackDamageResult>
+        receivedRemoteDamageResults = new(StringComparer.Ordinal);
     private IHostileShadowProjectionPushBoxBridge? projectionPushBoxBridge;
     private bool disposed;
 
@@ -240,8 +246,12 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         );
 
         renderer = new HostileShadowMonsterRenderer(resources);
+        var invincibilityFrameDamageService =
+            SmapiInvincibilityFrameDamageService.CreateDefault(monitor);
+        damageService = invincibilityFrameDamageService;
         attackCombat = new SmapiHostileAttackCombatService(
             authority,
+            invincibilityFrameDamageService,
             LogOnce
         );
         incomingHitHandler = HandleIncomingHit;
@@ -263,6 +273,123 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         authority.MaxHealthRatcheted += OnMaxHealthRatcheted;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         resources.WorldResourcesReleasing += OnWorldResourcesReleasing;
+    }
+
+    internal bool BindRemoteDamageTransport(
+        IHostileShadowDamageCommandSender transport,
+        out string reason
+    )
+    {
+        return attackCombat.BindRemoteDamageTransport(transport, out reason);
+    }
+
+    public bool HandleAttackDamageCommand(
+        ShadowAttackDamageCommand command,
+        long senderPlayerId,
+        out ShadowAttackDamageResult result,
+        out string reason
+    )
+    {
+        result = CreateRejectedDamageResult(command, "hostile-shadow.damage-command-rejected");
+        reason = string.Empty;
+        if (disposed || Game1.IsMasterGame)
+        {
+            reason = "hostile-shadow.damage-command-wrong-runtime";
+            return false;
+        }
+
+        if (receivedRemoteDamageResults.TryGetValue(command.Nonce, out var replay))
+        {
+            result = replay;
+            reason = "hostile-shadow.damage-command-replay-returned";
+            return true;
+        }
+
+        var localPlayer = Game1.player;
+        var expectedPlayerKey = localPlayer is null
+            ? string.Empty
+            : SanityPlayerKey.FromUniqueMultiplayerId(
+                localPlayer.UniqueMultiplayerID
+            );
+        if (
+            !HostileShadowProtocol.IsValidAttackDamageCommand(
+                command,
+                expectedPlayerKey,
+                authority.SessionId,
+                out reason
+            )
+            || localPlayer is null
+            || localPlayer.currentLocation is null
+            || !string.Equals(
+                localPlayer.currentLocation.NameOrUniqueName,
+                command.LocationId,
+                StringComparison.Ordinal
+            )
+            || !entries.TryGetValue(command.EntityId, out var entry)
+            || !TryValidateClientMaterializedAttack(
+                entry,
+                command
+            )
+        )
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                reason = "hostile-shadow.damage-command-state-invalid";
+            return false;
+        }
+
+        if (
+            !TryCreateDamagePolicy(
+                command.PolicyMode,
+                command.PolicyDurationMilliseconds,
+                out var policy
+            )
+        )
+        {
+            reason = "hostile-shadow.damage-command-policy-invalid";
+            return false;
+        }
+
+        var damage = damageService.Apply(
+            localPlayer,
+            command.Damage,
+            entry.Monster,
+            policy
+        );
+        result = new ShadowAttackDamageResult
+        {
+            SessionId = command.SessionId,
+            Nonce = command.Nonce,
+            EntityId = command.EntityId,
+            TargetPlayerKey = command.TargetPlayerKey,
+            LocationId = command.LocationId,
+            AttackInstanceId = command.AttackInstanceId,
+            ObservedEntityRevision = command.ObservedEntityRevision,
+            ObservedAttackInstanceRevision = command.ObservedAttackInstanceRevision,
+            ObservedFrameNumber = command.ObservedFrameNumber,
+            Outcome = damage.Outcome,
+            HealthBefore = damage.HealthBefore,
+            HealthAfter = damage.HealthAfter,
+            DurationOverridden = damage.DurationOverridden,
+            DurationMilliseconds = damage.DurationMilliseconds,
+            Reason = damage.Reason,
+            HitWindowId = command.HitWindowId,
+        };
+        StoreRemoteDamageResult(result);
+        reason = "hostile-shadow.damage-command-applied-locally";
+        return true;
+    }
+
+    public bool HandleAttackDamageResult(
+        ShadowAttackDamageResult result,
+        long senderPlayerId,
+        out string reason
+    )
+    {
+        return attackCombat.TryHandleRemoteDamageResult(
+            result,
+            senderPlayerId,
+            out reason
+        );
     }
 
     internal HostileShadowPhysicalEntityCapability SerializationCapability =>
@@ -912,6 +1039,8 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             };
             monster.modData[HostileShadowMonster.EntityIdModDataKey] =
                 state.EntityId.ToString(CultureInfo.InvariantCulture);
+            monster.modData[HostileShadowMonster.EntityRevisionModDataKey] =
+                state.Revision.ToString(CultureInfo.InvariantCulture);
             monster.modData[HostileShadowMonster.AssetBindingModDataKey] =
                 state.AssetBindingId;
             // Authority chooses Spawn for standalone entities and Taunt for a harmless-projection
@@ -948,9 +1077,22 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
             {
                 var idleSlot = attackMetadata!.Idle.AnimationId;
                 var spriteResource = resourceService.LoadVisualSlot(idleSlot, 0);
-                if (
-                    spriteResource.Success
-                    && spriteResource.PhysicalResource
+                if (!spriteResource.Success)
+                {
+                    LogOnce(
+                        "hostile-shadow.visual-load-failed",
+                        string.Concat(
+                            "materialization kept the placeholder Sprite after the idle visual returned ",
+                            "code=",
+                            spriteResource.Diagnostic.Code,
+                            ", reason=",
+                            spriteResource.Diagnostic.Reason
+                        ),
+                        LogLevel.Error
+                    );
+                }
+                else if (
+                    spriteResource.PhysicalResource
                         is XnaSanityTextureResource spriteTexture
                     && spriteResource.VisualPreview is { } spritePreview
                 )
@@ -973,10 +1115,23 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
                     sprite.SetOwner(monster);
                     monster.Sprite = sprite;
                 }
+                else
+                {
+                    LogOnce(
+                        "hostile-shadow.visual-load-failed",
+                        "materialization kept the placeholder Sprite after the idle visual contract failed.",
+                        LogLevel.Error
+                    );
+                }
             }
             catch
             {
-                // 贴图缺失时保持占位 Sprite，不阻断物化。
+                // 贴图缺失时保持占位 Sprite，不阻断物化；记录一次以便实机排查。
+                LogOnce(
+                    "hostile-shadow.visual-load-failed",
+                    "materialization kept the placeholder Sprite after the idle visual failed to load.",
+                    LogLevel.Error
+                );
             }
             // DIAG-20260807: 按 profile 的稳定显示名 i18n key 设置实例 Name。
             // Character.Name 是 NetString，写入后会随实体同步；Lookup Anything 读取它时即可
@@ -2160,12 +2315,146 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
     {
         RemoveAllPhysical();
         pendingLethalEntityIds.Clear();
+        attackCombat.ClearPendingRemoteDamage();
+        receivedRemoteDamageResults.Clear();
         playerIndex.Rebuild(Array.Empty<HostileShadowPlayerSample>());
         renderer.Clear();
         lifecycleReceipts.Clear();
         settlements.ClearSession();
         peerGate.ClearSession();
         loggedReasons.Clear();
+    }
+
+    private static bool TryCreateDamagePolicy(
+        int modeValue,
+        int durationMilliseconds,
+        out InvincibilityFramePolicy policy
+    )
+    {
+        policy = default;
+        if (
+            !Enum.IsDefined(
+                typeof(InvincibilityFramePolicyMode),
+                modeValue
+            )
+            || durationMilliseconds < 0
+        )
+        {
+            return false;
+        }
+
+        var mode = (InvincibilityFramePolicyMode)modeValue;
+        if (
+            mode == InvincibilityFramePolicyMode.Normal
+            && durationMilliseconds != 0
+        )
+        {
+            return false;
+        }
+
+        policy = new InvincibilityFramePolicy(mode, durationMilliseconds);
+        return InvincibilityFrameRules.ResolveDuration(policy, 0).Success;
+    }
+
+    private static bool TryValidateClientMaterializedAttack(
+        PhysicalEntry entry,
+        ShadowAttackDamageCommand command
+    )
+    {
+        if (
+            entry is null
+            || entry.Monster.currentLocation is null
+            || !string.Equals(
+                entry.Monster.currentLocation.NameOrUniqueName,
+                command.LocationId,
+                StringComparison.Ordinal
+            )
+            || !entry.Monster.modData.TryGetValue(
+                HostileShadowMonster.EntityRevisionModDataKey,
+                out var entityRevisionRaw
+            )
+            || !long.TryParse(
+                entityRevisionRaw,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var entityRevision
+            )
+            || entityRevision != command.ObservedEntityRevision
+            || !entry.Monster.modData.TryGetValue(
+                HostileShadowMonster.StateModDataKey,
+                out var stateId
+            )
+            || !string.Equals(
+                stateId,
+                HostileShadowStateIds.Attack,
+                StringComparison.Ordinal
+            )
+            || !entry.Monster.modData.TryGetValue(
+                HostileShadowMonster.AttackInstanceModDataKey,
+                out var attackInstanceId
+            )
+            || !string.Equals(
+                attackInstanceId,
+                command.AttackInstanceId,
+                StringComparison.Ordinal
+            )
+            || !entry.Monster.modData.TryGetValue(
+                HostileShadowMonster.AttackInstanceRevisionModDataKey,
+                out var revisionRaw
+            )
+            || !long.TryParse(
+                revisionRaw,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var revision
+            )
+            || revision != command.ObservedAttackInstanceRevision
+            || !entry.Monster.modData.TryGetValue(
+                HostileShadowMonster.AttackFrameModDataKey,
+                out var frameRaw
+            )
+            || !int.TryParse(
+                frameRaw,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var frame
+            )
+            || frame != command.ObservedFrameNumber
+        )
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static ShadowAttackDamageResult CreateRejectedDamageResult(
+        ShadowAttackDamageCommand command,
+        string reason
+    )
+    {
+        return new ShadowAttackDamageResult
+        {
+            SessionId = command?.SessionId ?? string.Empty,
+            Nonce = command?.Nonce ?? string.Empty,
+            EntityId = command?.EntityId ?? 0,
+            TargetPlayerKey = command?.TargetPlayerKey ?? string.Empty,
+            LocationId = command?.LocationId ?? string.Empty,
+            AttackInstanceId = command?.AttackInstanceId ?? string.Empty,
+            ObservedEntityRevision = command?.ObservedEntityRevision ?? 0,
+            ObservedAttackInstanceRevision = command?.ObservedAttackInstanceRevision ?? 0,
+            ObservedFrameNumber = command?.ObservedFrameNumber ?? 0,
+            Outcome = InvincibilityFrameDamageOutcome.NoChange,
+            Reason = reason,
+            HitWindowId = command?.HitWindowId ?? string.Empty,
+        };
+    }
+
+    private void StoreRemoteDamageResult(ShadowAttackDamageResult result)
+    {
+        if (receivedRemoteDamageResults.Count >= HostileShadowAuthority.MaximumEntities)
+            receivedRemoteDamageResults.Clear();
+        receivedRemoteDamageResults[result.Nonce] = result;
     }
 
     public void Dispose()
@@ -3952,6 +4241,11 @@ internal sealed class SmapiHostileShadowWorldRuntime : IDisposable
         ShadowStateSnapshot state
     )
     {
+        SetModDataIfChanged(
+            entry.Monster,
+            HostileShadowMonster.EntityRevisionModDataKey,
+            state.Revision.ToString(CultureInfo.InvariantCulture)
+        );
         ApplyAttackModDataIfChanged(
             entry,
             state.StateId,

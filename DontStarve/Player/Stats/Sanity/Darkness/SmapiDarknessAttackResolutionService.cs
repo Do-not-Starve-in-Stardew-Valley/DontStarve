@@ -8,6 +8,7 @@ using DontStarve.Player.Stats.Sanity.PassOut.Damage;
 using DontStarve.Resource.Sanity;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Audio;
 
 namespace DontStarve.Player.Stats.Sanity.Darkness;
 
@@ -230,6 +231,11 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
             return;
         }
 
+        // 【2026-11-11 ow 排查】只在本结算窗口内打开原版播音诊断（SoundsHelper.LogSounds，
+        // 经 Game1.log.Debug 由 SMAPI 以 TRACE game 收进主日志）：窗口内原版 cue 的每次
+        // 播放/跳过决策都会带原因落日志（"Played sound 'ow' ..." 或 "(disabled for ...)"），
+        // 用于实机定位“ow 已调用但不可闻”与“根本未调用”的分歧。窗口外零开销。
+        using var soundLogWindow = DarknessSoundLogWindow.Enter();
         var result = resolution.Resolve(
             new DarknessAttackResolutionRequest(
                 intent,
@@ -261,7 +267,7 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
                 originalSettled
                     ? $"settled:{receipt.Mode}:{receipt.BaseDamage}"
                     : result.Reason,
-                $"Darkness settlement (request={receipt.RequestId}, mode={receipt.Mode}, roll={receipt.RngRoll}, base={receipt.BaseDamage}, operation={receipt.Operation}, receipt={receipt.ReceiptId}, status={result.Status}, sanity-revision={receipt.SanityReceipt?.AfterRevision.ToString() ?? "none"}, reason={result.Reason}).",
+                $"Darkness settlement (request={receipt.RequestId}, mode={receipt.Mode}, roll={receipt.RngRoll}, base={receipt.BaseDamage}, damage={DescribeActualDamage(receipt)}, operation={receipt.Operation}, receipt={receipt.ReceiptId}, status={result.Status}, sanity-revision={receipt.SanityReceipt?.AfterRevision.ToString() ?? "none"}, reason={result.Reason}).",
                 originalSettled ? LogLevel.Debug : LogLevel.Warn
             );
         }
@@ -272,6 +278,17 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
                 $"Darkness settlement failed closed (status={result.Status}, reason={result.Reason})."
             );
         }
+    }
+
+    /// <summary>
+    /// 【2026-11-11 ow 排查】结算日志补记实际落血伤害：damage=0 表示地板/以下的 0 伤害咬
+    /// （原版口径本就无受击音），damage&gt;0 才是应该听到 "ow" 的真咬。用于和实机听感对账。
+    /// </summary>
+    private static string DescribeActualDamage(DarknessAttackResolutionReceipt receipt)
+    {
+        return receipt.DamageReceipt is { } damageReceipt
+            ? damageReceipt.ActualDamage.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : "n/a";
     }
 
     private void OnStateEventPublished(SanityStateEvent stateEvent)
@@ -382,6 +399,47 @@ internal sealed class SystemDarknessAttackResolutionRandom
     public int NextRoll100()
     {
         return Random.Shared.Next(100);
+    }
+}
+
+/// <summary>
+/// 【2026-11-11 ow 排查】一次性诊断窗口：窗口期内打开原版 SoundsHelper.LogSounds，
+/// 让每一次 vanilla cue 播放决策（含跳过原因）落进游戏日志。仅黑暗结算窗口使用；
+/// Game1.sounds 被其他 mod 替换为非 SoundsHelper 实现时静默降级为空窗口。
+/// </summary>
+internal sealed class DarknessSoundLogWindow : IDisposable
+{
+    private readonly SoundsHelper? helper;
+    private bool disposed;
+
+    internal static DarknessSoundLogWindow Enter()
+    {
+        try
+        {
+            return new DarknessSoundLogWindow(
+                Game1.sounds as SoundsHelper
+            );
+        }
+        catch (Exception)
+        {
+            return new DarknessSoundLogWindow(null);
+        }
+    }
+
+    private DarknessSoundLogWindow(SoundsHelper? helper)
+    {
+        this.helper = helper;
+        if (helper is not null)
+            helper.LogSounds = true;
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+            return;
+        disposed = true;
+        if (helper is not null)
+            helper.LogSounds = false;
     }
 }
 
@@ -565,16 +623,29 @@ internal sealed class SmapiDarknessAttackDamageAuthority
                 $"darkness.nonlethal.receipt-unavailable:{result.Reason}"
             );
         }
+        // 【2026-11-11 原版口径对齐】DST grue.lua nonlethal：血量在地板及以下时这一口仍照常
+        // 结算，只是伤害为 max(0, current - floor) = 0，袭击音效、扣理智与反馈照常发生。
+        // 因此 service 的 NoChange（已在地板或以下，血量不动）是合法的 0 伤害结算，
+        // 不再作为拒绝处理；只有真正不可用/冲突的结果才 fail closed。
+        var settledDamage = receipt.Outcome == NonLethalDamageReceiptOutcome.Applied
+            ? receipt.AppliedDamage
+            : 0;
         if (
-            result.Status is not NonLethalDamageResultStatus.Applied
-                and not NonLethalDamageResultStatus.Duplicate
-            || receipt.Outcome != NonLethalDamageReceiptOutcome.Applied
-            || receipt.AppliedDamage <= 0
+            result.Status is not (
+                NonLethalDamageResultStatus.Applied
+                or NonLethalDamageResultStatus.Duplicate
+                or NonLethalDamageResultStatus.NoChange
+            )
+            || receipt.Outcome == NonLethalDamageReceiptOutcome.Unavailable
+            || (
+                receipt.Outcome == NonLethalDamageReceiptOutcome.Applied
+                && receipt.AppliedDamage <= 0
+            )
         )
         {
             return DarknessAttackDamageReceipt.Rejected(
                 request,
-                $"darkness.nonlethal.floor-reached-or-rejected:{result.Reason}",
+                $"darkness.nonlethal.rejected:{result.Reason}",
                 receipt.BeforeHealth,
                 receipt.MaximumHealth
             );
@@ -583,7 +654,7 @@ internal sealed class SmapiDarknessAttackDamageAuthority
             request,
             receipt.BeforeHealth,
             receipt.MaximumHealth,
-            receipt.AppliedDamage,
+            settledDamage,
             receipt.AfterHealth,
             receipt.Reason
         );

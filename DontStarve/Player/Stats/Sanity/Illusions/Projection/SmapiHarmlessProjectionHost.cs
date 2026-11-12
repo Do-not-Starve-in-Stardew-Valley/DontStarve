@@ -114,6 +114,7 @@ internal sealed class SmapiHarmlessProjectionHost
         resourceService.WorldResourcesReleasing += OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.Display.RenderedWorld += OnRenderedWorld;
+        helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         helper.Events.GameLoop.DayEnding += OnDayEnding;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
@@ -1357,8 +1358,58 @@ internal sealed class SmapiHarmlessProjectionHost
         resourceService.WorldResourcesReleasing -= OnWorldResourcesReleasing;
         helper.Events.GameLoop.UpdateTicked -= OnUpdateTicked;
         helper.Events.Display.RenderedWorld -= OnRenderedWorld;
+        helper.Events.GameLoop.SaveLoaded -= OnSaveLoaded;
         helper.Events.GameLoop.DayEnding -= OnDayEnding;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+    }
+
+    private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+    {
+        if (disposed || !lifecycle.IsEnabled)
+            return;
+
+        // Registration normally warms these loader-owned resources during Entry. Repeat the
+        // borrow after SaveLoaded so a prior world/content release cannot move the first texture
+        // decode back onto a gameplay spawn frame.
+        foreach (var policy in scheduler.Policies)
+        {
+            if (OwnerLocalProjectionDisableList.IsDisabled(policy.SpeciesId))
+                continue;
+
+            if (
+                !TryLoadSpawnVisuals(
+                    policy,
+                    out _,
+                    out _,
+                    out var reason
+                )
+            )
+            {
+                LogFailureOnce(
+                    string.Concat("preload|", policy.SpeciesId),
+                    $"Harmless projection visual preload failed (species={policy.SpeciesId}, reason={reason})."
+                );
+            }
+        }
+
+        foreach (var policy in shadowCoordinator.Policies)
+        {
+            if (
+                !TryLoadShadowProjectionVisuals(
+                    policy,
+                    out _,
+                    out _,
+                    out _,
+                    out var reason
+                )
+            )
+            {
+                LogFailureOnce(
+                    string.Concat("preload|", policy.SpeciesId),
+                    $"Shadow harmless projection visual preload failed (species={policy.SpeciesId}, reason={reason})."
+                );
+            }
+        }
     }
 
     private void OnStateEventPublished(SanityStateEvent stateEvent)

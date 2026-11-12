@@ -39,8 +39,10 @@ internal readonly record struct SanityTooltipRow(
 
 internal static class SanityTooltipLayoutContract
 {
+    // 两套行距均取自原版 drawHoverText：能量/生命行每行推进 34，Buff 行每行推进 39。
+    // 饥饿/理智是生存数值行，沿用 34，使其与能量/生命行连成同一节奏的列表。
     internal const int CustomRowHeight = 39;
-    internal const int CustomSectionPadding = 4;
+    internal const int CustomSurvivalRowHeight = 34;
     // Stardew's vanilla tooltip uses a 10x10 cursor region with a 3x draw scale.
     // TooltipIconPixels is the resulting on-screen target size, not either source texture size.
     internal const int VanillaTooltipIconSourcePixels = 10;
@@ -84,32 +86,21 @@ internal static class SanityTooltipLayoutContract
             }
         );
 
-    internal static int GetAdditionalHeight(int rowCount)
-    {
-        return GetAdditionalHeight(rowCount, 0);
-    }
-
-    internal static int GetAdditionalHeight(int survivalRowCount, int extraBuffRowCount)
-    {
-        // The vanilla Buff section already owns its four-pixel section padding when present.
-        return GetAdditionalHeight(survivalRowCount, extraBuffRowCount, vanillaBuffSectionPresent: true);
-    }
-
     internal static int GetAdditionalHeight(
         int survivalRowCount,
         int extraBuffRowCount,
         bool vanillaBuffSectionPresent
     )
     {
+        // 分隔线与小节留白已于 2026-11-12 移除：生存小节和扩展 Buff 小节都直接按行距续排，
+        // 高度增量就是行数乘行距。vanillaBuffSectionPresent 曾用于区分“原版 Buff 区已自带
+        // 4px 留白”的场景，现无高度差异，参数仅为维持 seam 调用形状而保留。
         var survivalHeight = survivalRowCount <= 0
             ? 0
-            : checked(CustomSectionPadding + survivalRowCount * CustomRowHeight);
+            : checked(survivalRowCount * CustomSurvivalRowHeight);
         var extraBuffHeight = extraBuffRowCount <= 0
             ? 0
-            : checked(
-                extraBuffRowCount * CustomRowHeight
-                + (vanillaBuffSectionPresent ? 0 : CustomSectionPadding)
-            );
+            : checked(extraBuffRowCount * CustomRowHeight);
         return checked(survivalHeight + extraBuffHeight);
     }
 
@@ -128,7 +119,7 @@ internal static class SanityTooltipLayoutContract
 
 /// <summary>
 /// The final row sequence used by tooltip measurement and drawing. Keeping the category counts
-/// beside the sequence prevents the survival-section separator from being counted for Buff rows.
+/// beside the sequence keeps survival-row and Buff-row heights separate in the height contract.
 /// </summary>
 internal sealed class SanityTooltipRowLayout
 {

@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Interface;
 using DontStarve.Player.Death;
 using DontStarve.Player.Stats;
@@ -30,9 +31,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private readonly SanitySystemLifecycleCoordinator sanityLifecycle;
     private readonly Func<bool> sleepRecoveryBalanceProvider;
     private readonly Func<HungerDamageMode> hungerDamageModeProvider;
+    private readonly SpecialPassOutSanitySettlement specialPassOutSanitySettlement;
     private readonly SleepOvernightSettlement overnight = new();
     private readonly HashSet<string> committedPlayers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> pendingWakeDeaths = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> pendingHiddenHospitalDeaths = new(StringComparer.Ordinal);
+    private readonly HashSet<string> hiddenHospitalReleaseRequested = new(StringComparer.Ordinal);
     private readonly Action<Farmer>? markHungerDeath;
     private readonly SmapiSleepEngineBridge engineBridge;
     private readonly SleepOwnerHealthState ownerHealth = new();
@@ -47,6 +51,19 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private readonly HashSet<string> clientSleeping = new(StringComparer.Ordinal);
     private readonly HashSet<string> suppressStartSleepObservation = new(StringComparer.Ordinal);
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
+    // A persisted wake-death marker means the native save already contains the final zero HP.
+    // Keep only a session-local load gate so the first post-fade Farmer.Update can own the real
+    // kill-screen transition; never replace the saved HP with a synthetic positive value.
+    private bool wakeDeathLoadReplayPending;
+    private bool wakeDeathLoadGateArmed;
+    private string wakeDeathLoadGatePlayerKey = string.Empty;
+    private bool preWorldDeathLoadGateArmed;
+    private string preWorldDeathLoadGatePlayerKey = string.Empty;
+    private string wakeDeathCauseMarkedPlayerKey = string.Empty;
+    // UpdateTicked must remove entries from active/pendingWakeDeaths without enumerating a
+    // collection that it mutates. Reuse these buffers because this path runs at frame cadence.
+    private readonly List<ActiveSleep> activeCleanupBuffer = new();
+    private readonly List<string> completedWakeDeathBuffer = new();
     private SmapiSleepMultiplayerCoordinator multiplayer = null!;
     private bool disposed;
 
@@ -60,6 +77,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         SmapiPassOutReasonService passOutReasons,
         Func<bool> sleepRecoveryBalanceProvider,
         Func<HungerDamageMode> hungerDamageModeProvider,
+        SpecialPassOutSanitySettlement specialPassOutSanitySettlement,
         Action<Farmer>? markHungerDeath = null
     )
     {
@@ -77,6 +95,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             ?? throw new ArgumentNullException(nameof(sleepRecoveryBalanceProvider));
         this.hungerDamageModeProvider = hungerDamageModeProvider
             ?? throw new ArgumentNullException(nameof(hungerDamageModeProvider));
+        this.specialPassOutSanitySettlement = specialPassOutSanitySettlement
+            ?? throw new ArgumentNullException(nameof(specialPassOutSanitySettlement));
         this.markHungerDeath = markHungerDeath;
         engineBridge = new SmapiSleepEngineBridge(this, monitor, modId);
 
@@ -103,6 +123,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     }
 
     internal event Action<SleepPlayerSnapshot>? HostSnapshotChanged;
+
+    internal event Action<Farmer>? HiddenHospitalWakeReady;
 
 
     internal SleepAuthorityRole Role => transportState.Role;
@@ -420,10 +442,16 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
-        ClearRuntimeOnly();
+        // Farmer.Update can run once during the loader before SMAPI raises SaveLoaded. Preserve
+        // that early zero-health gate until the wake marker has been read and classified.
+        ClearRuntimeOnly(preservePreWorldDeathGate: true);
         overnight.Clear();
         pendingWakeDeaths.Clear();
+        pendingHiddenHospitalDeaths.Clear();
+        hiddenHospitalReleaseRequested.Clear();
         wakeStateCanWrite = true;
+        wakeDeathLoadReplayPending = false;
+        wakeDeathCauseMarkedPlayerKey = string.Empty;
 
         if (
             sanityLifecycle.AuthorityRole == SanityAuthorityRole.Host
@@ -442,6 +470,11 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 {
                     foreach (var pair in wake.Normalize(CurrentDay()))
                         pendingWakeDeaths[pair.Key] = pair.Value;
+                    foreach (var pair in wake.NormalizeHiddenHospital(CurrentDay()))
+                    {
+                        pendingWakeDeaths[pair.Key] = pair.Value;
+                        pendingHiddenHospitalDeaths[pair.Key] = pair.Value;
+                    }
                     PrunePendingWakeDeaths();
                 }
             }
@@ -451,6 +484,11 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 LogOnce($"sleep-wake-state-read-failed:{exception.GetType().Name}", LogLevel.Error);
             }
             MarkPendingWakeDeaths();
+            wakeDeathLoadReplayPending = true;
+            // Arm during SaveLoaded itself so no Farmer.Update can observe the persisted zero HP
+            // with movement still enabled. Release is deliberately deferred to UpdateTicked,
+            // after the load fade callback had a chance to finish.
+            TryArmWakeDeathLoadGate();
             OnTransportSessionStarted();
         }
         else if (sanityLifecycle.AuthorityRole == SanityAuthorityRole.Client)
@@ -459,6 +497,9 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             clientSleeping.Clear();
             multiplayer.RequestFullSnapshot();
         }
+
+        if (!wakeDeathLoadGateArmed)
+            ReleasePreWorldDeathLoadGate();
     }
 
     [EventPriority(EventPriority.High)]
@@ -500,7 +541,10 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             }
             if (input.RecoveryBalance.SanityEnabled)
             {
-                var sanity = farmer.SetSanity(result.Sanity, SanityChangeSource.VoluntarySleep);
+                var sanity = farmer.SetSanity(
+                    result.Sanity,
+                    input.RecoveryBalance.SanitySettlementSource
+                );
                 if (sanity.Status == SanityChangeStatus.Rejected)
                 {
                     LogOnce(sanity.Reason, LogLevel.Error);
@@ -513,6 +557,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 HungerExtensions.ResumeAfterSleep(farmer);
             }
             ApplyFinalHealth(farmer, result);
+            ApplyHiddenHospitalWakeHealth(farmer);
             // Register the blackout interval only after the existing joint result has been applied;
             // rejected Sanity writes can then retry Saving without consuming the owner phase first.
             if (!survivalTime.AdvanceSleepInterval(
@@ -543,7 +588,11 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             {
                 PrunePendingWakeDeaths();
                 helper.Data.WriteSaveData(WakeStateKey,
-                    SleepWakeEffectsData.From(pendingWakeDeaths, CurrentDay()));
+                    SleepWakeEffectsData.From(
+                        NaturalWakeDeathMarkers(),
+                        pendingHiddenHospitalDeaths,
+                        CurrentDay()
+                    ));
             }
             catch (Exception exception)
             {
@@ -572,10 +621,11 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         nightInProgress = true;
         overnight.Clear();
         committedPlayers.Clear();
+        ApplySpecialPassOutSanityAtDayEnding();
         var entries = new List<ActiveSleep>(active.Values);
         foreach (var entry in entries)
         {
-            if (!entry.Confirmed || entry.Context.Mode != SleepMode.Voluntary)
+            if (!entry.Confirmed)
             {
                 CancelAttempt(entry.PlayerKey, entry.AttemptId);
                 continue;
@@ -595,6 +645,13 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 CalendarSeason = Game1.season.ToString(),
                 CalendarDay = Game1.dayOfMonth,
             };
+            snapshot = SleepSanitySettlementPolicy.Apply(
+                snapshot,
+                specialPassOutSanitySettlement,
+                SessionId,
+                entry.PlayerKey,
+                CurrentDay()
+            );
             if (!overnight.TryPrepare(snapshot, out var reason))
             {
                 LogOnce(reason, LogLevel.Error);
@@ -622,6 +679,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     {
         // The values are already in the native save. No numeric delta belongs here.
         ApplyPendingOwnerHealth();
+        foreach (var farmer in Game1.getOnlineFarmers())
+            ApplyHiddenHospitalWakeHealth(farmer);
         PrunePendingWakeDeaths();
         MarkPendingWakeDeaths();
         nightInProgress = false;
@@ -633,6 +692,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         contextState.Clear();
         overnight.Clear();
         committedPlayers.Clear();
+        specialPassOutSanitySettlement.ClearSession(SessionId);
     }
 
     private void OnMinuteUpdate(long time)
@@ -737,22 +797,43 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
+        AdvanceWakeDeathLoadGate();
+        AdvanceHiddenHospitalWakeDeath();
         if (nightInProgress)
             return;
         if (Role == SleepAuthorityRole.Host && Context.IsMainPlayer)
         {
-            foreach (var entry in new List<ActiveSleep>(active.Values))
+            if (active.Count > 0)
             {
-                var farmer = ResolvePlayer(entry.PlayerKey);
-                if (farmer is null || farmer.timeWentToBed.Value == 0 || !farmer.isInBed.Value)
-                    CancelAttempt(entry.PlayerKey, entry.AttemptId);
+                activeCleanupBuffer.Clear();
+                foreach (var entry in active.Values)
+                    activeCleanupBuffer.Add(entry);
+                foreach (var entry in activeCleanupBuffer)
+                {
+                    var farmer = ResolvePlayer(entry.PlayerKey);
+                    if (
+                        entry.Context.Mode == SleepMode.Voluntary
+                        && (farmer is null || farmer.timeWentToBed.Value == 0 || !farmer.isInBed.Value)
+                    )
+                        CancelAttempt(entry.PlayerKey, entry.AttemptId);
+                }
             }
-            var completedDeaths = new List<string>();
-            foreach (var key in pendingWakeDeaths.Keys)
-                if (ResolvePlayer(key) is Farmer awake && awake.health > 0)
-                    completedDeaths.Add(key);
-            foreach (var key in completedDeaths)
-                pendingWakeDeaths.Remove(key);
+            if (pendingWakeDeaths.Count > 0)
+            {
+                completedWakeDeathBuffer.Clear();
+                foreach (var key in pendingWakeDeaths.Keys)
+                    if (
+                        ResolvePlayer(key) is Farmer awake
+                        && awake.health > 0
+                        && !pendingHiddenHospitalDeaths.ContainsKey(key)
+                    )
+                        completedWakeDeathBuffer.Add(key);
+                foreach (var key in completedWakeDeathBuffer)
+                {
+                    pendingWakeDeaths.Remove(key);
+                    pendingHiddenHospitalDeaths.Remove(key);
+                }
+            }
         }
         if (Game1.player is null)
             return;
@@ -1082,11 +1163,19 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         {
             var result = farmer.ChangeSanity(
                 sanityDelta,
-                SanityChangeSource.VoluntarySleep
+                contextState.TryGet(PlayerKey(farmer), out var context)
+                    ? context.RecoveryBalance.SanitySettlementSource
+                    : SanityChangeSource.VoluntarySleep
             );
             if (result.Status == SanityChangeStatus.Rejected)
                 LogOnce(result.Reason, LogLevel.Warn);
         }
+        // 睡眠实时结算的健康推进是 overtime 语义：恢复/扣血都不播音（对齐 DST 睡觉）。
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            farmer.UniqueMultiplayerID,
+            farmer.health,
+            HealthForGame(progress.Health)
+        );
         farmer.health = HealthForGame(progress.Health);
     }
 
@@ -1095,7 +1184,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         string attemptId,
         bool requireInBed,
         out SleepSnapshot snapshot,
-        out string reason
+        out string reason,
+        SleepMode mode = SleepMode.Voluntary
     )
     {
         snapshot = default;
@@ -1134,7 +1224,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             playerKey,
             sessionId,
             string.Concat("settlement-", attemptId),
-            SleepMode.Voluntary,
+            mode,
             start,
             start,
             target,
@@ -1156,8 +1246,37 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             Game1.season.ToString(),
             Game1.dayOfMonth
         );
+        snapshot = SleepSanitySettlementPolicy.Apply(
+            snapshot,
+            specialPassOutSanitySettlement,
+            sessionId,
+            playerKey,
+            CurrentDay()
+        );
         reason = "sleep-snapshot-captured";
         return true;
+    }
+
+    private void ApplySpecialPassOutSanityAtDayEnding()
+    {
+        foreach (var farmer in Game1.getOnlineFarmers())
+        {
+            var playerKey = PlayerKey(farmer);
+            if (
+                !specialPassOutSanitySettlement.TryResolve(
+                    SessionId,
+                    playerKey,
+                    CurrentDay(),
+                    farmer.GetSanity(),
+                    out var overrideValue
+                )
+            )
+                continue;
+
+            var result = farmer.SetSanity(overrideValue.Sanity, overrideValue.Source);
+            if (result.Status == SanityChangeStatus.Rejected)
+                LogOnce(result.Reason, LogLevel.Error);
+        }
     }
 
     private bool CanUseCustomSleep()
@@ -1241,8 +1360,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             HungerExtensions.ResumeAfterSleep(farmer);
     }
 
-    private void ClearRuntimeOnly()
+    private void ClearRuntimeOnly(bool preservePreWorldDeathGate = false)
     {
+        if (wakeDeathLoadGateArmed && !Game1.killScreen && Game1.player is Farmer farmer)
+            farmer.CanMove = true;
+        if (!preservePreWorldDeathGate)
+            ReleasePreWorldDeathLoadGate();
         active.Clear();
         pendingAttempts.Clear();
         clientSleeping.Clear();
@@ -1252,7 +1375,14 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         committedPlayers.Clear();
         ownerHealth.Clear();
         nightInProgress = false;
+        pendingHiddenHospitalDeaths.Clear();
+        hiddenHospitalReleaseRequested.Clear();
+        wakeDeathLoadReplayPending = false;
+        wakeDeathLoadGateArmed = false;
+        wakeDeathLoadGatePlayerKey = string.Empty;
+        wakeDeathCauseMarkedPlayerKey = string.Empty;
         survivalTime.ClearSession();
+        specialPassOutSanitySettlement.ClearSession(SessionId);
     }
 
     internal long KnownRevision(string playerKey) =>
@@ -1260,14 +1390,20 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     internal bool ShouldSuppressNativeBedHealth(Farmer farmer) =>
         engineBridge.Available && sleepRecoveryBalanceProvider() && HungerExtensions.IsEnabled
-        && farmer.timeWentToBed.Value != 0 && IsPlayerInSleepContext(PlayerKey(farmer));
+        && (
+            farmer.timeWentToBed.Value != 0 && IsPlayerInSleepContext(PlayerKey(farmer))
+            || pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
+        );
 
     internal void OnNativeDayUpdated(Farmer farmer)
     {
         if (Role == SleepAuthorityRole.Host && nightInProgress
             && overnight.TryFinalize(PlayerKey(farmer), farmer.health,
                 ResolveHungerDamageMode(), out var result))
+        {
             ApplyFinalHealth(farmer, result);
+        }
+        ApplyHiddenHospitalWakeHealth(farmer);
         if (farmer.IsLocalPlayer)
             ApplyPendingOwnerHealth();
     }
@@ -1277,13 +1413,27 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         if (Role == SleepAuthorityRole.Host && nightInProgress
             && overnight.TryFinalize(PlayerKey(farmer), farmer.health,
                 ResolveHungerDamageMode(), out var result))
+        {
             ApplyFinalHealth(farmer, result);
+            ApplyHiddenHospitalWakeHealth(farmer);
+        }
     }
 
     private void ApplyFinalHealth(Farmer farmer, SleepProgress result)
     {
+        // 睡眠结算（含恢复与空腹扣血）都是 overtime 语义：健康差分 watcher 不播音。
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            farmer.UniqueMultiplayerID,
+            farmer.health,
+            Math.Min(farmer.maxHealth, HealthForGame(result.Health))
+        );
         farmer.health = Math.Min(farmer.maxHealth, HealthForGame(result.Health));
+        var shouldMarkHungerDeath =
+            !active.TryGetValue(PlayerKey(farmer), out var activeEntry)
+            || activeEntry.Context.Mode == SleepMode.Voluntary;
         if (
+            shouldMarkHungerDeath
+            &&
             PlayerDeathCausePolicy.ShouldMarkHungerDeath(
                 farmer.health,
                 result.HungerDamage
@@ -1312,6 +1462,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     private void ApplyOwnerHealth(Farmer farmer, int health, bool hungerDeath)
     {
+        // 睡眠结算收尾的宿主健康回放同属 overtime 语义，抑制 watcher 播音。
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            farmer.UniqueMultiplayerID,
+            farmer.health,
+            Math.Clamp(health, 0, farmer.maxHealth)
+        );
         farmer.health = Math.Clamp(health, 0, farmer.maxHealth);
         if (farmer.health <= 0)
         {
@@ -1323,9 +1479,309 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     private void MarkPendingWakeDeaths()
     {
-        if (Game1.player is Farmer farmer && farmer.health <= 0
-            && pendingWakeDeaths.ContainsKey(PlayerKey(farmer)))
+        if (
+            Game1.player is Farmer farmer
+            && farmer.health <= 0
+            && pendingWakeDeaths.ContainsKey(PlayerKey(farmer))
+            && !pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
+        )
+        {
             markHungerDeath?.Invoke(farmer);
+            wakeDeathCauseMarkedPlayerKey = PlayerKey(farmer);
+        }
+    }
+
+    internal bool RegisterHiddenHospitalDeath(Farmer farmer)
+    {
+        if (
+            farmer is null
+            || !SleepLifecycleProtocol.IsValidPlayerKey(PlayerKey(farmer))
+            || (Role != SleepAuthorityRole.Host && Role != SleepAuthorityRole.Client)
+        )
+            return false;
+
+        var playerKey = PlayerKey(farmer);
+        var day = CurrentDay();
+        pendingWakeDeaths[playerKey] = day;
+        pendingHiddenHospitalDeaths[playerKey] = day;
+        hiddenHospitalReleaseRequested.Remove(playerKey);
+
+        if (Role != SleepAuthorityRole.Host || !Context.IsMainPlayer)
+            return true;
+
+        var attemptId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        if (
+            !TryBuildSnapshot(
+                farmer,
+                attemptId,
+                requireInBed: false,
+                out var snapshot,
+                out var reason,
+                mode: SleepMode.TimeLimitPassOut
+            )
+        )
+        {
+            LogOnce(reason, LogLevel.Error);
+            return false;
+        }
+
+        BeginHostContext(farmer, snapshot, attemptId, confirmed: true);
+        return active.ContainsKey(playerKey);
+    }
+
+    private void ApplyHiddenHospitalWakeHealth(Farmer farmer)
+    {
+        var playerKey = PlayerKey(farmer);
+        if (!pendingHiddenHospitalDeaths.ContainsKey(playerKey))
+            return;
+
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            farmer.UniqueMultiplayerID,
+            farmer.health,
+            0
+        );
+        farmer.health = 0;
+        farmer.stamina = 0f;
+        farmer.CanMove = false;
+    }
+
+    private void AdvanceHiddenHospitalWakeDeath()
+    {
+        if (Game1.player is not Farmer farmer)
+            return;
+
+        var playerKey = PlayerKey(farmer);
+        if (
+            hiddenHospitalReleaseRequested.Contains(playerKey)
+            && (farmer.health > 0 || Game1.killScreen)
+        )
+        {
+            pendingHiddenHospitalDeaths.Remove(playerKey);
+            pendingWakeDeaths.Remove(playerKey);
+            hiddenHospitalReleaseRequested.Remove(playerKey);
+            return;
+        }
+
+        if (
+            pendingHiddenHospitalDeaths.ContainsKey(playerKey)
+            && farmer.health > 0
+            && Context.IsWorldReady
+            && !Game1.IsFading()
+            && !Game1.eventUp
+            && Game1.activeClickableMenu is null
+            && !Game1.newDay
+            && string.IsNullOrEmpty(Game1.messageAfterPause)
+        )
+        {
+            ApplyHiddenHospitalWakeHealth(farmer);
+            return;
+        }
+
+        if (
+            hiddenHospitalReleaseRequested.Contains(playerKey)
+            || !pendingHiddenHospitalDeaths.ContainsKey(playerKey)
+            || !WakeDeathPresentationPolicy.ShouldReleaseHiddenHospital(
+                markerPresent: true,
+                farmer.health,
+                Game1.killScreen,
+                Context.IsWorldReady,
+                Game1.IsFading(),
+                Game1.eventUp,
+                Game1.activeClickableMenu is not null,
+                Game1.newDay,
+                string.IsNullOrEmpty(Game1.messageAfterPause)
+            )
+        )
+            return;
+
+        hiddenHospitalReleaseRequested.Add(playerKey);
+        HiddenHospitalWakeReady?.Invoke(farmer);
+    }
+
+    internal void BeforeNativeFarmerUpdate(Farmer farmer)
+    {
+        if (
+            farmer is not null
+            && pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
+            && WakeDeathPresentationPolicy.ShouldHoldNativeDeath(
+                WakeDeathPresentationMode.HiddenHospital,
+                markerPresent: true,
+                farmer.health,
+                Game1.killScreen
+            )
+        )
+        {
+            farmer.CanMove = false;
+            return;
+        }
+
+        if (
+            farmer is null
+            || !WakeDeathLoadGatePolicy.ShouldEarlyArm(
+                Game1.hasLoadedGame,
+                Context.IsWorldReady,
+                farmer.IsLocalPlayer,
+                farmer.health,
+                Game1.killScreen,
+                Game1.timeOfDay
+            )
+        )
+            return;
+
+        var playerKey = PlayerKey(farmer);
+        if (
+            !preWorldDeathLoadGateArmed
+            || !string.Equals(preWorldDeathLoadGatePlayerKey, playerKey, StringComparison.Ordinal)
+        )
+        {
+            preWorldDeathLoadGateArmed = true;
+            preWorldDeathLoadGatePlayerKey = playerKey;
+            LogRuntimeDiagnostic(
+                $"sleep.runtime.wake-death-pre-world-gate armed player={playerKey} health={farmer.health}"
+            );
+        }
+        farmer.CanMove = false;
+    }
+
+    private void AdvanceWakeDeathLoadGate()
+    {
+        if (!wakeDeathLoadReplayPending && !wakeDeathLoadGateArmed)
+            return;
+
+        if (!wakeDeathLoadGateArmed && !TryArmWakeDeathLoadGate())
+            return;
+
+        if (
+            Role != SleepAuthorityRole.Host
+            || !Context.IsMainPlayer
+            || Game1.player is not Farmer farmer
+        )
+        {
+            if (!wakeDeathLoadGateArmed)
+                return;
+            wakeDeathLoadReplayPending = false;
+            wakeDeathLoadGateArmed = false;
+            wakeDeathLoadGatePlayerKey = string.Empty;
+            return;
+        }
+
+        var playerKey = PlayerKey(farmer);
+        if (!wakeDeathLoadGateArmed)
+        {
+            return;
+        }
+
+        if (!string.Equals(playerKey, wakeDeathLoadGatePlayerKey, StringComparison.Ordinal))
+        {
+            wakeDeathLoadReplayPending = false;
+            wakeDeathLoadGateArmed = false;
+            wakeDeathLoadGatePlayerKey = string.Empty;
+            return;
+        }
+
+        if (WakeDeathLoadGatePolicy.ShouldClear(wakeDeathLoadGateArmed, farmer.health, Game1.killScreen))
+        {
+            if (farmer.health > 0 && !Game1.killScreen)
+                farmer.CanMove = true;
+            wakeDeathLoadReplayPending = false;
+            wakeDeathLoadGateArmed = false;
+            wakeDeathLoadGatePlayerKey = string.Empty;
+            return;
+        }
+
+        if (
+            WakeDeathLoadGatePolicy.ShouldRelease(
+                wakeDeathLoadGateArmed,
+                farmer.health,
+                Context.IsWorldReady,
+                Game1.IsFading(),
+                Game1.eventUp,
+                Game1.activeClickableMenu is not null,
+                Game1.killScreen
+            )
+        )
+        {
+            // onFadedBackInComplete normally opens this same gate. This fallback covers the
+            // load path where an event/menu was still up when that callback ran.
+            farmer.CanMove = true;
+            wakeDeathLoadReplayPending = false;
+            wakeDeathLoadGateArmed = false;
+            wakeDeathLoadGatePlayerKey = string.Empty;
+            LogRuntimeDiagnostic(
+                $"sleep.runtime.wake-death-load-gate released player={playerKey} health={farmer.health}"
+            );
+        }
+        else
+        {
+            // Another load-phase component may briefly reopen movement before the fade callback;
+            // keep the owner-local gate closed until the stability predicate above is true.
+            farmer.CanMove = false;
+        }
+    }
+
+    private bool TryArmWakeDeathLoadGate()
+    {
+        if (
+            wakeDeathLoadGateArmed
+            || !wakeDeathLoadReplayPending
+            || Role != SleepAuthorityRole.Host
+            || !Context.IsMainPlayer
+            || Game1.player is not Farmer farmer
+        )
+            return wakeDeathLoadGateArmed;
+
+        var playerKey = PlayerKey(farmer);
+        if (
+            !WakeDeathLoadGatePolicy.ShouldArm(
+                pendingWakeDeaths.ContainsKey(playerKey),
+                farmer.health,
+                Game1.killScreen
+            )
+        )
+        {
+            // The player is available and this load is not an unresolved wake death. Do not let
+            // the load-only flag leak into an ordinary morning or later session.
+            wakeDeathLoadReplayPending = false;
+            return false;
+        }
+
+            wakeDeathLoadGateArmed = true;
+            wakeDeathLoadGatePlayerKey = playerKey;
+            preWorldDeathLoadGateArmed = false;
+            preWorldDeathLoadGatePlayerKey = string.Empty;
+            farmer.CanMove = false;
+        if (
+            !pendingHiddenHospitalDeaths.ContainsKey(playerKey)
+            && !string.Equals(wakeDeathCauseMarkedPlayerKey, playerKey, StringComparison.Ordinal)
+        )
+        {
+            markHungerDeath?.Invoke(farmer);
+            wakeDeathCauseMarkedPlayerKey = playerKey;
+        }
+        LogRuntimeDiagnostic(
+            $"sleep.runtime.wake-death-load-gate armed player={playerKey} health={farmer.health}"
+        );
+        return true;
+    }
+
+    private void ReleasePreWorldDeathLoadGate()
+    {
+        if (!preWorldDeathLoadGateArmed)
+            return;
+
+        if (
+            Game1.player is Farmer farmer
+            && string.Equals(
+                preWorldDeathLoadGatePlayerKey,
+                PlayerKey(farmer),
+                StringComparison.Ordinal
+            )
+            && !Game1.killScreen
+        )
+            farmer.CanMove = true;
+
+        preWorldDeathLoadGateArmed = false;
+        preWorldDeathLoadGatePlayerKey = string.Empty;
     }
 
     private static void CloseLocalSleepMenu(Farmer farmer)
@@ -1370,12 +1826,22 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             }
 
             var farmer = ResolvePlayer(pair.Key, onlyOnline: false);
-            if (farmer is null || farmer.health > 0)
+            // SaveLoaded can run before Game1 has reattached the farmer collection. Retain a
+            // valid, recent marker through that transient null; the next tick can then arm the
+            // load gate instead of silently losing the death replay context.
+            if (
+                farmer is not null
+                && farmer.health > 0
+                && !pendingHiddenHospitalDeaths.ContainsKey(pair.Key)
+            )
                 remove.Add(pair.Key);
         }
 
         foreach (var key in remove)
+        {
             pendingWakeDeaths.Remove(key);
+            pendingHiddenHospitalDeaths.Remove(key);
+        }
 
         var normalized = SleepWakeEffectsPolicy.Normalize(
             pendingWakeDeaths.Keys,
@@ -1385,6 +1851,26 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         pendingWakeDeaths.Clear();
         foreach (var pair in normalized)
             pendingWakeDeaths[pair.Key] = pair.Value;
+
+        var hiddenNormalized = SleepWakeEffectsPolicy.Normalize(
+            pendingHiddenHospitalDeaths.Keys,
+            pendingHiddenHospitalDeaths,
+            currentDay
+        );
+        pendingHiddenHospitalDeaths.Clear();
+        foreach (var pair in hiddenNormalized)
+            pendingHiddenHospitalDeaths[pair.Key] = pair.Value;
+    }
+
+    private IReadOnlyDictionary<string, int> NaturalWakeDeathMarkers()
+    {
+        var natural = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pair in pendingWakeDeaths)
+        {
+            if (!pendingHiddenHospitalDeaths.ContainsKey(pair.Key))
+                natural[pair.Key] = pair.Value;
+        }
+        return natural;
     }
 
     private static int CurrentDay() => Math.Max(0, Game1.Date.TotalDays);

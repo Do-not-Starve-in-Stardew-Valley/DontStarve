@@ -40,7 +40,17 @@ internal sealed class SmapiSleepEngineBridge : IDisposable
             var update = AccessTools.Method(typeof(Farmer), nameof(Farmer.Update), new[] { typeof(GameTime), typeof(GameLocation) });
             if (day is null || save is null || update is null)
                 throw new InvalidOperationException("sleep-native-signature-is-unavailable");
-            harmony.Patch(update, transpiler: new HarmonyMethod(typeof(SmapiSleepEngineBridge), nameof(GuardBedHealthRecovery)));
+            var updatePrefix = AccessTools.Method(
+                typeof(SmapiSleepEngineBridge),
+                nameof(BeforeFarmerUpdate)
+            );
+            if (updatePrefix is null)
+                throw new InvalidOperationException("sleep-native-update-prefix-is-unavailable");
+            harmony.Patch(
+                update,
+                prefix: new HarmonyMethod(updatePrefix) { priority = Priority.First },
+                transpiler: new HarmonyMethod(typeof(SmapiSleepEngineBridge), nameof(GuardBedHealthRecovery))
+            );
             harmony.Patch(day, postfix: new HarmonyMethod(typeof(SmapiSleepEngineBridge), nameof(AfterDayUpdate)));
             harmony.Patch(save, prefix: new HarmonyMethod(typeof(SmapiSleepEngineBridge), nameof(BeforeFarmhandClone)));
             Available = true;
@@ -53,6 +63,10 @@ internal sealed class SmapiSleepEngineBridge : IDisposable
     }
 
     private static void AfterDayUpdate(Farmer __instance) => current?.adapter.OnNativeDayUpdated(__instance);
+
+    private static void BeforeFarmerUpdate(Farmer __instance) =>
+        current?.adapter.BeforeNativeFarmerUpdate(__instance);
+
     private static void BeforeFarmhandClone(NetFarmerRoot farmhand)
     {
         if (farmhand?.Value is Farmer farmer)

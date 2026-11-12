@@ -22,6 +22,8 @@ public sealed class HostileShadowMonster : Monster
 {
     internal const string EntityIdModDataKey =
         "Yurin.DontStarve/HostileShadow/EntityId";
+    internal const string EntityRevisionModDataKey =
+        "Yurin.DontStarve/HostileShadow/EntityRevision";
     internal const string AssetBindingModDataKey =
         "Yurin.DontStarve/HostileShadow/AssetBindingId";
     internal const string StateModDataKey =

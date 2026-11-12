@@ -459,11 +459,10 @@ internal sealed class DarknessAttackResolutionService
             || receipt.BeforeHealth > receipt.MaximumHealth
             || receipt.AfterHealth < 0
             || receipt.AfterHealth > receipt.MaximumHealth
+            // 【2026-11-11 原版口径对齐】nonlethal 在地板及以下结算为 0 伤害（血量不动），
+            // 袭击循环、扣理智与反馈照常；与 Default 的 0 伤害结算（护甲全吸收/iframe）
+            // 同等合法，不再视为无效 receipt。
             || receipt.ActualDamage < 0
-            || (
-                request.Operation == DarknessAttackDamageOperation.ApplyDamageUpToFloor
-                && receipt.ActualDamage <= 0
-            )
         )
         {
             reason = "darkness.resolution.damage-receipt-health-invalid";

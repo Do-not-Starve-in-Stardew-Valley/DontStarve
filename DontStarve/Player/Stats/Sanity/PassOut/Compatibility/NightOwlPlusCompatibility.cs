@@ -34,15 +34,23 @@ internal readonly record struct NightOwlPlusCompatibilityResult(
 }
 
 /// <summary>
-/// Resolves Night Owl Plus once from loaded-manifest facts. The exact UID is the only positive
-/// identity; the Nexus key can only expose an inconsistent manifest and never grants support.
+/// Legacy type name retained for the original 29714 integration. It now resolves all known
+/// late-night mods once from loaded-manifest facts. Exact UIDs are the positive
+/// identities; their Nexus update keys are bounded diagnostics/fail-closed collision evidence and
+/// never grant positive support by themselves.
 /// </summary>
 internal static class NightOwlPlusCompatibility
 {
     internal const string CapabilityId = "passout.compatibility.night-owl-plus";
     internal const string ExactUniqueId = "MaximillianRW.NightOwlPlus";
+    internal const string OriginalNightOwlUniqueId = "Omegasis.NightOwl";
+    internal const string StayUpUniqueId = "Su226.StayUp";
     internal const string DiagnosticUpdateKey = "Nexus:29714";
+    internal const string OriginalNightOwlDiagnosticUpdateKey = "Nexus:433";
+    internal const string StayUpDiagnosticUpdateKey = "Nexus:7592";
     internal const string ExplicitlySupportedVersion = "1.0.0";
+    internal const string OriginalNightOwlSupportedVersion = "1.11.0";
+    internal const string StayUpSupportedVersion = "1.1.3";
     internal const int MaximumDiagnosticManifests = 512;
     internal const int MaximumDiagnosticDetailLength = 256;
 
@@ -65,21 +73,24 @@ internal static class NightOwlPlusCompatibility
             );
         }
 
-        NightOwlPlusManifestEvidence? exact;
-        try
+        foreach (var identity in KnownIdentities)
         {
-            exact = exactUidLookup(ExactUniqueId);
-        }
-        catch (Exception exception)
-        {
-            return Unavailable(
-                "passout.compatibility.night-owl-plus.registry-exact-lookup-failed",
-                diagnosticDetail: Describe(exception)
-            );
-        }
+            NightOwlPlusManifestEvidence? exact;
+            try
+            {
+                exact = exactUidLookup(identity.UniqueId);
+            }
+            catch (Exception exception)
+            {
+                return Unavailable(
+                    "passout.compatibility.night-owl-plus.registry-exact-lookup-failed",
+                    diagnosticDetail: Describe(exception)
+                );
+            }
 
-        if (exact is { } manifest)
-            return ResolveExactManifest(manifest);
+            if (exact is { } manifest)
+                return ResolveExactManifest(identity, manifest);
+        }
 
         IReadOnlyList<NightOwlPlusManifestEvidence> loaded;
         try
@@ -103,27 +114,28 @@ internal static class NightOwlPlusCompatibility
 
         foreach (var candidate in loaded)
         {
-            if (string.Equals(candidate.UniqueId, ExactUniqueId, StringComparison.Ordinal))
+            if (FindIdentity(candidate.UniqueId) is { } identity)
             {
                 return Unavailable(
                     "passout.compatibility.night-owl-plus.registry-results-inconsistent",
                     candidate.Version,
                     exactUidDetected: true,
                     HasDiagnosticUpdateKey(candidate.UpdateKeys),
-                    diagnosticDetail: candidate.UniqueId
+                    diagnosticDetail: identity.UniqueId
                 );
             }
 
-            if (HasDiagnosticUpdateKey(candidate.UpdateKeys))
+            if (FindDiagnosticIdentity(candidate.UpdateKeys) is { } diagnosticIdentity)
             {
-                // This is only a diagnostic collision. A wrong UID never becomes Night Owl Plus,
-                // but the conflicting manifest means absence cannot safely authorize our 2:00 chain.
+                // This is only a diagnostic collision. A wrong UID never becomes a positive
+                // identity, but the conflicting manifest means absence cannot safely authorize
+                // our 2:00 chain.
                 return Unavailable(
                     "passout.compatibility.night-owl-plus.update-key-without-exact-uid",
                     candidate.Version,
                     exactUidDetected: false,
                     diagnosticUpdateKeyObserved: true,
-                    diagnosticDetail: candidate.UniqueId
+                    diagnosticDetail: diagnosticIdentity.DiagnosticUpdateKey
                 );
             }
         }
@@ -139,11 +151,12 @@ internal static class NightOwlPlusCompatibility
     }
 
     private static NightOwlPlusCompatibilityResult ResolveExactManifest(
+        KnownIdentity identity,
         NightOwlPlusManifestEvidence manifest
     )
     {
         var updateKeyObserved = HasDiagnosticUpdateKey(manifest.UpdateKeys);
-        if (!string.Equals(manifest.UniqueId, ExactUniqueId, StringComparison.Ordinal))
+        if (!string.Equals(manifest.UniqueId, identity.UniqueId, StringComparison.Ordinal))
         {
             return Unavailable(
                 "passout.compatibility.night-owl-plus.manifest-identity-mismatch",
@@ -164,12 +177,12 @@ internal static class NightOwlPlusCompatibility
             );
         }
 
-        // Support is deliberately exact: 1.0.0 is the reviewed public manifest/source behavior.
-        // A future version stays fail closed until its 2:00 contract is reviewed and tested.
+        // Support is deliberately exact per known upstream source/manifest. A future version stays
+        // fail closed until its 2:00 contract is reviewed and tested.
         if (
             string.Equals(
                 manifest.Version,
-                ExplicitlySupportedVersion,
+                identity.SupportedVersion,
                 StringComparison.Ordinal
             )
         )
@@ -179,7 +192,7 @@ internal static class NightOwlPlusCompatibility
                 manifest.Version,
                 ExactUidDetected: true,
                 DiagnosticUpdateKeyObserved: updateKeyObserved,
-                "passout.compatibility.night-owl-plus.installed-supported-special-chain-suppressed",
+                identity.SupportedReason,
                 string.Empty
             );
         }
@@ -189,9 +202,32 @@ internal static class NightOwlPlusCompatibility
             manifest.Version,
             ExactUidDetected: true,
             DiagnosticUpdateKeyObserved: updateKeyObserved,
-            "passout.compatibility.night-owl-plus.installed-version-unsupported-special-chain-suppressed",
+            identity.UnsupportedReason,
             string.Empty
         );
+    }
+
+    private static KnownIdentity? FindIdentity(string? uniqueId)
+    {
+        if (string.IsNullOrWhiteSpace(uniqueId))
+            return null;
+
+        foreach (var identity in KnownIdentities)
+            if (string.Equals(identity.UniqueId, uniqueId, StringComparison.Ordinal))
+                return identity;
+        return null;
+    }
+
+    private static KnownIdentity? FindDiagnosticIdentity(IReadOnlyList<string>? updateKeys)
+    {
+        if (updateKeys is null)
+            return null;
+
+        foreach (var updateKey in updateKeys)
+            foreach (var identity in KnownIdentities)
+                if (string.Equals(updateKey, identity.DiagnosticUpdateKey, StringComparison.Ordinal))
+                    return identity;
+        return null;
     }
 
     private static bool HasDiagnosticUpdateKey(IReadOnlyList<string>? updateKeys)
@@ -200,10 +236,8 @@ internal static class NightOwlPlusCompatibility
             return false;
 
         foreach (var updateKey in updateKeys)
-        {
-            if (string.Equals(updateKey, DiagnosticUpdateKey, StringComparison.Ordinal))
+            if (FindDiagnosticIdentity(new[] { updateKey }) is not null)
                 return true;
-        }
         return false;
     }
 
@@ -243,4 +277,37 @@ internal static class NightOwlPlusCompatibility
             ? normalized
             : normalized[..MaximumDiagnosticDetailLength];
     }
+
+    private readonly record struct KnownIdentity(
+        string UniqueId,
+        string DiagnosticUpdateKey,
+        string SupportedVersion,
+        string SupportedReason,
+        string UnsupportedReason
+    );
+
+    private static readonly KnownIdentity[] KnownIdentities =
+    {
+        new(
+            ExactUniqueId,
+            DiagnosticUpdateKey,
+            ExplicitlySupportedVersion,
+            "passout.compatibility.night-owl-plus.installed-supported-special-chain-suppressed",
+            "passout.compatibility.night-owl-plus.installed-version-unsupported-special-chain-suppressed"
+        ),
+        new(
+            OriginalNightOwlUniqueId,
+            OriginalNightOwlDiagnosticUpdateKey,
+            OriginalNightOwlSupportedVersion,
+            "passout.compatibility.night-owl.installed-supported-special-chain-suppressed",
+            "passout.compatibility.night-owl.installed-version-unsupported-special-chain-suppressed"
+        ),
+        new(
+            StayUpUniqueId,
+            StayUpDiagnosticUpdateKey,
+            StayUpSupportedVersion,
+            "passout.compatibility.stay-up.installed-supported-special-chain-suppressed",
+            "passout.compatibility.stay-up.installed-version-unsupported-special-chain-suppressed"
+        ),
+    };
 }

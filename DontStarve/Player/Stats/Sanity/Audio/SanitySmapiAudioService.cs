@@ -993,7 +993,7 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
 
     public void TriggerDarknessAttack()
     {
-        if (disposed || suspended)
+        if (disposed || (suspended && !specialEventAudioAllowed))
             return;
 
         darknessAttackLane ??= CreateLane(SanityAudioLaneKind.DarknessAttack);
@@ -1122,7 +1122,8 @@ internal sealed class SmapiSanityProcessAudioOutput : ISanityProcessAudioOutput
             dangerLane?.StopPlayback();
             if (!specialEventAudioAllowed)
                 darknessWarningLane?.StopPlayback();
-            darknessAttackLane?.StopPlayback();
+            if (!specialEventAudioAllowed)
+                darknessAttackLane?.StopPlayback();
             return;
         }
 

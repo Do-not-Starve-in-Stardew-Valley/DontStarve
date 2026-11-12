@@ -273,8 +273,9 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         try
         {
             var originalHeight = height;
-            // The original Buff separator only exists when its argument is non-null. When it is
-            // absent, the adapter owns the separator before its own extra Buff rows.
+            // The original Buff section (and its separator) exists only when its argument is
+            // non-null. Adapter sections no longer draw separators, so the flag keeps the
+            // measurement seam's call shape but no longer changes the height.
             var additionalHeight = layout.GetAdditionalHeight(vanillaBuffIcons is not null);
             height += additionalHeight;
             service.LogTooltipLayoutDiagnostic(
@@ -451,6 +452,10 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         );
     }
 
+    // 生存小节与扩展 Buff 小节都不再自带分隔线和上下留白（2026-11-12 按用户要求移除分隔线；
+    // 分隔线原本是逐像素仿照原版 Buff 区的画法）。两节都直接按各自行类的行距续排：
+    // 生存行 34px 与原版能量/生命行同节奏，Buff 行 39px 与原版 Buff 行同节奏。
+    // width 参数由转译 seam 推入并用于 draw-enter 诊断日志，绘制本身不再需要它。
     private static void DrawTooltipSection(
         SpriteBatch spriteBatch,
         SpriteFont font,
@@ -462,14 +467,7 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
         ref int y
     )
     {
-        y += 16;
-        spriteBatch.Draw(
-            Game1.staminaRect,
-            new Rectangle(x + 12, y + 6, Math.Max(1, width - 24), 2),
-            new Color(207, 147, 103) * 0.8f * alpha
-        );
         DrawTooltipRows(spriteBatch, font, alpha, layout, drawBuffRows, x, ref y);
-        y -= 8;
     }
 
     private static void DrawTooltipRows(
@@ -537,7 +535,9 @@ internal sealed class SmapiVanillaSanityTooltipService : IDisposable
                 new Vector2(x + TextXOffset, y + 16),
                 Game1.textColor * 0.9f * alpha
             );
-            y += SanityTooltipLayoutContract.CustomRowHeight;
+            y += row.Kind == SanityTooltipRowKind.Buff
+                ? SanityTooltipLayoutContract.CustomRowHeight
+                : SanityTooltipLayoutContract.CustomSurvivalRowHeight;
         }
     }
 

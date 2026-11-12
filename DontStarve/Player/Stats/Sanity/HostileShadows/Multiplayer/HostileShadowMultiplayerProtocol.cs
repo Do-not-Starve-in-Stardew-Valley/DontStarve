@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Combat.InvincibilityFrames;
 
 namespace DontStarve.Player.Stats.Sanity.HostileShadows.Multiplayer;
 
@@ -269,6 +270,89 @@ internal sealed class ShadowAttackHitRequest
     public long ObservedAttackInstanceRevision { get; set; }
 
     public int ObservedFrameNumber { get; set; }
+}
+
+/// <summary>
+/// Host-authoritative damage command. The target client owns the actual Farmer.takeDamage call
+/// because health and temporary invincibility are local Farmer fields in vanilla multiplayer.
+/// </summary>
+internal sealed class ShadowAttackDamageCommand
+{
+    public int ProtocolVersion { get; set; } = HostileShadowProtocol.CurrentProtocolVersion;
+
+    public int SchemaVersion { get; set; } = HostileShadowProtocol.CurrentSchemaVersion;
+
+    public string SessionId { get; set; } = string.Empty;
+
+    public string Nonce { get; set; } = string.Empty;
+
+    public long EntityId { get; set; }
+
+    public string TargetPlayerKey { get; set; } = string.Empty;
+
+    public string LocationId { get; set; } = string.Empty;
+
+    public string AttackInstanceId { get; set; } = string.Empty;
+
+    public long ObservedEntityRevision { get; set; }
+
+    public long ObservedAttackInstanceRevision { get; set; }
+
+    public int ObservedFrameNumber { get; set; }
+
+    public int Damage { get; set; }
+
+    public int PolicyMode { get; set; }
+
+    public int PolicyDurationMilliseconds { get; set; }
+
+    /// <summary>
+    /// 命中窗口 ID（20261113 冻结决议 5）。旧版本 peer 不带此字段：空值兼容放行，
+    /// 非空时必须是协议有界标识符（校验见 IsValidAttackDamageCommand）。
+    /// </summary>
+    public string HitWindowId { get; set; } = string.Empty;
+}
+
+internal sealed class ShadowAttackDamageResult
+{
+    public int ProtocolVersion { get; set; } = HostileShadowProtocol.CurrentProtocolVersion;
+
+    public int SchemaVersion { get; set; } = HostileShadowProtocol.CurrentSchemaVersion;
+
+    public string SessionId { get; set; } = string.Empty;
+
+    public string Nonce { get; set; } = string.Empty;
+
+    public long EntityId { get; set; }
+
+    public string TargetPlayerKey { get; set; } = string.Empty;
+
+    public string LocationId { get; set; } = string.Empty;
+
+    public string AttackInstanceId { get; set; } = string.Empty;
+
+    public long ObservedEntityRevision { get; set; }
+
+    public long ObservedAttackInstanceRevision { get; set; }
+
+    public int ObservedFrameNumber { get; set; }
+
+    public InvincibilityFrameDamageOutcome Outcome { get; set; }
+
+    public int HealthBefore { get; set; }
+
+    public int HealthAfter { get; set; }
+
+    public bool DurationOverridden { get; set; }
+
+    public int DurationMilliseconds { get; set; }
+
+    public string Reason { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 与 ShadowAttackDamageCommand.HitWindowId 同语义；空值兼容旧 peer，非空必须有界。
+    /// </summary>
+    public string HitWindowId { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -761,6 +845,145 @@ internal static class HostileShadowProtocol
         }
 
         reason = "hostile-shadow.attack-hit-request-valid";
+        return true;
+    }
+
+    internal static bool IsValidAttackDamageCommand(
+        ShadowAttackDamageCommand? command,
+        string expectedTargetPlayerKey,
+        string hostSessionId,
+        out string reason
+    )
+    {
+        if (
+            command is null
+            || !IsValidEnvelope(
+                command.ProtocolVersion,
+                command.SchemaVersion,
+                command.SessionId
+            )
+            || !SanityProtocol.IsValidSessionId(hostSessionId)
+            || !string.Equals(
+                command.SessionId,
+                hostSessionId,
+                StringComparison.Ordinal
+            )
+            || command.EntityId <= 0
+            || command.ObservedEntityRevision <= 0
+            || command.ObservedAttackInstanceRevision <= 0
+            || command.ObservedFrameNumber <= 0
+            || command.ObservedFrameNumber > MaximumAttackFrameNumber
+            || command.Damage <= 0
+            || !SanityPlayerKey.IsCanonical(expectedTargetPlayerKey)
+            || !string.Equals(
+                command.TargetPlayerKey,
+                expectedTargetPlayerKey,
+                StringComparison.Ordinal
+            )
+            || !IsBoundedIdentifier(command.Nonce, MaximumIdentifierLength)
+            || !IsBoundedIdentifier(command.LocationId, MaximumIdentifierLength)
+            || !IsBoundedIdentifier(
+                command.AttackInstanceId,
+                MaximumIdentifierLength
+            )
+            || (
+                !string.IsNullOrEmpty(command.HitWindowId)
+                && !IsBoundedIdentifier(
+                    command.HitWindowId,
+                    MaximumIdentifierLength
+                )
+            )
+            || !Enum.IsDefined(
+                typeof(InvincibilityFramePolicyMode),
+                command.PolicyMode
+            )
+            || command.PolicyDurationMilliseconds < 0
+            || (
+                command.PolicyMode
+                    == (int)InvincibilityFramePolicyMode.Normal
+                && command.PolicyDurationMilliseconds != 0
+            )
+        )
+        {
+            reason = string.Equals(
+                command?.TargetPlayerKey,
+                expectedTargetPlayerKey,
+                StringComparison.Ordinal
+            )
+                ? string.Equals(
+                    command?.SessionId,
+                    hostSessionId,
+                    StringComparison.Ordinal
+                )
+                    ? "hostile-shadow.damage-command-invalid"
+                    : "hostile-shadow.damage-command-session-invalid"
+                : "hostile-shadow.damage-command-target-invalid";
+            return false;
+        }
+
+        reason = "hostile-shadow.damage-command-valid";
+        return true;
+    }
+
+    internal static bool IsValidAttackDamageResult(
+        ShadowAttackDamageResult? result,
+        string expectedTargetPlayerKey,
+        string hostSessionId,
+        out string reason
+    )
+    {
+        if (
+            result is null
+            || !IsValidEnvelope(
+                result.ProtocolVersion,
+                result.SchemaVersion,
+                result.SessionId
+            )
+            || !SanityProtocol.IsValidSessionId(hostSessionId)
+            || !string.Equals(
+                result.SessionId,
+                hostSessionId,
+                StringComparison.Ordinal
+            )
+            || result.EntityId <= 0
+            || result.ObservedEntityRevision <= 0
+            || result.ObservedAttackInstanceRevision <= 0
+            || result.ObservedFrameNumber <= 0
+            || result.ObservedFrameNumber > MaximumAttackFrameNumber
+            || !SanityPlayerKey.IsCanonical(expectedTargetPlayerKey)
+            || !string.Equals(
+                result.TargetPlayerKey,
+                expectedTargetPlayerKey,
+                StringComparison.Ordinal
+            )
+            || !IsBoundedIdentifier(result.Nonce, MaximumIdentifierLength)
+            || !IsBoundedIdentifier(result.LocationId, MaximumIdentifierLength)
+            || !IsBoundedIdentifier(
+                result.AttackInstanceId,
+                MaximumIdentifierLength
+            )
+            || (
+                !string.IsNullOrEmpty(result.HitWindowId)
+                && !IsBoundedIdentifier(
+                    result.HitWindowId,
+                    MaximumIdentifierLength
+                )
+            )
+            || !Enum.IsDefined(
+                typeof(InvincibilityFrameDamageOutcome),
+                result.Outcome
+            )
+            || result.HealthBefore < 0
+            || result.HealthAfter < 0
+            || result.DurationMilliseconds < 0
+            || !IsBoundedIdentifier(result.Reason, MaximumIdentifierLength)
+        )
+        {
+            reason = "hostile-shadow.damage-result-invalid";
+            return false;
+        }
+
+        reason = "hostile-shadow.damage-result-valid";
         return true;
     }
 

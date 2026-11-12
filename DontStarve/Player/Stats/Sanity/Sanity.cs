@@ -3,7 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using DontStarve.Audio.StatusFeedback;
 using DontStarve.Config;
+using DontStarve.Display;
 using DontStarve.Player.Stats;
 using DontStarve.Player.Stats.Sanity.PassOut;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
@@ -20,6 +22,8 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
     private readonly SanitySystemLifecycleCoordinator lifecycle;
     private readonly IMonitor monitor;
     private readonly string modId;
+    private readonly ISanityStatusFeedbackSink? statusFeedbackSink;
+    private readonly FoodRestoreHudMessenger? foodRestoreHud;
 
     private readonly List<INonTimeRelatedBehavior> nonTimeRelatedBehaviors;
 
@@ -41,11 +45,17 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
         IMonitor monitor,
         string modId,
         TypedConfigResolver? configResolver,
-        PassOutReasonLedger passOutReasonLedger
+        PassOutReasonLedger passOutReasonLedger,
+        ISanityStatusFeedbackSink? statusFeedbackSink = null,
+        FoodRestoreHudMessenger? foodRestoreHud = null
     )
     {
         this.monitor = monitor;
         this.modId = modId;
+        this.statusFeedbackSink = statusFeedbackSink;
+        // 进食恢复弹窗提交器与 statusFeedbackSink 同为可选装配 seam：null 只发生在
+        // 测试构造或裁剪装配下，此时弹窗整体缺席，不影响结算语义本身。
+        this.foodRestoreHud = foodRestoreHud;
         changeService = new SanityChangeService(
             new DefaultSanityMaximumProvider(),
             configResolver is null
@@ -86,6 +96,12 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
 
     internal SanitySystemLifecycleCoordinator Lifecycle => lifecycle;
 
+    /// <summary>
+    /// Sanity 唯一结算出口。状态反馈音效经 ModEntry 订阅其结算/回放事件；
+    /// 除暴露只读订阅入口外不得改动结算语义。
+    /// </summary>
+    internal SanityChangeService ChangeService => changeService;
+
     public void Init(
         IModHelper helper,
         SurvivalStateTimeOwner<Farmer> survivalTime
@@ -97,6 +113,13 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
         changeService.ShadowBudgetDiagnosticRaised +=
             LogShadowBudgetDiagnosticOnce;
 
+        // 进食恢复弹窗只订阅结算事实（唯一结算出口的观察事件），不改结算语义。
+        // 主机路径（isEating 下降沿 → ChangeSanity(Food) 的主机重算落点）与客机回放路径
+        // 共用同一套 FoodRestoreHudRule 门控；旧主机消息缺 DeltaSource 附加字段时门控
+        // 为 false，fail-safe 不弹。
+        changeService.HostStateChanged += OnSanitySettlementObserved;
+        changeService.ClientSnapshotApplied += OnSanityClientDeltaObserved;
+
         foreach (var behavior in nonTimeRelatedBehaviors)
             behavior.Init(helper);
         foreach (var behavior in timeRelatedBehaviors)
@@ -106,7 +129,8 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
             helper,
             monitor,
             modId,
-            changeService
+            changeService,
+            statusFeedbackSink
         );
         multiplayer.Initialize();
 
@@ -131,6 +155,54 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
     {
         if (e.IsLocalPlayer && Context.IsWorldReady)
             lifecycle.HandleWorldBoundary(SanityWorldBoundary.Warp);
+    }
+
+    private void OnSanitySettlementObserved(SanityStateChanged change)
+    {
+        // 主机结算出口唯一：本机农场工吃食（isEating 下降沿 → ChangeSanity(Food)）与远程
+        // 帮手请求重算、以及全部其它来源（夜蚀/装备/怪物等持续与离散结算）都从 ApplyHostValue
+        // 发布事实。先按 Source=Food 短路，再按「本机玩家」门控——主机不替远程帮手弹。
+        if (change.Source != SanityChangeSource.Food)
+            return;
+        ShowSanityFoodRestoreHud(
+            new FoodRestoreHudGate(
+                IsLocalPlayerKey(change.Snapshot.PlayerKey),
+                IsFoodSettlement: true
+            ),
+            change.PreviousCurrent,
+            change.Snapshot.Current
+        );
+    }
+
+    private void OnSanityClientDeltaObserved(SanityClientDeltaObservation observation)
+    {
+        // 客机回放：只对本机玩家的 Food 增量弹窗。DeltaSource 为附加字段，旧主机消息缺字段
+        // 反序列化为 Unknown → 门控 false，不弹（fail-safe）。
+        ShowSanityFoodRestoreHud(
+            new FoodRestoreHudGate(
+                IsLocalPlayerKey(observation.PlayerKey),
+                observation.Source == SanityChangeSource.Food
+            ),
+            observation.PreviousCurrent,
+            observation.Current
+        );
+    }
+
+    private void ShowSanityFoodRestoreHud(
+        FoodRestoreHudGate gate,
+        double previousValue,
+        double currentValue
+    )
+    {
+        var decision = FoodRestoreHudRule.Decide(gate, previousValue, currentValue);
+        if (decision.Show)
+            foodRestoreHud?.ShowSanityRestore(decision.DisplayedAmount);
+    }
+
+    private static bool IsLocalPlayerKey(string playerKey)
+    {
+        return TryGetPlayerKey(Game1.player, out var localPlayerKey)
+            && string.Equals(playerKey, localPlayerKey, StringComparison.Ordinal);
     }
 
     public void OnMinute(

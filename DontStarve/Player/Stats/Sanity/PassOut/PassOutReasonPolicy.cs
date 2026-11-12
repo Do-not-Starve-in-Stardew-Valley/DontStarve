@@ -62,7 +62,8 @@ internal readonly record struct PassOutTimeLimitPolicyContext(
     bool JunimoBlessingEligible,
     string LocationReason,
     bool NightOwlPlusAllowsConflictingSpecialDeathChain,
-    string NightOwlPlusCompatibilityReason
+    string NightOwlPlusCompatibilityReason,
+    bool ExternalLateNightOwnerDetected = false
 );
 
 internal readonly record struct PassOutReasonEvidence(
@@ -115,15 +116,9 @@ internal static class PassOutReasonPolicy
 
         var timeLimit = timeOfDay >= 2600;
         var exhaustion = stamina <= -15f;
-        if (timeLimit && exhaustion)
-        {
-            return new PassOutReasonClassification(
-                PassOutReasonClassificationStatus.Ambiguous,
-                PassOutReason.Unknown,
-                timeOfDay,
-                "passout.reason.time-exhaustion-overlap.ambiguous-shared-branch"
-            );
-        }
+        // Both predicates converge on the same vanilla pass-out animation. At/after 2:00 the
+        // time boundary is the stable owner of the shared branch; special-flow routing may still
+        // admit the exhaustion evidence through its own reason-aware policy.
         if (timeLimit)
         {
             return new PassOutReasonClassification(
@@ -216,6 +211,11 @@ internal static class PassOutReasonPolicy
             );
         }
 
+        if (context.ExternalLateNightOwnerDetected)
+        {
+            return OrdinaryTimeLimit(LateNightBehaviorEvidence.ClockRollbackReason);
+        }
+
         if (!context.NightOwlPlusAllowsConflictingSpecialDeathChain)
         {
             return OrdinaryTimeLimit(
@@ -282,6 +282,25 @@ internal static class PassOutReasonPolicy
             default:
                 return NoChange("passout.policy.reason-unknown-fail-closed");
         }
+    }
+
+    internal static PassOutPolicyDecision ResolveOrdinaryForcedPassOut(
+        PassOutReason reason,
+        string stableReason
+    )
+    {
+        return new PassOutPolicyDecision(
+            PassOutPolicyAction.ApplyDelta,
+            reason == PassOutReason.ExhaustionPassOut
+                ? SanityChangeSource.ExhaustionPassOut
+                : SanityChangeSource.TimeLimitPassOut,
+            OrdinaryPassOutSanityDelta,
+            0d,
+            true,
+            string.IsNullOrWhiteSpace(stableReason)
+                ? "passout.policy.ordinary-forced-pass-out"
+                : stableReason
+        );
     }
 
     internal static PassOutPolicyDecision ResolveHealthDeathRecovery(

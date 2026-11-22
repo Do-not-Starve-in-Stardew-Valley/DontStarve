@@ -1,13 +1,13 @@
 {
     "Name": "Do not starve in Stardew Valley",
     "Author": "Yurin",
-    "Version": "1.5.0-beta.1",
+    "Version": "1.5.0-beta.2",
     "Description": "Do not starve in Stardew Valley",
     "UniqueID": "Yurin.DontStarve",
     "EntryDll": "DontStarve.dll",
     "MinimumApiVersion": "4.0.0",
     "UpdateKeys": [
-        "Github:SummerFleur/DontStarve"
+        "Github:Do-not-Starve-in-Stardew-Valley/DontStarve"
     ],
     "Dependencies": [
         {

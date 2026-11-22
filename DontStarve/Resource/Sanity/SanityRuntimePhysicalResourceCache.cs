@@ -233,7 +233,7 @@ internal sealed class SanityRuntimePhysicalResourceCache
                 required,
                 isPlaceholder,
                 "resource.factory.threw",
-                $"The resource factory threw {exception.GetType().Name}: {exception.Message}"
+                $"The resource factory threw {exception.GetType().Name}."
             );
         }
 

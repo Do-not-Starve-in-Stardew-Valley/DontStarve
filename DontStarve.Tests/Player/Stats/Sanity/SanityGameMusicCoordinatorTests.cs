@@ -303,6 +303,40 @@ public sealed class SanityGameMusicCoordinatorTests
     }
 
     [Fact]
+    public void Production_adapter_uses_shared_background_ambient_exclusion_at_both_music_seams()
+    {
+        var source = ReadSource("GameMusic", "SanityGameMusicRuntimeAdapter.cs");
+        var stopMethod = Slice(
+            source,
+            "private bool TryStopCurrentGameMusic",
+            "private SanityGameMusicPhysicalResult Result"
+        );
+        var prefixMethod = Slice(
+            source,
+            "private static bool BeforeGameUpdateMusic",
+            "private static bool IsOwnedPrefixInstalled"
+        );
+
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldAllowSuppressedUpdate",
+            stopMethod,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldAllowSuppressedUpdate",
+            prefixMethod,
+            StringComparison.Ordinal
+        );
+        Assert.True(
+            stopMethod.IndexOf(
+                "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldAllowSuppressedUpdate",
+                StringComparison.Ordinal
+            )
+            < stopMethod.IndexOf("current.Stop(AudioStopOptions.Immediate)", StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
     public void Dawn_and_dusk_use_boss_override_without_resuming_crossed_cues()
     {
         var manager = ReadSource("AudioVisualFact", "MusicManager.cs");

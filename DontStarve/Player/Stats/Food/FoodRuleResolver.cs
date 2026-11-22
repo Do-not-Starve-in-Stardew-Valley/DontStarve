@@ -136,11 +136,6 @@ internal sealed class FoodRuleResolver
     )
     {
         value = 0;
-        // 健康维度 v1 不做家族公式推导：只认精确键与基键（初始交付为空表），
-        // 家族公式语义不臆造，留给后续轮与用户数值一起定。
-        if (dimension == FoodValueDimension.Health)
-            return false;
-
         if (string.IsNullOrWhiteSpace(facts.SourceItemId))
             return false;
 
@@ -155,25 +150,71 @@ internal sealed class FoodRuleResolver
         switch (facts.SourceKind)
         {
             case FoodRuleSourceKind.Juice:
+                // 健康维度（2026-11-14 用户 Excel 规则「5倍于原来数值的绝对值」）：源食材生命值
+                // 取绝对值再乘 5——负血食材（如土豆 -3）的果汁转为正回血（+15）。饥饿维持 2.5 倍。
+                if (dimension == FoodValueDimension.Health)
+                {
+                    value = Math.Abs(sourceValue) * 5d;
+                    return true;
+                }
+
                 if (dimension != FoodValueDimension.Hunger)
                     return false;
                 value = sourceValue * 2.5d;
                 return true;
 
             case FoodRuleSourceKind.Pickle:
+                // 健康维度（2026-11-14 用户 Excel 规则「原来数值+10」）：源食材生命值 +10。
+                if (dimension == FoodValueDimension.Health)
+                {
+                    value = sourceValue + 10d;
+                    return true;
+                }
+
+                if (dimension != FoodValueDimension.Hunger)
+                    return false;
+                value = sourceValue;
+                return true;
+
             case FoodRuleSourceKind.Jelly:
+                // 果冻无健康公式：该族健康值为「统一为5」的显式基键（2026-11-14），不走推导。
                 if (dimension != FoodValueDimension.Hunger)
                     return false;
                 value = sourceValue;
                 return true;
 
             case FoodRuleSourceKind.DriedFruit:
+                // 健康维度（2026-11-14 用户 Excel 规则「5倍于原来数值+50」）。
+                if (dimension == FoodValueDimension.Health)
+                {
+                    value = sourceValue * 5d + 50d;
+                    return true;
+                }
+
                 value = dimension == FoodValueDimension.Hunger
                     ? sourceValue * 3d
                     : sourceValue * 3d + 50d;
                 return true;
 
+            case FoodRuleSourceKind.DriedMushroom:
+                // 健康维度（2026-11-14 用户 Excel 规则「3倍于原来数值」）；饥饿/理智无公式，
+                // 维持显式键（行为与历史版本一致，不得借机变化）。
+                if (dimension == FoodValueDimension.Health)
+                {
+                    value = sourceValue * 3d;
+                    return true;
+                }
+
+                return false;
+
             case FoodRuleSourceKind.SmokedFish:
+                // 健康维度（2026-11-14 用户 Excel 规则「原来的数值+20」）。
+                if (dimension == FoodValueDimension.Health)
+                {
+                    value = sourceValue + 20d;
+                    return true;
+                }
+
                 value = dimension == FoodValueDimension.Hunger
                     ? sourceValue
                     : sourceValue + 20d;

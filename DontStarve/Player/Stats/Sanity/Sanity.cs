@@ -7,6 +7,7 @@ using DontStarve.Audio.StatusFeedback;
 using DontStarve.Config;
 using DontStarve.Display;
 using DontStarve.Player.Stats;
+using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 using DontStarve.Player.Stats.Sanity.PassOut;
 using DontStarve.Player.Stats.Sanity.SanityBehaviors;
 using StardewModdingAPI;
@@ -47,7 +48,9 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
         TypedConfigResolver? configResolver,
         PassOutReasonLedger passOutReasonLedger,
         ISanityStatusFeedbackSink? statusFeedbackSink = null,
-        FoodRestoreHudMessenger? foodRestoreHud = null
+        FoodRestoreHudMessenger? foodRestoreHud = null,
+        Func<EnvironmentLightService?>? lightServiceProvider = null,
+        Func<int>? screenIdProvider = null
     )
     {
         this.monitor = monitor;
@@ -65,15 +68,18 @@ internal sealed class Sanity : IStat, ISurvivalStateTimeBehavior<Farmer>
                 : new TypedConfigSanityMonsterIntensityProvider(configResolver)
         );
         lifecycle = new SanitySystemLifecycleCoordinator(changeService);
-        var mineShaft = new MineShaft();
+        // 「自然理智流失规则」（2026-11-17）：Night/MineShaft 仅在 TimePlace 规则下生效；
+        // LightBasedSanityDrain 仅在 ByLight 规则下生效，光照证据复用黑暗袭击的同一服务。
+        var mineShaft = new MineShaft(configResolver);
         timeRelatedBehaviors =
             new()
             {
                 new NearMonster(lifecycle),
-                new Night(),
+                new Night(configResolver),
                 new Wearing(),
                 new NearNpc(),
                 new BathHouse(),
+                new LightBasedSanityDrain(configResolver, lightServiceProvider, screenIdProvider),
                 mineShaft,
             };
         nonTimeRelatedBehaviors =

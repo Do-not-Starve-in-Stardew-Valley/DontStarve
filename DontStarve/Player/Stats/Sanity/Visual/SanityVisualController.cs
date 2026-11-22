@@ -409,7 +409,7 @@ internal sealed class SanityVisualController
 
         private static bool IsIdleEligible(SanityVisualObservation observation)
         {
-            if (observation.Current / observation.Maximum < 0.5d)
+            if (observation.Current / observation.Maximum <= 0.5d)
             {
                 foreach (var tierId in observation.ActiveTierIds)
                 {

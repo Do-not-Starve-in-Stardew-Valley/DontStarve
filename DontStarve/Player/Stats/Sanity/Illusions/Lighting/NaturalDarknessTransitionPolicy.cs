@@ -55,7 +55,8 @@ internal static class NaturalDarknessTransitionPolicy
 
     internal static double GetWarpArrivalProgress(NaturalDarknessScenePlan plan)
     {
-        return plan.IsActive ? ClampProgress(plan.TargetWhiteBlend) : 0d;
+        // 传送落地即到达计划终态：上限即旧模型的 TargetWhiteBlend，氛围彩色计划恒 1。
+        return plan.IsActive ? ClampProgress(plan.ProgressCeiling) : 0d;
     }
 
     private static double ClampProgress(double value)

@@ -33,6 +33,10 @@ internal static class ConfigSchemaLoader
             "ParentPageOrder",
             "PageOrder",
             "Order",
+            // Number 通道专用：滑轮边界与步长。其它类型出现这三个属性按契约违例 fail-closed。
+            "Min",
+            "Max",
+            "Interval",
         },
         StringComparer.Ordinal
     );
@@ -204,6 +208,10 @@ internal static class ConfigSchemaLoader
             type = ConfigOptionType.Boolean;
         else if (string.Equals(typeText, "Enum", StringComparison.Ordinal))
             type = ConfigOptionType.Enum;
+        else if (string.Equals(typeText, "Keybind", StringComparison.Ordinal))
+            type = ConfigOptionType.Keybind;
+        else if (string.Equals(typeText, "Number", StringComparison.Ordinal))
+            type = ConfigOptionType.Number;
         else
         {
             reason = $"schema.unsupported-type:{key}";
@@ -234,6 +242,9 @@ internal static class ConfigSchemaLoader
         {
             if (
                 values.ContainsKey("AllowedValues")
+                || values.ContainsKey("Min")
+                || values.ContainsKey("Max")
+                || values.ContainsKey("Interval")
                 || (
                     defaultElement.ValueKind != JsonValueKind.True
                     && defaultElement.ValueKind != JsonValueKind.False
@@ -247,8 +258,90 @@ internal static class ConfigSchemaLoader
             defaultValue = ConfigValue.Boolean(defaultElement.GetBoolean());
             allowedValues = Array.Empty<string>();
         }
+        else if (type == ConfigOptionType.Keybind)
+        {
+            // Keybind 的值域是任意合法按钮名，没有封闭 AllowedValues 表；Default 必须是
+            // 合法按钮名字符串（"None" 表示未绑定，是合法默认值）。出现 AllowedValues 或
+            // Number 专属的 Min/Max/Interval 按契约违例处理，与 Boolean 一致 fail-closed。
+            if (
+                values.ContainsKey("AllowedValues")
+                || values.ContainsKey("Min")
+                || values.ContainsKey("Max")
+                || values.ContainsKey("Interval")
+                || defaultElement.ValueKind != JsonValueKind.String
+            )
+            {
+                reason = $"schema.invalid-default:{key}";
+                return false;
+            }
+
+            var keybindDefault = defaultElement.GetString();
+            if (!ConfigKeybind.IsValidButtonName(keybindDefault))
+            {
+                reason = $"schema.invalid-default:{key}";
+                return false;
+            }
+
+            defaultValue = ConfigValue.Keybind(keybindDefault!);
+            allowedValues = Array.Empty<string>();
+        }
+        else if (type == ConfigOptionType.Number)
+        {
+            // Number 通道：Default/Min/Max/Interval 全部必填整数，fail-closed 校验
+            // interval > 0、min < max、default 落在闭区间内。这三个属性对非 Number
+            // 类型按契约违例拒绝（见下方统一检查）。
+            if (
+                defaultElement.ValueKind != JsonValueKind.Number
+                || !defaultElement.TryGetInt32(out var numberDefault)
+                || !TryRequiredInt32(values, "Min", out var min)
+                || !TryRequiredInt32(values, "Max", out var max)
+                || !TryRequiredInt32(values, "Interval", out var interval)
+                || interval <= 0
+                || min >= max
+                || numberDefault < min
+                || numberDefault > max
+            )
+            {
+                reason = $"schema.invalid-default:{key}";
+                return false;
+            }
+
+            defaultValue = ConfigValue.Number(numberDefault);
+            allowedValues = Array.Empty<string>();
+            option = new ConfigOptionDefinition(
+                key,
+                type,
+                defaultValue,
+                allowedValues,
+                exposeToCp,
+                affectsWorldState,
+                parentPageI18n,
+                pageI18n,
+                nameI18n,
+                tooltipI18n,
+                parentPageOrder,
+                pageOrder,
+                order,
+                min,
+                max,
+                interval
+            );
+            return true;
+        }
         else
         {
+            // Min/Max/Interval 是 Number 专属；Enum 出现这三个属性按契约违例 fail-closed，
+            // 防止 schema 作者误配出静默无效字段（AllowedValues 是 Enum 的合法属性）。
+            if (
+                values.ContainsKey("Min")
+                || values.ContainsKey("Max")
+                || values.ContainsKey("Interval")
+            )
+            {
+                reason = $"schema.invalid-default:{key}";
+                return false;
+            }
+
             if (!TryReadAllowedValues(values, out allowedValues))
                 return false;
 

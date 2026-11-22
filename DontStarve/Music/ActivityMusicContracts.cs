@@ -290,7 +290,7 @@ internal static class ActivityMusicTrackKey
             // Combat on a Farm remain part of the surface family.
             ActivityMusicLocationFamily.Default => "surface",
             ActivityMusicLocationFamily.Farm => location.GingerSeason.HasValue
-                ? kind == ActivityMusicKind.Farming ? "island-farm" : "island"
+                ? kind == ActivityMusicKind.Farming ? "farm" : "island"
                 : kind == ActivityMusicKind.Farming ? "farm" : "surface",
             // Greenhouse farming is an explicit same-season Farm alias; other activity lanes use
             // the ordinary surface family and never infer a greenhouse-specific work track.
@@ -300,9 +300,11 @@ internal static class ActivityMusicTrackKey
             ActivityMusicLocationFamily.Mine => "cave",
             ActivityMusicLocationFamily.QuarryMine => "cave",
             ActivityMusicLocationFamily.SkullCavern => "ruins",
-            ActivityMusicLocationFamily.Island => location.GingerSeason.HasValue
-                ? "island"
-                : null,
+            // 姜岛没有专用耕种曲（用户 2026-11-17 裁决）：岛上耕种（IslandWest 等）与普通农场
+            // 共用同一首季节无关的 farming 曲目；work/combat 仍按姜岛季节走海难素材。
+            ActivityMusicLocationFamily.Island => kind == ActivityMusicKind.Farming
+                ? location.GingerSeason.HasValue ? "farm" : null
+                : location.GingerSeason.HasValue ? "island" : null,
             ActivityMusicLocationFamily.IslandVolcano => location.GingerSeason.HasValue
                 ? "island-volcano"
                 : null,

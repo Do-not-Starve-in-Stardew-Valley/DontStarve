@@ -698,7 +698,7 @@ internal sealed class XnaSanityPhysicalResourceFactory : ISanityPhysicalResource
         {
             return SanityPhysicalResourceCreationResult.Failed(
                 "resource.factory.sound-decode-failed",
-                $"SoundEffect.FromStream failed with {exception.GetType().Name}: {exception.Message}"
+                $"SoundEffect.FromStream failed with {exception.GetType().Name}."
             );
         }
     }

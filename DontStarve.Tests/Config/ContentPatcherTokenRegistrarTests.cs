@@ -12,6 +12,7 @@ public sealed class ContentPatcherTokenRegistrarTests
         ConfigKeys.EnableSanitySystem,
         ConfigKeys.SanityMonsterIntensity,
         ConfigKeys.DarkHandMode,
+        ConfigKeys.SanityNaturalDrainRule,
         ConfigKeys.EnableSanityVisualEffects,
         ConfigKeys.DarknessDamageMode,
         ConfigKeys.MonsterDifficultyProfile,
@@ -19,7 +20,7 @@ public sealed class ContentPatcherTokenRegistrarTests
     };
 
     [Fact]
-    public void ShippedSchemaRegistersNineBareKeysWithCanonicalValues()
+    public void ShippedSchemaRegistersTenBareKeysWithCanonicalValues()
     {
         var registry = ConfigTestData.LoadShippedRegistry();
         var resolver = CreateResolver(
@@ -54,6 +55,7 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.Equal("true", api.GetSingle(ConfigKeys.SleepRecoveryBalance));
         Assert.Equal("Many", api.GetSingle(ConfigKeys.SanityMonsterIntensity));
         Assert.Equal("Thief", api.GetSingle(ConfigKeys.DarkHandMode));
+        Assert.Equal("ByLight", api.GetSingle(ConfigKeys.SanityNaturalDrainRule));
         Assert.Equal("false", api.GetSingle(ConfigKeys.EnableSanityVisualEffects));
         Assert.Equal("NonLethal", api.GetSingle(ConfigKeys.DarknessDamageMode));
         Assert.Equal("DontStarve", api.GetSingle(ConfigKeys.MonsterDifficultyProfile));
@@ -166,7 +168,7 @@ public sealed class ContentPatcherTokenRegistrarTests
         Assert.Equal(ContentPatcherTokenRegistrationStatus.Degraded, result.Status);
         Assert.Equal("cp.tokens-registration-degraded", result.Reason);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, result.RegisteredKeys);
-        Assert.Equal(8, result.RegisteredKeys.Count);
+        Assert.Equal(9, result.RegisteredKeys.Count);
         Assert.Equal(
             new[] { $"cp.token-registration-failed:{ConfigKeys.DarkHandMode}" },
             diagnostics

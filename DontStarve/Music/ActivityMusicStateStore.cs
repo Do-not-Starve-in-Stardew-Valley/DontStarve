@@ -85,6 +85,29 @@ internal sealed class ActivityMusicStateStore
         return states.Remove(ownerId);
     }
 
+    /// <summary>
+    /// EnableFarmingMusic 关闭瞬间使用：一次性移除所有 owner 的耕种逻辑态，使后续耕种触发
+    /// （已被降级为工作触发）不被旧 Farming 态的更高车道优先级吞掉。工作/战斗态不动。
+    /// </summary>
+    internal void RemoveFarmingAll()
+    {
+        List<long>? farmingOwners = null;
+        foreach (var pair in states)
+        {
+            if (pair.Value.Kind != ActivityMusicKind.Farming)
+                continue;
+
+            farmingOwners ??= new List<long>();
+            farmingOwners.Add(pair.Key);
+        }
+
+        if (farmingOwners is null)
+            return;
+
+        foreach (var ownerId in farmingOwners)
+            states.Remove(ownerId);
+    }
+
     internal IReadOnlyList<long> Advance(int seconds)
     {
         if (seconds <= 0 || states.Count == 0)

@@ -5,8 +5,22 @@ namespace DontStarve.Tests.Config;
 
 public sealed class ConfigSchemaLoaderTests
 {
+    private static readonly HashSet<string> OperationsSettingsKeys = new(
+        StringComparer.Ordinal
+    )
+    {
+        ConfigKeys.EnableCombatAutoSwing,
+        ConfigKeys.AutoSwingSword,
+        ConfigKeys.AutoSwingClub,
+        ConfigKeys.AutoSwingDagger,
+        ConfigKeys.SlingshotAutoRelease,
+        ConfigKeys.SlingshotPower,
+        ConfigKeys.AutoSpecialMode,
+        ConfigKeys.EnableMouseFacing,
+    };
+
     [Fact]
-    public void ShippedSchemaPublishesFrozenTwentyOptionRegistry()
+    public void ShippedSchemaPublishesFrozenThirtyOneOptionRegistry()
     {
         var result = ConfigSchemaLoader.LoadFromFile(ConfigTestData.ShippedSchemaPath);
 
@@ -15,7 +29,7 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Empty(result.Diagnostics);
         var registry = Assert.IsType<ConfigRegistry>(result.Registry);
         Assert.Equal(1, registry.SchemaVersion);
-        Assert.Equal(20, registry.Options.Count);
+        Assert.Equal(31, registry.Options.Count);
 
         AssertBoolean(registry, ConfigKeys.EnableHungerSystem, true, false, true, 5);
         AssertEnum(
@@ -47,6 +61,23 @@ public sealed class ConfigSchemaLoaderTests
             true,
             true,
             25
+        );
+        AssertEnum(
+            registry,
+            ConfigKeys.SanityNaturalDrainRule,
+            "ByLight",
+            new[] { "TimePlace", "ByLight", "Off" },
+            true,
+            true,
+            27
+        );
+        AssertBoolean(
+            registry,
+            ConfigKeys.EnableDontStarveLightAmbience,
+            true,
+            false,
+            true,
+            42
         );
         AssertBoolean(
             registry,
@@ -131,8 +162,42 @@ public sealed class ConfigSchemaLoaderTests
             90
         );
         AssertBoolean(registry, ConfigKeys.EnableActivityMusic, true, false, false, 95);
+        AssertBoolean(registry, ConfigKeys.EnableFarmingMusic, true, false, false, 96);
         AssertBoolean(registry, ConfigKeys.EnableDontStarveHealth, true, false, false, 15);
         AssertBoolean(registry, ConfigKeys.EnableHealthEffectBalance, true, false, false, 55);
+        AssertBoolean(
+            registry,
+            ConfigKeys.EnableCombatAutoSwing,
+            true,
+            false,
+            false,
+            100
+        );
+        AssertBoolean(registry, ConfigKeys.AutoSwingSword, true, false, false, 101);
+        AssertBoolean(registry, ConfigKeys.AutoSwingClub, true, false, false, 102);
+        AssertBoolean(registry, ConfigKeys.AutoSwingDagger, true, false, false, 103);
+        AssertBoolean(registry, ConfigKeys.SlingshotAutoRelease, true, false, false, 104);
+        AssertNumber(
+            registry,
+            ConfigKeys.SlingshotPower,
+            100,
+            25,
+            100,
+            5,
+            false,
+            false,
+            105
+        );
+        AssertEnum(
+            registry,
+            ConfigKeys.AutoSpecialMode,
+            "all",
+            new[] { "all", "clubAndDagger", "swordOnly", "off" },
+            false,
+            false,
+            106
+        );
+        AssertBoolean(registry, ConfigKeys.EnableMouseFacing, false, false, false, 107);
 
         Assert.Equal(
             "config.game-mechanics.page",
@@ -171,6 +236,14 @@ public sealed class ConfigSchemaLoaderTests
             Get(registry, ConfigKeys.EnableActivityMusic).PageI18n
         );
         Assert.Equal(
+            "config.visuals-audio.page",
+            Get(registry, ConfigKeys.EnableFarmingMusic).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.audio-effects.page",
+            Get(registry, ConfigKeys.EnableFarmingMusic).PageI18n
+        );
+        Assert.Equal(
             "config.game-mechanics.page",
             Get(registry, ConfigKeys.EnableDontStarveHealth).ParentPageI18n
         );
@@ -186,22 +259,33 @@ public sealed class ConfigSchemaLoaderTests
             "config.vanilla-balance.page",
             Get(registry, ConfigKeys.EnableHealthEffectBalance).PageI18n
         );
+        Assert.Equal(
+            "config.operations-settings.page",
+            Get(registry, ConfigKeys.EnableCombatAutoSwing).ParentPageI18n
+        );
+        Assert.Equal(
+            "config.combat-settings.page",
+            Get(registry, ConfigKeys.EnableCombatAutoSwing).PageI18n
+        );
         Assert.All(
             registry.Options,
             option =>
             {
                 var kebab = ToKebabCase(option.Key);
                 Assert.Equal(
-                    option.Key == ConfigKeys.MonsterDifficultyProfile
-                        || option.Key == ConfigKeys.EnableJunimoBlessing
-                        || option.Key == ConfigKeys.EnableHealthEffectBalance
-                        ? "config.balance-compatibility.page"
-                        : option.Key == ConfigKeys.EnableSanityVignette
-                            || option.Key == ConfigKeys.EnableStatusFeedbackSounds
-                            || option.Key == ConfigKeys.EnableDawnDuskMusic
-                            || option.Key == ConfigKeys.EnableActivityMusic
-                            ? "config.visuals-audio.page"
-                            : "config.game-mechanics.page",
+                    OperationsSettingsKeys.Contains(option.Key)
+                        ? "config.operations-settings.page"
+                        : option.Key == ConfigKeys.MonsterDifficultyProfile
+                            || option.Key == ConfigKeys.EnableJunimoBlessing
+                            || option.Key == ConfigKeys.EnableHealthEffectBalance
+                            ? "config.balance-compatibility.page"
+                            : option.Key == ConfigKeys.EnableSanityVignette
+                                || option.Key == ConfigKeys.EnableStatusFeedbackSounds
+                                || option.Key == ConfigKeys.EnableDawnDuskMusic
+                                || option.Key == ConfigKeys.EnableActivityMusic
+                                || option.Key == ConfigKeys.EnableFarmingMusic
+                                ? "config.visuals-audio.page"
+                                : "config.game-mechanics.page",
                     option.ParentPageI18n
                 );
                 Assert.Equal($"config.{kebab}.name", option.NameI18n);
@@ -365,6 +449,49 @@ public sealed class ConfigSchemaLoaderTests
     }
 
     [Fact]
+    public void KeybindDefaultMustBeAValidButtonNameAndAllowedValuesAreRejected()
+    {
+        var invalidDefault = ConfigTestData.KeybindOption(
+            "TestKeybindChannel",
+            "not a button!",
+            107
+        );
+        var allowedValues = ConfigTestData.KeybindOption(
+            "TestKeybindChannelAlt",
+            "None",
+            108,
+            "\"AllowedValues\": [\"None\"]"
+        );
+        var valid = ConfigTestData.KeybindOption(
+            ConfigKeys.EnableMouseFacing,
+            "None",
+            106
+        );
+
+        var result = ConfigSchemaLoader.Parse(
+            ConfigTestData.Schema(invalidDefault, allowedValues, valid)
+        );
+
+        Assert.Equal(ConfigSchemaStatus.Degraded, result.Status);
+        var registry = Assert.IsType<ConfigRegistry>(result.Registry);
+        Assert.Single(registry.Options);
+        Assert.Equal(ConfigOptionType.Keybind, registry.Options[0].Type);
+        Assert.Equal(
+            ConfigKeys.EnableMouseFacing,
+            registry.Options[0].Key
+        );
+        Assert.Equal("None", registry.Options[0].DefaultValue.EnumValue);
+        Assert.Contains(
+            $"schema.invalid-default:TestKeybindChannel",
+            result.Diagnostics
+        );
+        Assert.Contains(
+            $"schema.invalid-default:TestKeybindChannelAlt",
+            result.Diagnostics
+        );
+    }
+
+    [Fact]
     public void EnumWithDuplicateAllowedValueIsSkipped()
     {
         var invalid = ConfigTestData.EnumOption(
@@ -429,6 +556,30 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Equal(order, option.Order);
     }
 
+    private static void AssertNumber(
+        ConfigRegistry registry,
+        string key,
+        int defaultValue,
+        int min,
+        int max,
+        int interval,
+        bool exposeToContentPatcher,
+        bool affectsWorldState,
+        int order
+    )
+    {
+        var option = Get(registry, key);
+        Assert.Equal(ConfigOptionType.Number, option.Type);
+        Assert.Equal(defaultValue, option.DefaultValue.IntegerValue);
+        Assert.Empty(option.AllowedValues);
+        Assert.Equal(min, option.Min);
+        Assert.Equal(max, option.Max);
+        Assert.Equal(interval, option.Interval);
+        Assert.Equal(exposeToContentPatcher, option.ExposeToContentPatcher);
+        Assert.Equal(affectsWorldState, option.AffectsWorldState);
+        Assert.Equal(order, option.Order);
+    }
+
     private static void AssertEnum(
         ConfigRegistry registry,
         string key,
@@ -445,6 +596,22 @@ public sealed class ConfigSchemaLoaderTests
         Assert.Equal(allowedValues, option.AllowedValues);
         Assert.Equal(exposeToContentPatcher, option.ExposeToContentPatcher);
         Assert.Equal(affectsWorldState, option.AffectsWorldState);
+        Assert.Equal(order, option.Order);
+    }
+
+    private static void AssertKeybind(
+        ConfigRegistry registry,
+        string key,
+        string defaultValue,
+        int order
+    )
+    {
+        var option = Get(registry, key);
+        Assert.Equal(ConfigOptionType.Keybind, option.Type);
+        Assert.Equal(defaultValue, option.DefaultValue.EnumValue);
+        Assert.Empty(option.AllowedValues);
+        Assert.False(option.ExposeToContentPatcher);
+        Assert.False(option.AffectsWorldState);
         Assert.Equal(order, option.Order);
     }
 

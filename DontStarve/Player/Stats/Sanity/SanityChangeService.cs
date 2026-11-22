@@ -31,6 +31,9 @@ internal enum SanityChangeSource
     Garbage = 19,
     FlowerCollection = 20,
     BathHouse = 21,
+
+    /// <summary>「按光照程度」自然流失（2026-11-17 理智规则三选一）；时间地点规则仍用 Night/Mine。</summary>
+    AmbientLight = 22,
 }
 
 internal enum SanityChangeStatus

@@ -199,7 +199,7 @@ internal sealed class SanityTwoAmSpecialDeathStateMachine
                 "passout.two-am.outcome-started",
                 SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay,
                 snapshot.Kind == SanityTwoAmSpecialDeathFlowKind.DefaultDeath
-                    ? SanityTwoAmSpecialDeathActionKind.BeginHiddenHospitalPassOut
+                    ? SanityTwoAmSpecialDeathActionKind.BeginPendingDarknessDeath
                     : SanityTwoAmSpecialDeathActionKind.BeginNonLethalPassOut
             ),
             SanityTwoAmSpecialDeathPhase.Completed => Duplicate(

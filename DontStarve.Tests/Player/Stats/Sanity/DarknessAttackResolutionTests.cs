@@ -53,6 +53,101 @@ public sealed class DarknessAttackResolutionTests
     }
 
     [Fact]
+    public void DarknessAttackResolution_DecimalLedger_skips_rng_and_feeds_expected_integer_damage()
+    {
+        // 【2026-11-13 用户决议】小数账本开启：不掷骰（Random 零调用，RngRoll=-1 表示
+        // "未掷骰"），整数结算链固定喂 floor(100.05)=100；伤害真实发生（actual=1，未触
+        // 地板）时零头 -0.05 随结果交付。
+        var fixture = Fixture(() => true, 95);
+
+        var result = fixture.Service.Resolve(Request(DarknessDamageMode.NonLethal));
+
+        Assert.Equal(DarknessAttackResolutionStatus.Settled, result.Status);
+        Assert.Equal(0, fixture.Random.Calls);
+        Assert.Equal(-1, result.Receipt!.RngRoll);
+        Assert.Equal(
+            DarknessAttackExpectedDamage.ExpectedBaseDamageIntegerPart,
+            result.Receipt.BaseDamage
+        );
+        Assert.Equal(1, fixture.Damage.Calls);
+        Assert.Equal(1, fixture.Sanity.Calls);
+        Assert.Equal(
+            DarknessAttackExpectedDamage.ExpectedBaseDamageFraction,
+            result.DecimalLedgerFraction
+        );
+    }
+
+    [Fact]
+    public void DarknessAttackResolution_DecimalLedger_zero_actual_damage_delivers_nothing()
+    {
+        // 小数模式 + Default 模式 actual==0（护甲全吸收/iframe/无血量差）：整数伤害未
+        // 真实发生，零头天然不交付。
+        var fixture = Fixture(() => true, 12);
+        fixture.Damage.Handler = request => DarknessAttackDamageReceipt.Settled(
+            request,
+            beforeHealth: 80,
+            maximumHealth: 100,
+            actualDamage: 0,
+            afterHealth: 80,
+            "test.default-iframe-settled"
+        );
+
+        var result = fixture.Service.Resolve(Request(DarknessDamageMode.Default));
+
+        Assert.True(result.Receipt!.IsSettled);
+        Assert.Equal(0, result.Receipt.DamageReceipt!.ActualDamage);
+        Assert.Equal(0d, result.DecimalLedgerFraction);
+    }
+
+    [Fact]
+    public void DarknessAttackResolution_DecimalLedger_floor_clamped_damage_delivers_nothing()
+    {
+        // 小数模式 + NonLethal 地板钳制（AfterHealth == ceil(max×0.20)）：总量被钳死，
+        // 零头必须归零（地板同式经 DarknessAttackFloorRules 委托 NonLethalDamageCalculator）。
+        var fixture = Fixture(() => true, 95);
+        fixture.Damage.Handler = request => DarknessAttackDamageReceipt.Settled(
+            request,
+            beforeHealth: 31,
+            maximumHealth: 150,
+            actualDamage: 1,
+            afterHealth: 30,
+            "test.nonlethal-landed-on-floor"
+        );
+
+        var result = fixture.Service.Resolve(Request(DarknessDamageMode.NonLethal));
+
+        Assert.Equal(DarknessAttackResolutionStatus.Settled, result.Status);
+        Assert.Equal(
+            DarknessAttackFloorRules.FloorHealthFor(150),
+            result.Receipt!.DamageReceipt!.AfterHealth
+        );
+        Assert.Equal(0d, result.DecimalLedgerFraction);
+    }
+
+    [Theory]
+    [InlineData(0, 100)]
+    [InlineData(94, 100)]
+    [InlineData(95, 101)]
+    [InlineData(99, 101)]
+    public void DarknessAttackResolution_IntegerLedger_gate_keeps_dice_path(
+        int roll,
+        int expectedBaseDamage
+    )
+    {
+        // 门控恒 false（整数模式）= 骰子路径一字不变：仍掷骰、按 95/5 定 100/101，零头
+        // 恒 0（gate null 的既有用例覆盖同一分支）。
+        var fixture = Fixture(() => false, roll);
+
+        var result = fixture.Service.Resolve(Request(DarknessDamageMode.Default));
+
+        Assert.Equal(DarknessAttackResolutionStatus.Settled, result.Status);
+        Assert.Equal(expectedBaseDamage, result.Receipt!.BaseDamage);
+        Assert.Equal(roll, result.Receipt.RngRoll);
+        Assert.Equal(1, fixture.Random.Calls);
+        Assert.Equal(0d, result.DecimalLedgerFraction);
+    }
+
+    [Fact]
     public void DarknessAttackResolution_Default_zero_hp_delta_still_applies_authorized_sanity()
     {
         var fixture = Fixture(12);
@@ -674,12 +769,35 @@ public sealed class DarknessAttackResolutionTests
         Assert.Contains("ResetForModeChange", countdownSource, StringComparison.Ordinal);
     }
 
+    // 两个 Fixture 重载：既有 Fixture(int...) 调用零改动；小数/整数门控用例以
+    // Fixture(() => true, roll) 形式传门控。Func<bool> 与 int 互不可转，重载解析无歧义。
     private static ResolutionFixture Fixture(params int[] rolls)
+    {
+        return BuildFixture(null, rolls);
+    }
+
+    private static ResolutionFixture Fixture(
+        Func<bool>? decimalHealthLedgerGate,
+        params int[] rolls
+    )
+    {
+        return BuildFixture(decimalHealthLedgerGate, rolls);
+    }
+
+    private static ResolutionFixture BuildFixture(
+        Func<bool>? decimalHealthLedgerGate,
+        int[] rolls
+    )
     {
         var random = new SequenceResolutionRandom(rolls);
         var damage = new FakeDamageAuthority();
         var sanity = new FakeSanityAuthority();
-        var service = new DarknessAttackResolutionService(random, damage, sanity);
+        var service = new DarknessAttackResolutionService(
+            random,
+            damage,
+            sanity,
+            decimalHealthLedgerGate
+        );
         Assert.True(service.BeginSession(SessionA).Accepted);
         return new ResolutionFixture(service, random, damage, sanity);
     }

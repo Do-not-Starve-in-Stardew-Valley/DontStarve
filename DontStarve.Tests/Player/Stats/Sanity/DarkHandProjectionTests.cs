@@ -118,7 +118,7 @@ public sealed class DarkHandProjectionTests
     }
 
     [Fact]
-    public void BelowSeventyFiveEntersAndOnlyAboveSeventyFiveExits()
+    public void AtSeventyFiveEntersAndOnlyAboveSeventyFiveExits()
     {
         var machine = new SanityTierStateMachine();
         machine.Observe(Player(151d, 200d, 0), true);
@@ -128,13 +128,13 @@ public sealed class DarkHandProjectionTests
         var stillExact = machine.Observe(Player(150d, 200d, 3), true);
         var above = machine.Observe(Player(150.0001d, 200d, 4), true);
 
-        Assert.DoesNotContain(
+        Assert.Contains(
             SanityStateEventIds.TierEntered(SanityTierIds.DarkHand),
             exact.Events.Select(stateEvent => stateEvent.EventId)
         );
-        Assert.Contains(
-            SanityStateEventIds.TierEntered(SanityTierIds.DarkHand),
-            below.Events.Select(stateEvent => stateEvent.EventId)
+        Assert.DoesNotContain(
+            below.Events,
+            stateEvent => stateEvent.TierId == SanityTierIds.DarkHand
         );
         Assert.DoesNotContain(
             stillExact.Events,

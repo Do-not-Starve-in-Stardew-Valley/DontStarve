@@ -28,6 +28,11 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
     private readonly ISanityDarknessSpecialDeathNonLethalPolicy
         specialDeathNonLethal;
     private readonly Action<Farmer>? lethalDamageHandler;
+    // 「饥荒风格生命值」零头链路（2026-11-13 决议）：gate 决定基础伤害掷不掷骰，sink 在
+    // 结算后把 -0.05 零头交付给 Health 余数账本。两者 null = 骰子模式照旧 / 不交付，
+    // 既有调用方与测试零破坏。
+    private readonly Func<bool>? decimalHealthLedgerGate;
+    private readonly Action<long, double>? decimalFractionSink;
     private readonly DarknessAttackResolutionService resolution;
     private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
     private bool disposed;
@@ -39,7 +44,9 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         SmapiDarknessAttackService darknessAttack,
         IDarknessDamageModeResolver modeResolver,
         SanitySmapiResourceService resources,
-        Action<Farmer>? lethalDamageHandler = null
+        Action<Farmer>? lethalDamageHandler = null,
+        Func<bool>? decimalHealthLedgerGate = null,
+        Action<long, double>? decimalFractionSink = null
     )
     {
         this.helper = helper ?? throw new ArgumentNullException(nameof(helper));
@@ -51,6 +58,8 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
             ?? throw new ArgumentNullException(nameof(modeResolver));
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
         this.lethalDamageHandler = lethalDamageHandler;
+        this.decimalHealthLedgerGate = decimalHealthLedgerGate;
+        this.decimalFractionSink = decimalFractionSink;
 
         Func<string, Farmer?> resolvePlayer = ResolveCurrentScreenPlayer;
         nonLethalDamage = new NonLethalDamageService(
@@ -71,7 +80,8 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
         resolution = new DarknessAttackResolutionService(
             new SystemDarknessAttackResolutionRandom(),
             damageAuthority,
-            new SmapiDarknessAttackSanityAuthority(lifecycle)
+            new SmapiDarknessAttackSanityAuthority(lifecycle),
+            decimalHealthLedgerGate
         );
 
         darknessAttack.ExpiryIntentCreated += OnExpiryIntentCreated;
@@ -277,6 +287,34 @@ internal sealed class SmapiDarknessAttackResolutionService : IDisposable
                 result.Reason,
                 $"Darkness settlement failed closed (status={result.Status}, reason={result.Reason})."
             );
+        }
+
+        // 【2026-11-13 黑暗袭击期望值零头】resolve 返回后按纯规则层的 DecimalLedgerFraction
+        // 交付零头；Duplicate 复用原收据、该值恒为 0，天然不会重复交付。刻意放在
+        // CompleteReceipt 之后：交付失败只记录、不回吞结算收据（0.05 级零头不能把整次已
+        // 结算的袭击改标为失败）。玩家 key 解析失败同样丢弃（代价 ≤ 0.05，FailClosed 不适用
+        // 于这类非权威性尾巴）。
+        if (decimalFractionSink is not null && result.DecimalLedgerFraction != 0d)
+        {
+            try
+            {
+                if (
+                    SanityPlayerKey.TryParseCanonicalPlayerId(
+                        intent.Key.PlayerKey,
+                        out var fractionPlayerId
+                    )
+                )
+                {
+                    decimalFractionSink(fractionPlayerId, result.DecimalLedgerFraction);
+                }
+            }
+            catch (Exception exception)
+            {
+                LogFailureOnce(
+                    "darkness.resolution.fraction-sink-threw",
+                    $"Darkness decimal fraction delivery failed ({exception.GetType().Name}: {exception.Message})."
+                );
+            }
         }
     }
 

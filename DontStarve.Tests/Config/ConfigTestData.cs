@@ -81,6 +81,62 @@ internal static class ConfigTestData
             + $"  \"Order\": {order}{extra}\n"
             + "}";
     }
+
+    internal static string KeybindOption(
+        string key,
+        string defaultValue,
+        int order,
+        string? extraProperty = null
+    )
+    {
+        var extra = string.IsNullOrEmpty(extraProperty) ? string.Empty : $",\n{extraProperty}";
+        return "{\n"
+            + $"  \"Key\": {JsonSerializer.Serialize(key)},\n"
+            + "  \"Type\": \"Keybind\",\n"
+            + $"  \"Default\": {JsonSerializer.Serialize(defaultValue)},\n"
+            + "  \"ExposeToContentPatcher\": false,\n"
+            + "  \"AffectsWorldState\": false,\n"
+            + "  \"ParentPageI18n\": \"config.operations-settings.page\",\n"
+            + "  \"PageI18n\": \"config.combat-settings.page\",\n"
+            + "  \"NameI18n\": \"config.enable-mouse-facing.name\",\n"
+            + "  \"TooltipI18n\": \"config.enable-mouse-facing.tooltip\",\n"
+            + "  \"ParentPageOrder\": 10,\n"
+            + "  \"PageOrder\": 10,\n"
+            + $"  \"Order\": {order}{extra}\n"
+            + "}";
+    }
+
+    internal static string NumberOption(
+        string key,
+        int defaultValue,
+        int min,
+        int max,
+        int interval,
+        int order,
+        string? extraProperty = null
+    )
+    {
+        // 与 KeybindOption 同样使用真实存在的 i18n 键：菜单注册测试要求 name/tooltip
+        // 可解析（TryResolveTranslations fail-closed），config.test.* 只适用于纯解析测试。
+        var extra = string.IsNullOrEmpty(extraProperty) ? string.Empty : $",\n{extraProperty}";
+        return "{\n"
+            + $"  \"Key\": {JsonSerializer.Serialize(key)},\n"
+            + "  \"Type\": \"Number\",\n"
+            + $"  \"Default\": {defaultValue},\n"
+            + $"  \"Min\": {min},\n"
+            + $"  \"Max\": {max},\n"
+            + $"  \"Interval\": {interval},\n"
+            + "  \"ExposeToContentPatcher\": false,\n"
+            + "  \"AffectsWorldState\": false,\n"
+            + "  \"ParentPageI18n\": \"config.operations-settings.page\",\n"
+            + "  \"PageI18n\": \"config.combat-settings.page\",\n"
+            + "  \"NameI18n\": \"config.enable-mouse-facing.name\",\n"
+            + "  \"TooltipI18n\": \"config.enable-mouse-facing.tooltip\",\n"
+            + "  \"ParentPageOrder\": 10,\n"
+            + "  \"PageOrder\": 10,\n"
+            + $"  \"Order\": {order}{extra}\n"
+            + "}";
+    }
 }
 
 internal sealed class MemoryFlatConfigFileAccess : IFlatConfigFileAccess

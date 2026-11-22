@@ -49,15 +49,17 @@ internal static class SanityFriendshipEventGate
             );
         }
 
-        // Contract boundary: exactly 50% is allowed; only values strictly below it block.
-        return baseCurrent / baseMaximum < 0.5d
+        // Contract boundary aligned with the tier convention: the boundary belongs to the
+        // more-insane side, so exactly 50% counts as low sanity and blocks friendship events
+        // (ShadowCreatures tier is active at exactly 50% under the inclusive-entry contract).
+        return baseCurrent / baseMaximum <= 0.5d
             ? new SanityFriendshipEventGateResult(
                 SanityFriendshipEventGateDecision.Block,
                 "base-sanity-is-below-fifty-percent"
             )
             : new SanityFriendshipEventGateResult(
                 SanityFriendshipEventGateDecision.Allow,
-                "base-sanity-is-at-least-fifty-percent"
+                "base-sanity-is-above-fifty-percent"
             );
     }
 }

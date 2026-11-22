@@ -119,6 +119,25 @@
       "Order": 25
     },
     {
+      "Key": "SanityNaturalDrainRule",
+      "Type": "Enum",
+      "Default": "ByLight",
+      "AllowedValues": [
+        "TimePlace",
+        "ByLight",
+        "Off"
+      ],
+      "ExposeToContentPatcher": true,
+      "AffectsWorldState": true,
+      "ParentPageI18n": "config.game-mechanics.page",
+      "PageI18n": "config.sanity.page",
+      "ParentPageOrder": 10,
+      "PageOrder": 20,
+      "NameI18n": "config.sanity-natural-drain-rule.name",
+      "TooltipI18n": "config.sanity-natural-drain-rule.tooltip",
+      "Order": 27
+    },
+    {
       "Key": "EnableSanityVisualEffects",
       "Type": "Boolean",
       "Default": true,
@@ -192,6 +211,20 @@
       "NameI18n": "config.darkness-damage-mode.name",
       "TooltipI18n": "config.darkness-damage-mode.tooltip",
       "Order": 40
+    },
+    {
+      "Key": "EnableDontStarveLightAmbience",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": true,
+      "ParentPageI18n": "config.game-mechanics.page",
+      "PageI18n": "config.darkness.page",
+      "ParentPageOrder": 10,
+      "PageOrder": 30,
+      "NameI18n": "config.enable-dont-starve-light-ambience.name",
+      "TooltipI18n": "config.enable-dont-starve-light-ambience.tooltip",
+      "Order": 42
     },
     {
       "Key": "MonsterDifficultyProfile",
@@ -284,6 +317,20 @@
       "Order": 95
     },
     {
+      "Key": "EnableFarmingMusic",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.visuals-audio.page",
+      "PageI18n": "config.audio-effects.page",
+      "ParentPageOrder": 30,
+      "PageOrder": 20,
+      "NameI18n": "config.enable-farming-music.name",
+      "TooltipI18n": "config.enable-farming-music.tooltip",
+      "Order": 96
+    },
+    {
       "Key": "EnableDontStarveHealth",
       "Type": "Boolean",
       "Default": true,
@@ -310,6 +357,127 @@
       "NameI18n": "config.enable-health-effect-balance.name",
       "TooltipI18n": "config.enable-health-effect-balance.tooltip",
       "Order": 55
+    },
+    {
+      "Key": "EnableCombatAutoSwing",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 10,
+      "NameI18n": "config.enable-combat-auto-swing.name",
+      "TooltipI18n": "config.enable-combat-auto-swing.tooltip",
+      "Order": 100
+    },
+    {
+      "Key": "AutoSwingSword",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 20,
+      "NameI18n": "config.auto-swing-sword.name",
+      "TooltipI18n": "config.auto-swing-sword.tooltip",
+      "Order": 101
+    },
+    {
+      "Key": "AutoSwingClub",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 30,
+      "NameI18n": "config.auto-swing-club.name",
+      "TooltipI18n": "config.auto-swing-club.tooltip",
+      "Order": 102
+    },
+    {
+      "Key": "AutoSwingDagger",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 40,
+      "NameI18n": "config.auto-swing-dagger.name",
+      "TooltipI18n": "config.auto-swing-dagger.tooltip",
+      "Order": 103
+    },
+    {
+      "Key": "SlingshotAutoRelease",
+      "Type": "Boolean",
+      "Default": true,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 50,
+      "NameI18n": "config.slingshot-auto-release.name",
+      "TooltipI18n": "config.slingshot-auto-release.tooltip",
+      "Order": 104
+    },
+    {
+      "Key": "SlingshotPower",
+      "Type": "Number",
+      "Default": 100,
+      "Min": 25,
+      "Max": 100,
+      "Interval": 5,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 50,
+      "NameI18n": "config.slingshot-power.name",
+      "TooltipI18n": "config.slingshot-power.tooltip",
+      "Order": 105
+    },
+    {
+      "Key": "AutoSpecialMode",
+      "Type": "Enum",
+      "Default": "all",
+      "AllowedValues": [
+        "all",
+        "clubAndDagger",
+        "swordOnly",
+        "off"
+      ],
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 60,
+      "NameI18n": "config.auto-special-mode.name",
+      "TooltipI18n": "config.auto-special-mode.tooltip",
+      "Order": 106
+    },
+    {
+      "Key": "EnableMouseFacing",
+      "Type": "Boolean",
+      "Default": false,
+      "ExposeToContentPatcher": false,
+      "AffectsWorldState": false,
+      "ParentPageI18n": "config.operations-settings.page",
+      "PageI18n": "config.combat-settings.page",
+      "ParentPageOrder": 25,
+      "PageOrder": 70,
+      "NameI18n": "config.enable-mouse-facing.name",
+      "TooltipI18n": "config.enable-mouse-facing.tooltip",
+      "Order": 107
     }
   ]
 }

@@ -319,6 +319,34 @@ internal static class ActivityMusicAudioService
         ReleaseVanillaMusicIfIdle(resumeIfStillOwned: true);
     }
 
+    /// <summary>
+    /// EnableFarmingMusic 关闭瞬间使用：把仍在播的耕耘曲走既有淡出路径退役（不硬切），其它
+    /// 车道的实例不动。已进入 retiring 队列的耕耘曲本来就处于淡出尾段，无需再处理。
+    /// </summary>
+    internal static void StopFarmingPlayback()
+    {
+        List<Playback>? farmingPlaybacks = null;
+        foreach (var playback in playbacks.Values)
+        {
+            if (playback.Kind != ActivityMusicKind.Farming)
+                continue;
+
+            farmingPlaybacks ??= new List<Playback>();
+            farmingPlaybacks.Add(playback);
+        }
+
+        if (farmingPlaybacks is null)
+            return;
+
+        foreach (var playback in farmingPlaybacks)
+        {
+            playbacks.Remove(playback.OwnerId);
+            BeginFadeOut(playback);
+        }
+
+        ReleaseVanillaMusicIfIdle(resumeIfStillOwned: true);
+    }
+
     internal static void FadeOutOwner(long ownerId)
     {
         if (!playbacks.Remove(ownerId, out var playback))

@@ -29,6 +29,9 @@
     <Compile Include="..\DontStarve\Config\ContentPatcherTokenRegistrar.cs" Link="Config\ContentPatcherTokenRegistrar.cs" />
     <Compile Include="..\DontStarve\Config\ModConfig.cs" Link="Config\ModConfig.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\FoodRuleResolver.cs" Link="Player\Stats\Food\FoodRuleResolver.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Food\Category\FoodTypes.cs" Link="Player\Stats\Food\Category\FoodTypes.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Food\Category\IngredientCategoryTable.cs" Link="Player\Stats\Food\Category\IngredientCategoryTable.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Food\Category\FoodCategoryTable.cs" Link="Player\Stats\Food\Category\FoodCategoryTable.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\SeedEdibilityRules.cs" Link="Player\Stats\Food\SeedEdibilityRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\SeedFoodInputRules.cs" Link="Player\Stats\Food\SeedFoodInputRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Food\StarfruitFoodRules.cs" Link="Player\Stats\Food\StarfruitFoodRules.cs" />
@@ -46,6 +49,7 @@
     <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackContracts.cs" Link="Audio\StatusFeedback\StatusFeedbackContracts.cs" />
     <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackTriggerPolicy.cs" Link="Audio\StatusFeedback\StatusFeedbackTriggerPolicy.cs" />
     <Compile Include="..\DontStarve\Audio\StatusFeedback\StatusFeedbackHealthWatcherRule.cs" Link="Audio\StatusFeedback\StatusFeedbackHealthWatcherRule.cs" />
+    <Compile Include="..\DontStarve\Audio\Vanilla\VanillaBackgroundAmbientMusicExclusionPolicy.cs" Link="Audio\Vanilla\VanillaBackgroundAmbientMusicExclusionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" Link="Player\Stats\Hunger\HungerFoodCompletionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Health\HealthLedgerRules.cs" Link="Player\Stats\Health\HealthLedgerRules.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Health\HealthRules.cs" Link="Player\Stats\Health\HealthRules.cs" />
@@ -59,6 +63,7 @@
     <Compile Include="..\DontStarve\Player\Sleep\SleepContracts.cs" Link="Player\Sleep\SleepContracts.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepRules.cs" Link="Player\Sleep\SleepRules.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepSanitySettlementPolicy.cs" Link="Player\Sleep\SleepSanitySettlementPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\SpecialPassOutWakeHealthSettlementPolicy.cs" Link="Player\Sleep\SpecialPassOutWakeHealthSettlementPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepOvernightSettlement.cs" Link="Player\Sleep\SleepOvernightSettlement.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepOwnerHealthState.cs" Link="Player\Sleep\SleepOwnerHealthState.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepLifecycleProtocol.cs" Link="Player\Sleep\SleepLifecycleProtocol.cs" />
@@ -66,7 +71,7 @@
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsData.cs" Link="Player\Sleep\SleepWakeEffectsData.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\SleepWakeEffectsPolicy.cs" Link="Player\Sleep\SleepWakeEffectsPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Sleep\WakeDeathLoadGatePolicy.cs" Link="Player\Sleep\WakeDeathLoadGatePolicy.cs" />
-    <Compile Include="..\DontStarve\Player\Sleep\WakeDeathPresentationPolicy.cs" Link="Player\Sleep\WakeDeathPresentationPolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Sleep\PendingDarknessWakePolicy.cs" Link="Player\Sleep\PendingDarknessWakePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Death\PlayerDeathCausePolicy.cs" Link="Player\Death\PlayerDeathCausePolicy.cs" />
     <Compile Include="..\DontStarve\Interface\ITimeAPI.cs" Link="Interface\ITimeAPI.cs" />
     <Compile Include="..\DontStarve\Player\Stats\SurvivalStateTimeOwner.cs" Link="Player\Stats\SurvivalStateTimeOwner.cs" />
@@ -152,6 +157,8 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Damage\NonLethalDamageService.cs" Link="Player\Stats\Sanity\Damage\NonLethalDamageService.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\Damage\SanityDarknessSpecialDeathNonLethalPolicy.cs" Link="Player\Stats\Sanity\PassOut\Damage\SanityDarknessSpecialDeathNonLethalPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathContracts.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\DarknessRevivePolicy.cs" Link="Player\Stats\Sanity\PassOut\DarknessRevivePolicy.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmDarknessWaitPolicy.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmDarknessWaitPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathSessionProtocol.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathSessionProtocol.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathStateMachine.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathStateMachine.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathPersistence.cs" Link="Player\Stats\Sanity\PassOut\SanityTwoAmSpecialDeathPersistence.cs" />
@@ -210,6 +217,8 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Projection\OwnerLocalProjectionDisableList.cs" Link="Player\Stats\Sanity\Illusions\Projection\OwnerLocalProjectionDisableList.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightSnapshot.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" Link="Player\Stats\Sanity\Illusions\Lighting\EnvironmentLightFinalVisibility.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\DontStarveAmbienceTargets.cs" Link="Player\Stats\Sanity\Illusions\Lighting\DontStarveAmbienceTargets.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\DontStarveLightAmbiencePolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\DontStarveLightAmbiencePolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessTransitionPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLocationPolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\NaturalDarknessLocationPolicy.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\Illusions\Lighting\MineWallSconcePolicy.cs" Link="Player\Stats\Sanity\Illusions\Lighting\MineWallSconcePolicy.cs" />
@@ -228,6 +237,7 @@
     <Compile Include="..\DontStarve\Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandHarassmentContracts.cs" Link="Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandHarassmentContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandThiefContracts.cs" Link="Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandThiefContracts.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandLeaseCoordinatorContracts.cs" Link="Player\Stats\Sanity\WorldInteractions\DarkHand\DarkHandLeaseCoordinatorContracts.cs" />
+    <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityBehaviors\SanityNaturalDrainRule.cs" Link="Player\Stats\Sanity\SanityBehaviors\SanityNaturalDrainRule.cs" />
     <Compile Include="..\DontStarve\Player\Stats\Sanity\SanityBehaviors\SanityBehaviorRules.cs" Link="Player\Stats\Sanity\SanityBehaviors\SanityBehaviorRules.cs" />
     <Compile Include="..\DontStarve\Time\MinuteTimeTimeline.cs" Link="Time\MinuteTimeTimeline.cs" />
     <Compile Include="..\DontStarve\Display\HudDisplayRules.cs" Link="Display\HudDisplayRules.cs" />
@@ -754,6 +764,15 @@
     <None Include="..\DontStarve\Player\Stats\Sanity\PassOut\SmapiSanityTwoAmSpecialDeathService.cs" Link="Contracts\PassOut\SmapiSanityTwoAmSpecialDeathService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\PassOut\SmapiSanityTwoAmDarknessWaitService.cs" Link="Contracts\PassOut\SmapiSanityTwoAmDarknessWaitService.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmDarknessWaitEvent.cs" Link="Contracts\PassOut\SanityTwoAmDarknessWaitEvent.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Stats\Sanity\PassOut\SanityTwoAmDarknessEvent.cs" Link="Contracts\PassOut\SanityTwoAmDarknessEvent.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\DontStarve\Player\Stats\Sanity\PassOut\Compatibility\NightOwlPlusCompatibility.cs" Link="Contracts\PassOut\NightOwlPlusCompatibility.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -822,6 +841,53 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\DontStarve\Player\Combat\SmapiVanillaKillRingEffects.cs" Link="Contracts\PlayerCombat\SmapiVanillaKillRingEffects.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- 战斗自动化（2026-11-13 设计稿阶段 2-5）：纯规则源码链接编译；SMAPI 适配层以
+         Contracts 快照供静态契约测试读取（与 PlayerCombat 既有模式一致）。 -->
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\CombatWeaponKind.cs" Link="Player\Combat\CombatAutomation\CombatWeaponKind.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\CombatAutomationConstants.cs" Link="Player\Combat\CombatAutomation\CombatAutomationConstants.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSwing\AutoSwingRules.cs" Link="Player\Combat\CombatAutomation\AutoSwing\AutoSwingRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSwing\SlingshotAutoReleaseRules.cs" Link="Player\Combat\CombatAutomation\AutoSwing\SlingshotAutoReleaseRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSpecial\AutoSpecialRules.cs" Link="Player\Combat\CombatAutomation\AutoSpecial\AutoSpecialRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\MouseFacingMapper.cs" Link="Player\Combat\CombatAutomation\MouseFacing\MouseFacingMapper.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\MouseFacingTurnRules.cs" Link="Player\Combat\CombatAutomation\MouseFacing\MouseFacingTurnRules.cs" />
+    <Compile Include="..\DontStarve\Player\Combat\CombatAutomation\CombatAutomationConfigSnapshot.cs" Link="Player\Combat\CombatAutomation\CombatAutomationConfigSnapshot.cs" />
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\CombatInputGuards.cs" Link="Contracts\CombatAutomation\CombatInputGuards.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSwing\SmapiHoldToSwingPatch.cs" Link="Contracts\CombatAutomation\SmapiHoldToSwingPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSwing\SmapiSlingshotAutoReleaseDriver.cs" Link="Contracts\CombatAutomation\SmapiSlingshotAutoReleaseDriver.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSpecial\SmapiSpecialCooldownReader.cs" Link="Contracts\CombatAutomation\SmapiSpecialCooldownReader.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSpecial\SmapiAutoSpecialDriver.cs" Link="Contracts\CombatAutomation\SmapiAutoSpecialDriver.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\AutoSpecial\SmapiAutoSpecialSwingPatch.cs" Link="Contracts\CombatAutomation\SmapiAutoSpecialSwingPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\MouseFacingMapper.cs" Link="Contracts\CombatAutomation\MouseFacingMapper.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\SmapiMouseFacingDriver.cs" Link="Contracts\CombatAutomation\SmapiMouseFacingDriver.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\SmapiMouseFacingTurnPatch.cs" Link="Contracts\CombatAutomation\SmapiMouseFacingTurnPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\MouseFacing\SmapiMouseFacingStartTurnPatch.cs" Link="Contracts\CombatAutomation\SmapiMouseFacingStartTurnPatch.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\DontStarve\Player\Combat\CombatAutomation\CombatAutomationCoordinator.cs" Link="Contracts\CombatAutomation\CombatAutomationCoordinator.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- 惊恐循环服务（守卫提取的调用方）：供"无私有守卫副本"回归契约读取。 -->
+    <None Include="..\DontStarve\Player\Stats\Sanity\Visual\SanityIdlePanicLoopService.cs" Link="Contracts\CombatAutomation\SanityIdlePanicLoopService.cs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

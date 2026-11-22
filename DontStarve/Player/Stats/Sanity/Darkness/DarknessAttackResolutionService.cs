@@ -19,6 +19,9 @@ internal sealed class DarknessAttackResolutionService
     private readonly IDarknessAttackResolutionRandom random;
     private readonly IDarknessAttackDamageAuthority damageAuthority;
     private readonly IDarknessAttackSanityAuthority sanityAuthority;
+    // 「饥荒风格生命值」小数账本门控（2026-11-13 决议）：null = 永远骰子模式（既有测试与
+    // 调用方零改动，行为退回改动前）；非 null 时每次 Resolve 在结算窗口内读取一次。
+    private readonly Func<bool>? decimalHealthLedgerGate;
     private readonly Dictionary<string, DarknessAttackResolutionReceipt> receipts =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, DarknessAttackDamageOperation> requestOperations =
@@ -31,7 +34,8 @@ internal sealed class DarknessAttackResolutionService
     internal DarknessAttackResolutionService(
         IDarknessAttackResolutionRandom random,
         IDarknessAttackDamageAuthority damageAuthority,
-        IDarknessAttackSanityAuthority sanityAuthority
+        IDarknessAttackSanityAuthority sanityAuthority,
+        Func<bool>? decimalHealthLedgerGate = null
     )
     {
         this.random = random ?? throw new ArgumentNullException(nameof(random));
@@ -39,6 +43,7 @@ internal sealed class DarknessAttackResolutionService
             ?? throw new ArgumentNullException(nameof(damageAuthority));
         this.sanityAuthority = sanityAuthority
             ?? throw new ArgumentNullException(nameof(sanityAuthority));
+        this.decimalHealthLedgerGate = decimalHealthLedgerGate;
     }
 
     internal int ReceiptCount => receipts.Count;
@@ -193,35 +198,49 @@ internal sealed class DarknessAttackResolutionService
                 );
             }
 
+            // 【2026-11-13 用户决议】「饥荒风格生命值」小数账本开启时不掷骰：固定期望值
+            // 100.05 的整数部分 100 进整数结算链；RngRoll 记 -1，含义"未掷骰"。门控 null /
+            // 返回 false = 既有骰子路径，逐字不变。门控只在本结算窗口读取一次，保证同一次
+            // Resolve 内掷骰口径与零头判定口径一致。
+            var decimalMode = decimalHealthLedgerGate?.Invoke() ?? false;
             int roll;
-            try
+            int baseDamage;
+            if (decimalMode)
             {
-                roll = random.NextRoll100();
+                roll = -1;
+                baseDamage = DarknessAttackExpectedDamage.ExpectedBaseDamageIntegerPart;
             }
-            catch (Exception exception)
+            else
             {
-                return StoreRejectedBeforeDamage(
-                    request,
-                    requestKey,
-                    operation,
-                    -1,
-                    0,
-                    $"darkness.resolution.rng-threw:{exception.GetType().Name}"
-                );
-            }
-            if (roll < 0 || roll > 99)
-            {
-                return StoreRejectedBeforeDamage(
-                    request,
-                    requestKey,
-                    operation,
-                    roll,
-                    0,
-                    "darkness.resolution.rng-out-of-range"
-                );
-            }
+                try
+                {
+                    roll = random.NextRoll100();
+                }
+                catch (Exception exception)
+                {
+                    return StoreRejectedBeforeDamage(
+                        request,
+                        requestKey,
+                        operation,
+                        -1,
+                        0,
+                        $"darkness.resolution.rng-threw:{exception.GetType().Name}"
+                    );
+                }
+                if (roll < 0 || roll > 99)
+                {
+                    return StoreRejectedBeforeDamage(
+                        request,
+                        requestKey,
+                        operation,
+                        roll,
+                        0,
+                        "darkness.resolution.rng-out-of-range"
+                    );
+                }
 
-            var baseDamage = roll < 95 ? 100 : 101;
+                baseDamage = roll < 95 ? 100 : 101;
+            }
             var receiptId = DarknessAttackResolutionCorrelation.Create(
                 request.Intent.Key,
                 request.Intent.RequestId,
@@ -279,6 +298,21 @@ internal sealed class DarknessAttackResolutionService
                 );
             }
 
+            // 【2026-11-13 用户决议】零头交付条件（纯规则层，damage 收据已过校验且 IsSettled
+            // 在此已成立，条件保留是为与冻结口径逐字对齐）：收据已结算 && ActualDamage > 0 &&
+            // 非地板钳制。Default 模式 actual==0（护甲全吸收/iframe/无血量差）天然为 0；
+            // NonLethal 的 AfterHealth == floorHealth 视为被钳，零头不交付。理由：减法类削减
+            // （防御）作用于完整 100.05，零头应穿透；地板/全吸收把总量钳死，零头必须归零。
+            // 保守偏差 ≤ 0.05/次。ReduceToFloor / Off 路径不进本窗口；2AM 特殊昏迷链不经过
+            // 本服务，不在范围。扣理智失败时伤害已真实发生，零头仍随 damage 收据交付。
+            var decimalLedgerFraction =
+                decimalMode
+                && damageReceipt.IsSettled
+                && damageReceipt.ActualDamage > 0
+                && !IsFloorClamped(operation, damageReceipt)
+                    ? DarknessAttackExpectedDamage.ExpectedBaseDamageFraction
+                    : 0d;
+
             var sanityRequest = new DarknessAttackSanityRequest(
                 request.Intent.Key,
                 request.Intent.RequestId,
@@ -326,7 +360,8 @@ internal sealed class DarknessAttackResolutionService
                     ? DarknessAttackResolutionStatus.Settled
                     : DarknessAttackResolutionStatus.Rejected,
                 receipt.Reason,
-                receipt
+                receipt,
+                decimalLedgerFraction
             );
         }
         finally
@@ -422,6 +457,21 @@ internal sealed class DarknessAttackResolutionService
         receipts.Add(CreateReceiptKey(requestKey, receipt.Operation), receipt);
         if (latest.ContainsKey(receipt.Key) || latest.Count < MaximumDiagnosticOwners)
             latest[receipt.Key] = receipt;
+    }
+
+    /// <summary>
+    /// NonLethal 地板钳制判定：结算后血量正好落在地板上，说明总量被 ceil(max×0.20) 钳死，
+    /// 零头必须归零。只有 ApplyDamageUpToFloor 带地板语义；地板值唯一实现委托
+    /// DarknessAttackFloorRules.FloorHealthFor（内部走 NonLethalDamageCalculator），与伤害
+    /// 结算 authority 从同一处取式，两处不会分叉。
+    /// </summary>
+    private static bool IsFloorClamped(
+        DarknessAttackDamageOperation operation,
+        DarknessAttackDamageReceipt receipt
+    )
+    {
+        return operation == DarknessAttackDamageOperation.ApplyDamageUpToFloor
+            && receipt.AfterHealth == DarknessAttackFloorRules.FloorHealthFor(receipt.MaximumHealth);
     }
 
     private static bool IsValidDamageReceipt(

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using Common.ConfigurationServices;
 using StardewModdingAPI;
+using StardewValley;
 
 namespace DontStarve.Config;
 
@@ -142,6 +143,71 @@ internal static class ModConfigMenuRegistrar
                 formatAllowedValue,
                 fieldId
             );
+        }
+
+        public void AddKeybind(
+            string fieldId,
+            Func<string> getValue,
+            Action<string> setValue,
+            Func<string> getName,
+            Func<string> getTooltip
+        )
+        {
+            // Keybind 在纯逻辑层以 SButton 枚举名字符串流转；只有这里做 string ↔ SButton
+            // 转换。写回永远走 SButton.ToString()，所以 config.json 里只会出现规范枚举名。
+            api.AddKeybind(
+                manifest,
+                () => ParseButtonName(getValue()),
+                button => setValue(button.ToString()),
+                getName,
+                getTooltip,
+                fieldId
+            );
+        }
+
+        public void AddNumber(
+            string fieldId,
+            Func<int> getValue,
+            Action<int> setValue,
+            Func<string> getName,
+            Func<string> getTooltip,
+            int min,
+            int max,
+            int interval,
+            Func<int, string> formatValue
+        )
+        {
+            // GMCM 1.16 的 AddNumberOption(int)：min/max 齐备时绘制滑轮，interval 为步长。
+            api.AddNumberOption(
+                manifest,
+                getValue,
+                setValue,
+                getName,
+                getTooltip,
+                min,
+                max,
+                interval,
+                formatValue,
+                fieldId
+            );
+        }
+
+        private static SButton ParseButtonName(string raw)
+        {
+            // 契约：Enum.TryParse(ignoreCase:true) 解析失败一律回落 None，绝不抛异常；
+            // Enum.IsDefined 按名称拦截 "42" 这类 TryParse 可按数值成功、却不是枚举名的输入。
+            // GMCM 写回的总是规范枚举名，因此手改 config.json 的小写/垃圾值同样 fail-safe 回
+            // 落 None（重新绑定即可恢复），不会崩溃或产生错误按键。
+            if (
+                !string.IsNullOrWhiteSpace(raw)
+                && Enum.TryParse(raw, ignoreCase: true, out SButton button)
+                && Enum.IsDefined(typeof(SButton), raw)
+            )
+            {
+                return button;
+            }
+
+            return SButton.None;
         }
     }
 

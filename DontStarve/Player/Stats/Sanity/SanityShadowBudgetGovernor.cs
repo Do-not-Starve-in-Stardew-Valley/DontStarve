@@ -184,9 +184,10 @@ internal sealed class SanityShadowBudgetGovernor
         {
             get
             {
-                // GameplayPhase is a strict, stateless ratio classification. Authoritative
-                // event tiers take precedence once entered so their strict exit hysteresis is
-                // not lost when the raw ratio sits on or just above an entry boundary.
+                // GameplayPhase is a stateless ratio classification whose boundaries belong to
+                // the more-insane side. Authoritative event tiers take precedence once entered
+                // so their exit hysteresis is not lost when the raw ratio sits between the
+                // entry and recovery lines.
                 if (TerrorbeakActive)
                     return SanityShadowPoolTier.Hostile10;
                 if (DangerActive)

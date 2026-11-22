@@ -35,6 +35,34 @@ internal interface IConfigMenuRegistrationApi
         string[] allowedValues,
         Func<string, string> formatAllowedValue
     );
+
+    /// <summary>
+    /// Keybind 通道在纯逻辑层以 SButton 枚举名字符串（"None" = 未绑定）流转；
+    /// SMAPI 适配层负责把该字符串转换为 <c>SButton</c> 后再交给 GMCM。
+    /// </summary>
+    void AddKeybind(
+        string fieldId,
+        Func<string> getValue,
+        Action<string> setValue,
+        Func<string> getName,
+        Func<string> getTooltip
+    );
+
+    /// <summary>
+    /// Number 通道映射 GMCM 的 AddNumberOption：min/max 齐备时 GMCM 绘制滑轮
+    /// （interval 为步长，左右箭头微调），formatValue 定滑轮旁显示文本。
+    /// </summary>
+    void AddNumber(
+        string fieldId,
+        Func<int> getValue,
+        Action<int> setValue,
+        Func<string> getName,
+        Func<string> getTooltip,
+        int min,
+        int max,
+        int interval,
+        Func<int, string> formatValue
+    );
 }
 
 internal interface IConfigMenuTranslationProvider
@@ -385,6 +413,48 @@ internal static class SchemaDrivenConfigMenuRegistrar
                         }
                     );
                 }
+                else if (option.Type == ConfigOptionType.Keybind)
+                {
+                    menu.AddKeybind(
+                        option.Key,
+                        () => editSession.GetKeybind(option),
+                        value => editSession.SetKeybind(option, value),
+                        CreateTranslationGetter(
+                            translations,
+                            option.NameI18n,
+                            name
+                        ),
+                        CreateTranslationGetter(
+                            translations,
+                            option.TooltipI18n,
+                            tooltip
+                        )
+                    );
+                }
+                else if (option.Type == ConfigOptionType.Number)
+                {
+                    // schema 加载器对 Number 已 fail-closed 校验 Min/Max/Interval 完整；
+                    // 这里 ?? 兜底仅为防御：真退化成 min==max 时 GMCM 画文本框而非滑轮。
+                    menu.AddNumber(
+                        option.Key,
+                        () => editSession.GetNumber(option),
+                        value => editSession.SetNumber(option, value),
+                        CreateTranslationGetter(
+                            translations,
+                            option.NameI18n,
+                            name
+                        ),
+                        CreateTranslationGetter(
+                            translations,
+                            option.TooltipI18n,
+                            tooltip
+                        ),
+                        option.Min ?? 0,
+                        option.Max ?? 0,
+                        option.Interval ?? 1,
+                        value => $"{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}%"
+                    );
+                }
                 else
                 {
                     Report($"gmcm.unsupported-type:{option.Key}");
@@ -656,6 +726,23 @@ internal sealed class ConfigMenuEditSession
             : option.DefaultValue.EnumValue ?? string.Empty;
     }
 
+    internal string GetKeybind(ConfigOptionDefinition option)
+    {
+        return values.TryGetValue(option.Key, out var value)
+            && value.Type == ConfigOptionType.Keybind
+            && value.EnumValue is not null
+            ? value.EnumValue
+            : option.DefaultValue.EnumValue ?? ConfigKeybind.Unbound;
+    }
+
+    internal int GetNumber(ConfigOptionDefinition option)
+    {
+        return values.TryGetValue(option.Key, out var value)
+            && value.Type == ConfigOptionType.Number
+            ? value.IntegerValue
+            : option.DefaultValue.IntegerValue;
+    }
+
     internal void SetBoolean(ConfigOptionDefinition option, bool value)
     {
         if (option.Type != ConfigOptionType.Boolean)
@@ -665,6 +752,19 @@ internal sealed class ConfigMenuEditSession
         }
 
         values[option.Key] = ConfigValue.Boolean(value);
+        dirtyKeys.Add(option.Key);
+    }
+
+    internal void SetNumber(ConfigOptionDefinition option, int value)
+    {
+        var proposed = ConfigValue.Number(value);
+        if (option.Type != ConfigOptionType.Number || !option.Accepts(proposed))
+        {
+            reportDiagnostic($"gmcm.invalid-edit:{option.Key}");
+            return;
+        }
+
+        values[option.Key] = proposed;
         dirtyKeys.Add(option.Key);
     }
 
@@ -691,6 +791,29 @@ internal sealed class ConfigMenuEditSession
         dirtyKeys.Add(option.Key);
     }
 
+    internal void SetKeybind(ConfigOptionDefinition option, string value)
+    {
+        ConfigValue proposed;
+        try
+        {
+            proposed = ConfigValue.Keybind(value);
+        }
+        catch (ArgumentException)
+        {
+            reportDiagnostic($"gmcm.invalid-edit:{option.Key}");
+            return;
+        }
+
+        if (option.Type != ConfigOptionType.Keybind || !option.Accepts(proposed))
+        {
+            reportDiagnostic($"gmcm.invalid-edit:{option.Key}");
+            return;
+        }
+
+        values[option.Key] = proposed;
+        dirtyKeys.Add(option.Key);
+    }
+
     internal void Reset()
     {
         foreach (var option in registry.Options)
@@ -698,6 +821,8 @@ internal sealed class ConfigMenuEditSession
             if (
                 option.Type != ConfigOptionType.Boolean
                 && option.Type != ConfigOptionType.Enum
+                && option.Type != ConfigOptionType.Keybind
+                && option.Type != ConfigOptionType.Number
             )
             {
                 continue;
@@ -757,6 +882,13 @@ internal sealed class ConfigMenuEditSession
                 var resolved = resolver.GetEnum(option.Key);
                 values[option.Key] = resolved.HasValue
                     ? ConfigValue.Enum(resolved.Value)
+                    : option.DefaultValue;
+            }
+            else if (option.Type == ConfigOptionType.Keybind)
+            {
+                var resolved = resolver.GetKeybind(option.Key);
+                values[option.Key] = resolved.HasValue
+                    ? ConfigValue.Keybind(resolved.Value)
                     : option.DefaultValue;
             }
         }

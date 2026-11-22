@@ -48,6 +48,20 @@ internal sealed class SleepSnapshotRequest
     public long KnownRevision { get; set; }
 }
 
+internal sealed class SleepPendingDarknessWakeRequest
+{
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>主机下发的 pending-darkness 死亡标记（防逃课决议③）。标记日随键携带，客户端
+/// 导入时按本机 CurrentDay 重新 Normalize。</summary>
+internal sealed class SleepPendingDarknessWakeMessage
+{
+    public string SessionId { get; set; } = string.Empty;
+
+    public Dictionary<string, int> Markers { get; set; } = new();
+}
+
 internal sealed class SleepBeginDecision
 {
     public string SessionId { get; set; } = string.Empty;

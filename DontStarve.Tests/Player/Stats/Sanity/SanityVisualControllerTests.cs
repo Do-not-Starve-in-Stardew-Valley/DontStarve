@@ -115,7 +115,7 @@ public sealed class SanityVisualControllerTests
     }
 
     [Fact]
-    public void Idle_requires_below_half_and_authoritative_shadow_creatures_tier()
+    public void Idle_requires_at_most_half_and_authoritative_shadow_creatures_tier()
     {
         var controller = new SanityVisualController();
         var key = Key("1", 0);
@@ -129,14 +129,13 @@ public sealed class SanityVisualControllerTests
         );
 
         Assert.True(controller.TryGetSnapshot(key, out var exactHalf));
-        Assert.False(exactHalf.IdleEligible);
-        Assert.Equal(
-            "idle.sanity-tier-ineligible",
+        Assert.True(exactHalf.IdleEligible);
+        Assert.True(
             controller.ObserveIdle(
                 key,
                 SanityIdleDetector.IdleThreshold,
                 EligibleIdle()
-            ).Reason
+            ).ThresholdReached
         );
 
         controller.Observe(
@@ -144,17 +143,18 @@ public sealed class SanityVisualControllerTests
                 key,
                 2,
                 new[] { SanityTierIds.ShadowCreatures },
-                current: 49.99d
+                current: 50.01d
             )
         );
-        Assert.True(controller.TryGetSnapshot(key, out var belowHalf));
-        Assert.True(belowHalf.IdleEligible);
-        Assert.True(
+        Assert.True(controller.TryGetSnapshot(key, out var aboveHalf));
+        Assert.False(aboveHalf.IdleEligible);
+        Assert.Equal(
+            "idle.sanity-tier-ineligible",
             controller.ObserveIdle(
                 key,
                 SanityIdleDetector.IdleThreshold,
                 EligibleIdle()
-            ).ThresholdReached
+            ).Reason
         );
 
         controller.Observe(

@@ -9,7 +9,7 @@ public sealed class SanityTierStateMachineTests
     private const string OwnerA = "123456789";
     private const string OwnerB = "223456789";
 
-    public static TheoryData<string, double> StandardRules =>
+    public static TheoryData<string, double> InclusiveStandardRules =>
         new()
         {
             { SanityTierIds.MrSkitts, 0.835d },
@@ -19,23 +19,22 @@ public sealed class SanityTierStateMachineTests
             { SanityTierIds.ShadowCreatures, 0.5d },
             { SanityTierIds.Whispers, 0.45d },
             { SanityTierIds.BeardRabbit, 0.4d },
-            { SanityTierIds.Terrorbeak, 0.1d },
         };
 
     [Fact]
-    public void Catalog_freezes_stable_ids_thresholds_and_event_ids()
+    public void Catalog_freezes_stable_ids_thresholds_boundaries_and_event_ids()
     {
         var expected = new[]
         {
-            ("mr-skitts", 0.835d, 0.835d),
-            ("dark-hand", 0.75d, 0.75d),
-            ("dark-watcher", 0.65d, 0.65d),
-            ("eyes", 0.6d, 0.6d),
-            ("shadow-creatures", 0.5d, 0.5d),
-            ("whispers", 0.45d, 0.45d),
-            ("beard-rabbit", 0.4d, 0.4d),
-            ("danger", 0.15d, 0.175d),
-            ("terrorbeak", 0.1d, 0.1d),
+            ("mr-skitts", 0.835d, 0.835d, true, false),
+            ("dark-hand", 0.75d, 0.75d, true, false),
+            ("dark-watcher", 0.65d, 0.65d, true, false),
+            ("eyes", 0.6d, 0.6d, true, false),
+            ("shadow-creatures", 0.5d, 0.5d, true, false),
+            ("whispers", 0.45d, 0.45d, true, false),
+            ("beard-rabbit", 0.4d, 0.4d, true, false),
+            ("danger", 0.15d, 0.175d, true, true),
+            ("terrorbeak", 0.1d, 0.1d, false, false),
         };
 
         Assert.Equal(expected.Length, SanityTierCatalog.Rules.Count);
@@ -45,6 +44,8 @@ public sealed class SanityTierStateMachineTests
             Assert.Equal(expected[index].Item1, actual.Id);
             Assert.Equal(expected[index].Item2, actual.EnterRatio);
             Assert.Equal(expected[index].Item3, actual.ExitRatio);
+            Assert.Equal(expected[index].Item4, actual.EnterInclusive);
+            Assert.Equal(expected[index].Item5, actual.ExitInclusive);
             Assert.Equal(
                 $"sanity/tier/{actual.Id}/entered",
                 actual.EnteredEventId
@@ -65,8 +66,8 @@ public sealed class SanityTierStateMachineTests
     }
 
     [Theory]
-    [MemberData(nameof(StandardRules))]
-    public void Standard_tiers_enter_below_and_exit_only_above(
+    [MemberData(nameof(InclusiveStandardRules))]
+    public void Standard_tiers_enter_at_the_boundary_and_exit_only_above(
         string tierId,
         double threshold
     )
@@ -99,11 +100,11 @@ public sealed class SanityTierStateMachineTests
             SanityStateEventIds.TierEntered(tierId),
             EventIds(above)
         );
-        Assert.Empty(TierEventIds(equalBeforeEntry, tierId));
         Assert.Equal(
             new[] { SanityStateEventIds.TierEntered(tierId) },
-            TierEventIds(below, tierId)
+            TierEventIds(equalBeforeEntry, tierId)
         );
+        Assert.Empty(TierEventIds(below, tierId));
         Assert.Empty(TierEventIds(equalAfterEntry, tierId));
         Assert.Equal(
             new[] { SanityStateEventIds.TierExited(tierId) },
@@ -112,36 +113,76 @@ public sealed class SanityTierStateMachineTests
     }
 
     [Fact]
-    public void Danger_uses_15_enter_and_strictly_above_17_5_exit_hysteresis()
+    public void Terrorbeak_keeps_dst_strict_entry_at_the_exact_boundary()
+    {
+        var machine = new SanityTierStateMachine();
+        var maximum = 200d;
+
+        var above = machine.Observe(
+            Player(OwnerA, 20.0001d, maximum, 0),
+            true
+        );
+        var exact = machine.Observe(Player(OwnerA, 20d, maximum, 1), true);
+        var below = machine.Observe(
+            Player(OwnerA, 19.9999d, maximum, 2),
+            true
+        );
+        var exactAgain = machine.Observe(Player(OwnerA, 20d, maximum, 3), true);
+        var exited = machine.Observe(
+            Player(OwnerA, 20.0001d, maximum, 4),
+            true
+        );
+
+        Assert.DoesNotContain(
+            SanityStateEventIds.TierEntered(SanityTierIds.Terrorbeak),
+            EventIds(above)
+        );
+        Assert.Empty(TierEventIds(exact, SanityTierIds.Terrorbeak));
+        Assert.Equal(
+            new[] { SanityStateEventIds.TierEntered(SanityTierIds.Terrorbeak) },
+            TierEventIds(below, SanityTierIds.Terrorbeak)
+        );
+        Assert.Empty(TierEventIds(exactAgain, SanityTierIds.Terrorbeak));
+        Assert.Equal(
+            new[] { SanityStateEventIds.TierExited(SanityTierIds.Terrorbeak) },
+            TierEventIds(exited, SanityTierIds.Terrorbeak)
+        );
+    }
+
+    [Fact]
+    public void Danger_uses_15_enter_and_17_5_exit_inclusive_hysteresis()
     {
         var machine = new SanityTierStateMachine();
         machine.Observe(Player(OwnerA, 36d, 200d, 0), true);
 
         var exactEntryLine = machine.Observe(Player(OwnerA, 30d, 200d, 1), true);
-        var entered = machine.Observe(Player(OwnerA, 29.9999d, 200d, 2), true);
+        var below = machine.Observe(Player(OwnerA, 29.9999d, 200d, 2), true);
         var sixteen = machine.Observe(Player(OwnerA, 32d, 200d, 3), true);
         var exactExitLine = machine.Observe(
             Player(OwnerA, 35d, 200d, 4),
             true
         );
-        var exited = machine.Observe(Player(OwnerA, 35.0001d, 200d, 5), true);
+        var aboveExitLine = machine.Observe(
+            Player(OwnerA, 35.0001d, 200d, 5),
+            true
+        );
         var sixteenAfterExit = machine.Observe(
             Player(OwnerA, 32d, 200d, 6),
             true
         );
         var reentered = machine.Observe(Player(OwnerA, 29.9999d, 200d, 7), true);
 
-        Assert.Empty(TierEventIds(exactEntryLine, SanityTierIds.Danger));
         Assert.Equal(
             new[] { "sanity/tier/danger/entered" },
-            TierEventIds(entered, SanityTierIds.Danger)
+            TierEventIds(exactEntryLine, SanityTierIds.Danger)
         );
+        Assert.Empty(TierEventIds(below, SanityTierIds.Danger));
         Assert.Empty(TierEventIds(sixteen, SanityTierIds.Danger));
-        Assert.Empty(TierEventIds(exactExitLine, SanityTierIds.Danger));
         Assert.Equal(
             new[] { "sanity/tier/danger/exited" },
-            TierEventIds(exited, SanityTierIds.Danger)
+            TierEventIds(exactExitLine, SanityTierIds.Danger)
         );
+        Assert.Empty(TierEventIds(aboveExitLine, SanityTierIds.Danger));
         Assert.Empty(TierEventIds(sixteenAfterExit, SanityTierIds.Danger));
         Assert.Equal(
             new[] { "sanity/tier/danger/entered" },

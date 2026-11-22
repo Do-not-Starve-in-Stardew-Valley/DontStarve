@@ -1,4 +1,5 @@
 using System;
+using DontStarve.Audio.Vanilla;
 using HarmonyLib;
 using Microsoft.Xna.Framework.Audio;
 using StardewModdingAPI;
@@ -129,6 +130,7 @@ internal static class DawnMusicService
             && _isDawnTime
             && !_isIslandArea
             && Game1.currentSong?.IsPlaying == true
+            && !ShouldPreserveVanillaBackgroundAmbient()
         )
             Game1.currentSong.Stop(AudioStopOptions.Immediate);
     }
@@ -146,7 +148,8 @@ internal static class DawnMusicService
                 return;
 
             _isDawnTime = true;
-            Game1.currentSong?.Stop(AudioStopOptions.Immediate);
+            if (!ShouldPreserveVanillaBackgroundAmbient())
+                Game1.currentSong?.Stop(AudioStopOptions.Immediate);
 
             if (targetSound.State == SoundState.Playing)
                 targetSound.Stop();
@@ -264,5 +267,16 @@ internal static class DawnMusicService
     private static bool IsIslandArea(GameLocation location)
     {
         return location is IslandLocation || location?.Name?.Contains("Island") == true;
+    }
+
+    private static bool ShouldPreserveVanillaBackgroundAmbient()
+    {
+        var current = Game1.currentSong;
+        return current is not null
+            && VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve(
+                current.Name,
+                Game1.IsPlayingOutdoorsAmbience,
+                Game1.IsPlayingNightAmbience
+            );
     }
 }

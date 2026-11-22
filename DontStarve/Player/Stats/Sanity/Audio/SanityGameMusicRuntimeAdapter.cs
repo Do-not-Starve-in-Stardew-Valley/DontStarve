@@ -4,6 +4,7 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework.Audio;
+using DontStarve.Audio.Vanilla;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -296,6 +297,18 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
         if (current is null)
             return true;
 
+        if (
+            VanillaBackgroundAmbientMusicExclusionPolicy.ShouldAllowSuppressedUpdate(
+                current.Name,
+                Game1.getMusicTrackName(),
+                Game1.IsPlayingOutdoorsAmbience,
+                Game1.IsPlayingNightAmbience
+            )
+        )
+        {
+            return true;
+        }
+
         Exception? failure = null;
         try
         {
@@ -349,7 +362,15 @@ internal sealed class SanityGameMusicRuntimeAdapter : ISanityGameMusicPhysicalAd
     private static bool BeforeGameUpdateMusic()
     {
         var adapter = activeAdapter;
-        return adapter is null || adapter.disposed || !adapter.suppressionRequested;
+        if (adapter is null || adapter.disposed || !adapter.suppressionRequested)
+            return true;
+
+        return VanillaBackgroundAmbientMusicExclusionPolicy.ShouldAllowSuppressedUpdate(
+            Game1.currentSong?.Name,
+            Game1.getMusicTrackName(),
+            Game1.IsPlayingOutdoorsAmbience,
+            Game1.IsPlayingNightAmbience
+        );
     }
 
     private static bool IsOwnedPrefixInstalled(MethodInfo method, string ownerId)

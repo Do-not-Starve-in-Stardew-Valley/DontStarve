@@ -206,6 +206,86 @@ public sealed class SanityAudioVisualFactContractTests
     }
 
     [Fact]
+    public void Dawn_and_dusk_guard_only_their_existing_current_song_stop_boundary()
+    {
+        var dawn = ReadSource("DawnMusicService.cs");
+        var dusk = ReadSource("DuskMusicService.cs");
+
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+            dawn,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+            dusk,
+            StringComparison.Ordinal
+        );
+        var dawnTick = Slice(
+            dawn,
+            "private static void OnUpdateTicked",
+            "private static void StartDawnMusic"
+        );
+        var dawnStart = Slice(
+            dawn,
+            "private static void StartDawnMusic",
+            "private static void StopDawnMusic"
+        );
+        var duskPlay = Slice(
+            dusk,
+            "private static void PlayDuskMusic",
+            "private static int GetSeasonTriggerTime"
+        );
+
+        AssertStopIsGuarded(dawnTick, "ShouldPreserveVanillaBackgroundAmbient");
+        AssertStopIsGuarded(dawnStart, "ShouldPreserveVanillaBackgroundAmbient");
+        AssertStopIsGuarded(duskPlay, "ShouldPreserveVanillaBackgroundAmbient");
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+            dawn,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+            dusk,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("Game1.updateMusic()", dawn, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game1.updateMusic", dusk, StringComparison.Ordinal);
+    }
+
+    private static void AssertStopIsGuarded(string source, string guardMethod)
+    {
+        var policy = source.IndexOf(
+            guardMethod,
+            StringComparison.Ordinal
+        );
+        var stop = source.IndexOf(
+            "Game1.currentSong.Stop(AudioStopOptions.Immediate)",
+            StringComparison.Ordinal
+        );
+        if (stop < 0)
+        {
+            stop = source.IndexOf(
+                "Game1.currentSong?.Stop(AudioStopOptions.Immediate)",
+                StringComparison.Ordinal
+            );
+        }
+
+        Assert.True(policy >= 0);
+        Assert.True(stop > policy);
+    }
+
+    private static string Slice(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        var end = source.IndexOf(endMarker, start, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        return source[start..end];
+    }
+
+    [Fact]
     public void Dusk_music_uses_stardews_start_dark_boundary_not_true_darkness()
     {
         var dusk = ReadSource("DuskMusicService.cs");

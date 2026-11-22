@@ -499,7 +499,13 @@ internal sealed class SanitySmapiAudioService : IDisposable
         );
         // Game1.paused/dialogue are process-wide gates. A designated Other minigame is additionally
         // tracked per screen so split-screen presentation changes remain local.
-        SetDarknessWarningProcessPaused(Game1.paused || Game1.dialogueUp);
+        // 修复1（2026-11-13）：dialogueUp 门按 specialEventAudioAllowed 豁免——2 点黑暗特殊事件的
+        // 窄窗弹窗会置 dialogueUp=true，不能因此静默事件自己的警告音；平时对话/暂停仍照旧静默。
+        // 豁免只在进程级 dialogue 门与逐 claim 合并处生效；窗口失焦与小游戏暂停不受影响。
+        var specialEventAudioAllowed = coordinator.SpecialEventAudioAllowed;
+        SetDarknessWarningProcessPaused(
+            (Game1.paused || Game1.dialogueUp) && !specialEventAudioAllowed
+        );
         if (ownersByScreen.TryGetValue(screenId, out var binding))
         {
             // Minigame presentation can change while the Sanity revision stays constant (the
@@ -514,8 +520,7 @@ internal sealed class SanitySmapiAudioService : IDisposable
                 binding.PlayerKey,
                 screenId,
                 paused: localMinigameScreens.Contains(screenId)
-                    || Game1.paused
-                    || Game1.dialogueUp
+                    || ((Game1.paused || Game1.dialogueUp) && !specialEventAudioAllowed)
             );
         }
 

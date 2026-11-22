@@ -92,6 +92,27 @@ internal static class HealthLedgerRules
     }
 
     /// <summary>
+    /// Console-only absolute assignment. Unlike a gameplay delta, a debug target replaces both
+    /// the visible integer health and its fractional remainder so the ledger cannot retain stale
+    /// progress from the value which was just overwritten.
+    /// </summary>
+    internal static (int NewHealth, double NewRemainder, bool IsLethal) SetDebugValue(
+        double requestedValue,
+        int maxHealth,
+        bool decimalLedgerEnabled
+    )
+    {
+        if (!double.IsFinite(requestedValue))
+            throw new ArgumentOutOfRangeException(nameof(requestedValue));
+
+        var ceiling = maxHealth < 0 ? 0 : maxHealth;
+        var target = Math.Clamp(requestedValue, 0d, ceiling);
+        var newHealth = (int)Math.Truncate(target);
+        var newRemainder = decimalLedgerEnabled ? target - newHealth : 0d;
+        return (newHealth, newRemainder, target <= 0d);
+    }
+
+    /// <summary>
     /// 把余数钳制回真值域 [-health, maxHealth - health]（真值 = 血 + 余数 ∈ [0, maxHealth]）。
     /// 读档播种与每次写血后都必须调用；health ≤ 0 的病态区间整体平移，仍保持真值语义。
     /// </summary>

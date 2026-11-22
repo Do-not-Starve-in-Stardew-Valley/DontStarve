@@ -386,7 +386,9 @@ internal sealed class FlatConfigValueStore
 
     private static string ToJson(ConfigValue value)
     {
-        return value.Type == ConfigOptionType.Boolean
+        // Boolean/Number 的 canonical 文本本身就是合法 JSON 字面量（true/false/裸整数）；
+        // Enum/Keybind 走 JSON 字符串通道。
+        return value.Type is ConfigOptionType.Boolean or ConfigOptionType.Number
             ? value.CanonicalText
             : JsonSerializer.Serialize(value.EnumValue);
     }

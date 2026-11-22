@@ -35,8 +35,17 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private readonly SleepOvernightSettlement overnight = new();
     private readonly HashSet<string> committedPlayers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> pendingWakeDeaths = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int> pendingHiddenHospitalDeaths = new(StringComparer.Ordinal);
-    private readonly HashSet<string> hiddenHospitalReleaseRequested = new(StringComparer.Ordinal);
+    // Pending-darkness 死亡标记（医院直醒方案）：夜里 Default 黑暗死亡登记，随存档落盘锁定；
+    // 次日触发原版 killScreen→PlayerKilled 序列（血 0 边界则委托原版死亡块）。玩家中途退出→
+    // 读档必重演；只有死亡序列确认完成后才把标记移出 pendingDarknessDeaths，下一次存档随
+    // 之把"已完成"覆盖到磁盘（与饿死醒死同型语义，用户决议③）。
+    // 修复1（2026-11-14）：排除时机从"已触发"收紧为"确认完成"——触发即排除会让四条
+    // fail-open 路径（守卫早退/checkForEvents 抛异常/事件未建/180tick 超时）在死亡未完成的
+    // 情况下把标记从磁盘清掉，读档直接跳过死亡（逃课）。会话内防重复触发由
+    // inFlightPendingDarknessWakes + pendingDarknessWakeAttempts 承担，失败重试有界。
+    private readonly Dictionary<string, int> pendingDarknessDeaths = new(StringComparer.Ordinal);
+    private readonly HashSet<string> inFlightPendingDarknessWakes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> pendingDarknessWakeAttempts = new(StringComparer.Ordinal);
     private readonly Action<Farmer>? markHungerDeath;
     private readonly SmapiSleepEngineBridge engineBridge;
     private readonly SleepOwnerHealthState ownerHealth = new();
@@ -124,7 +133,15 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     internal event Action<SleepPlayerSnapshot>? HostSnapshotChanged;
 
-    internal event Action<Farmer>? HiddenHospitalWakeReady;
+    /// <summary>
+    /// Pending-darkness 死亡的清晨触发点，由 AdvancePendingDarknessWake 在两种模式下各触发
+    /// 一次（同会话由在途集合+重试预算防重复）：① 血量&gt;0 且世界稳定（无淡入淡出/事件/
+    /// 菜单/换日协程）→ mod 自有 killScreen→PlayerKilled 序列；② 血量=0 且处于原版死亡块
+    /// 窗口 → 委托原版清晨 0 血死亡块（修复2 双死守卫），处理方只做同日 MarkDarkness 并挂
+    /// 原版剧情观察。读档重演走同一路径。处理方经 PendingDarknessWakeCompleted/Failed 上报
+    /// 结果，完成才从落盘排除、fail-open 保留标记（修复1）。
+    /// </summary>
+    internal event Action<Farmer>? PendingDarknessWakeReady;
 
 
     internal SleepAuthorityRole Role => transportState.Role;
@@ -447,8 +464,9 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         ClearRuntimeOnly(preservePreWorldDeathGate: true);
         overnight.Clear();
         pendingWakeDeaths.Clear();
-        pendingHiddenHospitalDeaths.Clear();
-        hiddenHospitalReleaseRequested.Clear();
+        pendingDarknessDeaths.Clear();
+        inFlightPendingDarknessWakes.Clear();
+        pendingDarknessWakeAttempts.Clear();
         wakeStateCanWrite = true;
         wakeDeathLoadReplayPending = false;
         wakeDeathCauseMarkedPlayerKey = string.Empty;
@@ -470,11 +488,8 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 {
                     foreach (var pair in wake.Normalize(CurrentDay()))
                         pendingWakeDeaths[pair.Key] = pair.Value;
-                    foreach (var pair in wake.NormalizeHiddenHospital(CurrentDay()))
-                    {
-                        pendingWakeDeaths[pair.Key] = pair.Value;
-                        pendingHiddenHospitalDeaths[pair.Key] = pair.Value;
-                    }
+                    foreach (var pair in wake.NormalizePendingDarkness(CurrentDay()))
+                        pendingDarknessDeaths[pair.Key] = pair.Value;
                     PrunePendingWakeDeaths();
                 }
             }
@@ -496,6 +511,10 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             // Client sessions receive the authoritative session id with the first full snapshot.
             clientSleeping.Clear();
             multiplayer.RequestFullSnapshot();
+            // SMAPI ReadSaveData 只在主机电脑可用（DataHelper 的 IsOnHostComputer 门）；农场工
+            // 客户端的 pending-darkness 标记必须由主机下发。客户端在自己读档完成后再请求，
+            // 避免标记先到、随后被本端 SaveLoaded 的 ClearRuntimeOnly 清掉。
+            multiplayer.RequestPendingDarknessWake();
         }
 
         if (!wakeDeathLoadGateArmed)
@@ -557,7 +576,6 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 HungerExtensions.ResumeAfterSleep(farmer);
             }
             ApplyFinalHealth(farmer, result);
-            ApplyHiddenHospitalWakeHealth(farmer);
             // Register the blackout interval only after the existing joint result has been applied;
             // rejected Sanity writes can then retry Saving without consuming the owner phase first.
             if (!survivalTime.AdvanceSleepInterval(
@@ -582,6 +600,11 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             }
             LogRuntimeDiagnostic($"sleep.runtime.pre-save-applied player={input.PlayerKey} hunger={result.Hunger:F3} sanity={result.Sanity:F3} health={farmer.health}");
         }
+        // 非致命昏迷的血量上限记账项（保存前兜底缝）：不建睡眠上下文、不在 overnight 快照
+        // 里，按在线名单直查结算条目；写回点晚于 vanilla dayupdate、早于 SaveGame.Save
+        // 序列化，存档自然携带上限值，读档即上限血量，无需额外存档标记。
+        foreach (var farmer in Game1.getOnlineFarmers())
+            ApplySpecialPassOutWakeHealthAfterDayUpdate(farmer);
         if (wakeStateCanWrite)
         {
             try
@@ -590,7 +613,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 helper.Data.WriteSaveData(WakeStateKey,
                     SleepWakeEffectsData.From(
                         NaturalWakeDeathMarkers(),
-                        pendingHiddenHospitalDeaths,
+                        PendingDarknessWakeDeathMarkers(),
                         CurrentDay()
                     ));
             }
@@ -679,8 +702,6 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     {
         // The values are already in the native save. No numeric delta belongs here.
         ApplyPendingOwnerHealth();
-        foreach (var farmer in Game1.getOnlineFarmers())
-            ApplyHiddenHospitalWakeHealth(farmer);
         PrunePendingWakeDeaths();
         MarkPendingWakeDeaths();
         nightInProgress = false;
@@ -798,7 +819,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         AdvanceWakeDeathLoadGate();
-        AdvanceHiddenHospitalWakeDeath();
+        AdvancePendingDarknessWake();
         if (nightInProgress)
             return;
         if (Role == SleepAuthorityRole.Host && Context.IsMainPlayer)
@@ -825,14 +846,10 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                     if (
                         ResolvePlayer(key) is Farmer awake
                         && awake.health > 0
-                        && !pendingHiddenHospitalDeaths.ContainsKey(key)
                     )
                         completedWakeDeathBuffer.Add(key);
                 foreach (var key in completedWakeDeathBuffer)
-                {
                     pendingWakeDeaths.Remove(key);
-                    pendingHiddenHospitalDeaths.Remove(key);
-                }
             }
         }
         if (Game1.player is null)
@@ -1375,8 +1392,9 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         committedPlayers.Clear();
         ownerHealth.Clear();
         nightInProgress = false;
-        pendingHiddenHospitalDeaths.Clear();
-        hiddenHospitalReleaseRequested.Clear();
+        pendingDarknessDeaths.Clear();
+        inFlightPendingDarknessWakes.Clear();
+        pendingDarknessWakeAttempts.Clear();
         wakeDeathLoadReplayPending = false;
         wakeDeathLoadGateArmed = false;
         wakeDeathLoadGatePlayerKey = string.Empty;
@@ -1390,10 +1408,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
 
     internal bool ShouldSuppressNativeBedHealth(Farmer farmer) =>
         engineBridge.Available && sleepRecoveryBalanceProvider() && HungerExtensions.IsEnabled
-        && (
-            farmer.timeWentToBed.Value != 0 && IsPlayerInSleepContext(PlayerKey(farmer))
-            || pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
-        );
+        && farmer.timeWentToBed.Value != 0 && IsPlayerInSleepContext(PlayerKey(farmer));
 
     internal void OnNativeDayUpdated(Farmer farmer)
     {
@@ -1403,7 +1418,9 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         {
             ApplyFinalHealth(farmer, result);
         }
-        ApplyHiddenHospitalWakeHealth(farmer);
+        // vanilla dayupdate 刚把 health 满血回填：非致命昏迷的血量上限记账项在此缝写回，
+        // 晚于 dayupdate、早于存档序列化（若先写会被 dayupdate 覆盖）。
+        ApplySpecialPassOutWakeHealthAfterDayUpdate(farmer);
         if (farmer.IsLocalPlayer)
             ApplyPendingOwnerHealth();
     }
@@ -1415,8 +1432,50 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
                 ResolveHungerDamageMode(), out var result))
         {
             ApplyFinalHealth(farmer, result);
-            ApplyHiddenHospitalWakeHealth(farmer);
         }
+        // 远端农场工克隆进存档前的最后一缝（dayupdate 之后）：同样补写非致命血量上限，
+        // 覆盖"客户端 dayupdate 满血同步覆盖主机副本"的路径。
+        ApplySpecialPassOutWakeHealthAfterDayUpdate(farmer);
+    }
+
+    /// <summary>
+    /// 特殊昏迷血量记账的保存前最终值写回（宿主权威，三个调用点共用）：
+    /// vanilla dayupdate postfix（本机农夫）、SaveFarmhand prefix（农场工克隆）与 OnSaving
+    /// （保存前兜底，含重试）。承载两类登记（SpecialPassOutSettlementKind）：非致命昏迷的
+    /// 醒来血量上限，与 pending-darkness 死亡的复活血量（revive=10，与饥饿同时机落盘，
+    /// 用户决议 2026-11-14）。非致命语义下饥饿不支付、无恢复单位，血量就是上限值本身，
+    /// 不读取平衡开关；有睡眠上下文的自愿睡眠走 overnight 既有结算，不经过这里。
+    /// </summary>
+    private void ApplySpecialPassOutWakeHealthAfterDayUpdate(Farmer farmer)
+    {
+        if (farmer is null || Role != SleepAuthorityRole.Host || !Context.IsMainPlayer)
+            return;
+        if (!nightInProgress)
+            return;
+        if (
+            !specialPassOutSanitySettlement.TryResolveHealth(
+                SessionId,
+                PlayerKey(farmer),
+                out var wakeHealthCap
+            )
+            || !SpecialPassOutWakeHealthSettlementPolicy.TryResolveFinalHealth(
+                farmer.maxHealth,
+                wakeHealthCap,
+                out var finalHealth
+            )
+        )
+            return;
+        // 睡眠记账收尾的血量回写是 overtime 语义（dayupdate 满血回填压回上限值），
+        // 健康差分 watcher 不播音，与 ApplyFinalHealth 同口径。
+        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
+            farmer.UniqueMultiplayerID,
+            farmer.health,
+            finalHealth
+        );
+        farmer.health = finalHealth;
+        LogRuntimeDiagnostic(
+            $"sleep.runtime.special-wake-health player={PlayerKey(farmer)} health={finalHealth}"
+        );
     }
 
     private void ApplyFinalHealth(Farmer farmer, SleepProgress result)
@@ -1483,7 +1542,6 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             Game1.player is Farmer farmer
             && farmer.health <= 0
             && pendingWakeDeaths.ContainsKey(PlayerKey(farmer))
-            && !pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
         )
         {
             markHungerDeath?.Invoke(farmer);
@@ -1491,7 +1549,13 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         }
     }
 
-    internal bool RegisterHiddenHospitalDeath(Farmer farmer)
+    /// <summary>
+    /// Pending-darkness 死亡登记（夜间 Default 黑暗死亡收尾时调用，主机与农场工本端各登记一份）：
+    /// 标记写入 pendingDarknessDeaths（随下一次 OnSaving 落盘锁定）；TimeLimitPassOut 睡眠结算
+    /// 会话尽力注册，让死者夜间继续走既有睡眠结算（空腹消耗等），注册失败不回滚标记。
+    /// 返回值只反映结算会话是否建立。
+    /// </summary>
+    internal bool RegisterPendingDarknessDeath(Farmer farmer)
     {
         if (
             farmer is null
@@ -1501,13 +1565,30 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             return false;
 
         var playerKey = PlayerKey(farmer);
-        var day = CurrentDay();
-        pendingWakeDeaths[playerKey] = day;
-        pendingHiddenHospitalDeaths[playerKey] = day;
-        hiddenHospitalReleaseRequested.Remove(playerKey);
+        pendingDarknessDeaths[playerKey] = CurrentDay();
+        // 新标记=新死亡实例：在途状态与重试预算一并重置（修复1），同会话内再次黑暗死亡
+        // 不受上一次失败尝试的预算残留影响。
+        inFlightPendingDarknessWakes.Remove(playerKey);
+        pendingDarknessWakeAttempts.Remove(playerKey);
 
         if (Role != SleepAuthorityRole.Host || !Context.IsMainPlayer)
             return true;
+
+        // 复活血量与饥饿同缝落盘（用户决议 2026-11-14）：登记 revive=10 到保存前最终值缝，
+        // dayupdate postfix / SaveFarmhand prefix / OnSaving 会在 vanilla dayupdate 满血回填
+        // 之后写回，存档直接携带复活血量，清晨 vanilla checkForEvents 的再次赋值幂等。
+        // 登记独立于睡眠结算上下文是否建立（标记与死亡语义不因 TryBuildSnapshot 失败回滚）。
+        if (
+            !specialPassOutSanitySettlement.RegisterPendingDarknessWakeHealth(
+                SessionId,
+                playerKey,
+                CurrentDay(),
+                PendingDarknessWakePolicy.VanillaReviveHealth,
+                out var healthReason
+            )
+            && healthReason != "passout.sanity-settlement.duplicate"
+        )
+            LogOnce(healthReason, LogLevel.Error);
 
         var attemptId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         if (
@@ -1529,92 +1610,161 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         return active.ContainsKey(playerKey);
     }
 
-    private void ApplyHiddenHospitalWakeHealth(Farmer farmer)
-    {
-        var playerKey = PlayerKey(farmer);
-        if (!pendingHiddenHospitalDeaths.ContainsKey(playerKey))
-            return;
-
-        StatusFeedbackHealthSuppression.SuppressNextHealthSound(
-            farmer.UniqueMultiplayerID,
-            farmer.health,
-            0
-        );
-        farmer.health = 0;
-        farmer.stamina = 0f;
-        farmer.CanMove = false;
-    }
-
-    private void AdvanceHiddenHospitalWakeDeath()
+    /// <summary>
+    /// Pending-darkness 清晨触发循环（逐 tick）。两个出口，均经 BeginPendingDarknessWakeAttempt
+    /// 登记在途与尝试次数、均只触发一次处理方，结果由 OnPendingDarknessWakeCompleted/Failed
+    /// 上报：<br/>① 血 0 委托（修复2）：先于稳定门判定——原版清晨 0 血死亡块不等世界稳定，
+    /// 淡入期间就会触发，若等稳定门跑完原版死亡已完成、事后稳定门会看到 health=10 再补一刀；
+    /// <br/>② 稳定门：世界完全可交互后的首个 tick 触发 mod 自有序列。不再有 0 血按住——
+    /// 死亡重演不依赖血量，旧隐藏医院跨夜稳定按住/假死 handoff 机器随之废弃。
+    /// </summary>
+    private void AdvancePendingDarknessWake()
     {
         if (Game1.player is not Farmer farmer)
             return;
 
         var playerKey = PlayerKey(farmer);
-        if (
-            hiddenHospitalReleaseRequested.Contains(playerKey)
-            && (farmer.health > 0 || Game1.killScreen)
-        )
-        {
-            pendingHiddenHospitalDeaths.Remove(playerKey);
-            pendingWakeDeaths.Remove(playerKey);
-            hiddenHospitalReleaseRequested.Remove(playerKey);
+        if (!pendingDarknessDeaths.ContainsKey(playerKey))
             return;
-        }
 
-        if (
-            pendingHiddenHospitalDeaths.ContainsKey(playerKey)
-            && farmer.health > 0
-            && Context.IsWorldReady
-            && !Game1.IsFading()
-            && !Game1.eventUp
-            && Game1.activeClickableMenu is null
-            && !Game1.newDay
-            && string.IsNullOrEmpty(Game1.messageAfterPause)
-        )
-        {
-            ApplyHiddenHospitalWakeHealth(farmer);
-            return;
-        }
+        var blockedThisSession = PendingDarknessWakePolicy.IsWakeSequenceBlockedThisSession(
+            inFlight: inFlightPendingDarknessWakes.Contains(playerKey),
+            attempts: pendingDarknessWakeAttempts.TryGetValue(playerKey, out var attempts)
+                ? attempts
+                : 0
+        );
 
+        // 血 0 边界（修复2）：委托原版清晨 0 血死亡块，mod 不再叠加自有 killScreen 序列。
         if (
-            hiddenHospitalReleaseRequested.Contains(playerKey)
-            || !pendingHiddenHospitalDeaths.ContainsKey(playerKey)
-            || !WakeDeathPresentationPolicy.ShouldReleaseHiddenHospital(
+            PendingDarknessWakePolicy.ShouldDelegateDeathToVanilla(
                 markerPresent: true,
-                farmer.health,
-                Game1.killScreen,
-                Context.IsWorldReady,
-                Game1.IsFading(),
-                Game1.eventUp,
-                Game1.activeClickableMenu is not null,
-                Game1.newDay,
-                string.IsNullOrEmpty(Game1.messageAfterPause)
+                healthZero: farmer.health <= 0,
+                vanillaDeathBlockWindow: Game1.timeOfDay < 2600,
+                wakeSequenceBlockedThisSession: blockedThisSession
+            )
+        )
+        {
+            BeginPendingDarknessWakeAttempt(playerKey);
+            LogRuntimeDiagnostic(
+                $"sleep.runtime.pending-darkness-wake delegated-to-vanilla player={playerKey} day={CurrentDay()} health={farmer.health}"
+            );
+            PendingDarknessWakeReady?.Invoke(farmer);
+            return;
+        }
+
+        if (
+            !PendingDarknessWakePolicy.ShouldBeginDeath(
+                markerPresent: true,
+                wakeSequenceBlockedThisSession: blockedThisSession,
+                worldReady: Context.IsWorldReady,
+                isFading: Game1.IsFading(),
+                eventUp: Game1.eventUp,
+                menuOpen: Game1.activeClickableMenu is not null,
+                newDay: Game1.newDay,
+                killScreen: Game1.killScreen,
+                messageAfterPauseEmpty: string.IsNullOrEmpty(Game1.messageAfterPause)
             )
         )
             return;
 
-        hiddenHospitalReleaseRequested.Add(playerKey);
-        HiddenHospitalWakeReady?.Invoke(farmer);
+        BeginPendingDarknessWakeAttempt(playerKey);
+        LogRuntimeDiagnostic(
+            $"sleep.runtime.pending-darkness-wake fired player={playerKey} day={CurrentDay()}"
+        );
+        PendingDarknessWakeReady?.Invoke(farmer);
+    }
+
+    private void BeginPendingDarknessWakeAttempt(string playerKey)
+    {
+        inFlightPendingDarknessWakes.Add(playerKey);
+        pendingDarknessWakeAttempts[playerKey] = pendingDarknessWakeAttempts.TryGetValue(
+            playerKey,
+            out var attempts
+        )
+            ? attempts + 1
+            : 1;
+    }
+
+    /// <summary>死亡序列完成上报（处理方：PlayerKilled 事件建成 / 原版接管观察完成）。
+    /// 完成即把玩家移出在途集合并从 pendingDarknessDeaths 移除——下次存档不再落盘该标记，
+    /// 磁盘上的旧标记随之被覆盖为"已完成"，读档不再重演（修复1：排除只发生在确认完成后）。
+    /// 重复上报（同帧同步+异步观察各一次）按幂等处理。</summary>
+    internal void OnPendingDarknessWakeCompleted(Farmer? farmer)
+    {
+        if (farmer is null)
+            return;
+        var playerKey = PlayerKey(farmer);
+        inFlightPendingDarknessWakes.Remove(playerKey);
+        if (pendingDarknessDeaths.Remove(playerKey))
+        {
+            LogRuntimeDiagnostic(
+                $"sleep.runtime.pending-darkness-wake completed player={playerKey} day={CurrentDay()}"
+            );
+        }
+    }
+
+    /// <summary>死亡序列 fail-open 上报（守卫早退/checkForEvents 抛异常/事件未建/超时/
+    /// 原版观察超时）。玩家移出在途集合允许有界重试；pendingDarknessDeaths 保留——下次
+    /// 存档仍落盘、读档必重演，绝不丢防逃课标记（修复1）。重试预算耗尽时打一次 Warn，
+    /// 标记留给下次读档，不在每 tick 循环里重复刷日志。</summary>
+    internal void OnPendingDarknessWakeFailed(Farmer? farmer)
+    {
+        if (farmer is null)
+            return;
+        var playerKey = PlayerKey(farmer);
+        if (!inFlightPendingDarknessWakes.Remove(playerKey))
+            return;
+        var attempts = pendingDarknessWakeAttempts.TryGetValue(playerKey, out var count)
+            ? count
+            : 0;
+        if (attempts >= PendingDarknessWakePolicy.MaximumAttempts)
+        {
+            monitor.Log(
+                $"Pending-darkness wake death exhausted its {attempts} session attempts for player {playerKey}; the persisted marker is kept and the death will replay on the next save load.",
+                LogLevel.Warn
+            );
+            return;
+        }
+        LogRuntimeDiagnostic(
+            $"sleep.runtime.pending-darkness-wake failed-open player={playerKey} attempts={attempts}"
+        );
+    }
+
+    /// <summary>存档用标记：pendingDarknessDeaths 即"死亡尚未确认完成"的在册集合——完成者
+    /// 已在完成上报时移除（下次存档覆盖磁盘为"已完成"），fail-open 未完成者保留在册（下次
+    /// 存档仍落盘，读档必重演）。修复1（2026-11-14）：排除时机从"已触发"改为"确认完成"，
+    /// 不再按会话触发集合过滤。</summary>
+    private IReadOnlyDictionary<string, int> PendingDarknessWakeDeathMarkers() =>
+        new Dictionary<string, int>(pendingDarknessDeaths, StringComparer.Ordinal);
+
+    /// <summary>主机把当前 pending-darkness 标记下发给农场工（SMAPI ReadSaveData 只在主机
+    /// 电脑可用，远程农场工读不到存档数据）。</summary>
+    internal void SendPendingDarknessWakeSnapshot(long playerId)
+    {
+        multiplayer.SendPendingDarknessWake(playerId, PendingDarknessWakeDeathMarkers());
+    }
+
+    /// <summary>客户端接收主机的 pending-darkness 标记下发并导入本端运行时。</summary>
+    internal void ApplyPendingDarknessWakeSync(IReadOnlyDictionary<string, int> markers)
+    {
+        pendingDarknessDeaths.Clear();
+        inFlightPendingDarknessWakes.Clear();
+        pendingDarknessWakeAttempts.Clear();
+        foreach (var pair in SleepWakeEffectsPolicy.Normalize(
+            markers.Keys,
+            markers is Dictionary<string, int> dictionary ? dictionary : new Dictionary<string, int>(markers),
+            CurrentDay()
+        ))
+        {
+            pendingDarknessDeaths[pair.Key] = pair.Value;
+        }
+        LogRuntimeDiagnostic(
+            $"sleep.runtime.pending-darkness-wake synced players={pendingDarknessDeaths.Count}"
+        );
     }
 
     internal void BeforeNativeFarmerUpdate(Farmer farmer)
     {
-        if (
-            farmer is not null
-            && pendingHiddenHospitalDeaths.ContainsKey(PlayerKey(farmer))
-            && WakeDeathPresentationPolicy.ShouldHoldNativeDeath(
-                WakeDeathPresentationMode.HiddenHospital,
-                markerPresent: true,
-                farmer.health,
-                Game1.killScreen
-            )
-        )
-        {
-            farmer.CanMove = false;
-            return;
-        }
-
         if (
             farmer is null
             || !WakeDeathLoadGatePolicy.ShouldEarlyArm(
@@ -1750,10 +1900,7 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             preWorldDeathLoadGateArmed = false;
             preWorldDeathLoadGatePlayerKey = string.Empty;
             farmer.CanMove = false;
-        if (
-            !pendingHiddenHospitalDeaths.ContainsKey(playerKey)
-            && !string.Equals(wakeDeathCauseMarkedPlayerKey, playerKey, StringComparison.Ordinal)
-        )
+        if (!string.Equals(wakeDeathCauseMarkedPlayerKey, playerKey, StringComparison.Ordinal))
         {
             markHungerDeath?.Invoke(farmer);
             wakeDeathCauseMarkedPlayerKey = playerKey;
@@ -1829,19 +1976,12 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
             // SaveLoaded can run before Game1 has reattached the farmer collection. Retain a
             // valid, recent marker through that transient null; the next tick can then arm the
             // load gate instead of silently losing the death replay context.
-            if (
-                farmer is not null
-                && farmer.health > 0
-                && !pendingHiddenHospitalDeaths.ContainsKey(pair.Key)
-            )
+            if (farmer is not null && farmer.health > 0)
                 remove.Add(pair.Key);
         }
 
         foreach (var key in remove)
-        {
             pendingWakeDeaths.Remove(key);
-            pendingHiddenHospitalDeaths.Remove(key);
-        }
 
         var normalized = SleepWakeEffectsPolicy.Normalize(
             pendingWakeDeaths.Keys,
@@ -1852,26 +1992,20 @@ internal sealed class SmapiSleepLifecycleAdapter : IDisposable
         foreach (var pair in normalized)
             pendingWakeDeaths[pair.Key] = pair.Value;
 
-        var hiddenNormalized = SleepWakeEffectsPolicy.Normalize(
-            pendingHiddenHospitalDeaths.Keys,
-            pendingHiddenHospitalDeaths,
+        // Pending-darkness 标记只按保留天数修剪（玩家血量始终为正，健康度不能作为消费依据；
+        // 消费由死亡序列的完成上报负责：完成即移出 pendingDarknessDeaths，下一次存档覆盖磁盘）。
+        var darknessNormalized = SleepWakeEffectsPolicy.Normalize(
+            pendingDarknessDeaths.Keys,
+            pendingDarknessDeaths,
             currentDay
         );
-        pendingHiddenHospitalDeaths.Clear();
-        foreach (var pair in hiddenNormalized)
-            pendingHiddenHospitalDeaths[pair.Key] = pair.Value;
+        pendingDarknessDeaths.Clear();
+        foreach (var pair in darknessNormalized)
+            pendingDarknessDeaths[pair.Key] = pair.Value;
     }
 
-    private IReadOnlyDictionary<string, int> NaturalWakeDeathMarkers()
-    {
-        var natural = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var pair in pendingWakeDeaths)
-        {
-            if (!pendingHiddenHospitalDeaths.ContainsKey(pair.Key))
-                natural[pair.Key] = pair.Value;
-        }
-        return natural;
-    }
+    private IReadOnlyDictionary<string, int> NaturalWakeDeathMarkers() =>
+        new Dictionary<string, int>(pendingWakeDeaths, StringComparer.Ordinal);
 
     private static int CurrentDay() => Math.Max(0, Game1.Date.TotalDays);
 

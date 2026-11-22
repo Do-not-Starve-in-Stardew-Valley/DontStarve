@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using DontStarve.Player.Combat.CombatAutomation;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -122,7 +123,7 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
         // 挂起期间的点击属于界面点击，同样忽略。
         if (e.Button is not (SButton.MouseLeft or SButton.MouseRight))
             return;
-        if (IsGameInteractionSuspended())
+        if (CombatInputGuards.IsGameInteractionSuspended())
             return;
         var player = Game1.player;
         if (player is null || !player.IsLocalPlayer)
@@ -172,8 +173,55 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
 
         // 挂起：菜单（背包/设置/对话）、游戏暂停、窗口失焦期间冻结相位机与待机计时——
         // 不取消、不清理、不推进，解除后原地恢复（用户口径：暂停后循环也暂停）。
-        if (IsGameInteractionSuspended())
+        if (CombatInputGuards.IsGameInteractionSuspended())
             return;
+
+        // ── 原版 2 点/力竭昏睡接管 ──
+        // 放在 tier 检查之前：2 点时刻即使 tier 快照瞬时不可用，昏睡让位也必须执行。
+        if (rules.IsActive && (Game1.timeOfDay >= 2600 || player.stamina <= -15f))
+        {
+            if (player.FarmerSprite.currentSingleAnimation == VanillaPassOutAnimationToken)
+            {
+                // 原版 293 已干净接管（我们处于受惊段等非帧 5 阶段时被触发）：那条流程会
+                // 结束当天，只取消自身状态，绝不触碰精灵。
+                rules.Cancel();
+                rules.ResetIdle();
+                LogOnce(
+                    "panic.vanilla-passout-standby",
+                    $"{LogPrefix} vanilla passout took over the sprite; loop stood down.",
+                    LogLevel.Info
+                );
+                return;
+            }
+
+            // 原版触发被我们的倒地末帧（帧 5）吞掉：isPassingOut() 启发式把任何显示帧 5 的
+            // single animation 当作"正在昏睡"，performPassOut 因此跳过 animateOnce(293)，
+            // 只留下 freezePause=7000——表现为冻结约 7 秒后才真正昏迷（实机反馈的卡顿）。
+            // 这里立刻清掉帧 5 并替原版重发 startToPassOut，真正的 293 昏睡即刻开始；
+            // 重发刻意不检查 freezePause（那个 7000 正是被吞的这次触发自己设下的），其余
+            // 门控与原版 2600 分支一致。
+            rules.Cancel();
+            rules.ResetIdle();
+            player.completelyStopAnimatingOrDoingAction();
+            if (
+                !player.FarmerSprite.isPassingOut()
+                && player.CanMove
+                && !player.UsingTool
+                && !Game1.eventUp
+                && Game1.locationRequest is null
+                && Game1.activeClickableMenu is null
+                && Game1.currentMinigame is null
+            )
+            {
+                player.startToPassOut();
+                LogOnce(
+                    "panic.vanilla-passout-refired",
+                    $"{LogPrefix} re-fired the vanilla passout after clearing our frame-5 collapse (no 7s freeze).",
+                    LogLevel.Info
+                );
+            }
+            return;
+        }
 
         var playerKey = SanityPlayerKey.FromUniqueMultiplayerId(player.UniqueMultiplayerID);
         SanityTierOwnerStateSnapshot? tier = null;
@@ -191,25 +239,10 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
             return;
         }
 
-        // 真实原版昏睡（凌晨 2 点/力竭）接管了 293 token。那条流程会结束当天，必须让位，
-        // 也不能在下一个相位边界用 completelyStop 打断它。
-        if (
-            rules.IsActive
-            && player.FarmerSprite.currentSingleAnimation == VanillaPassOutAnimationToken
-        )
-        {
-            rules.Cancel();
-            rules.ResetIdle();
-            LogOnce(
-                "panic.vanilla-passout-standby",
-                $"{LogPrefix} vanilla passout took over the sprite; loop stood down.",
-                LogLevel.Info
-            );
-            return;
-        }
-
         var elapsed = Game1.currentGameTime?.ElapsedGameTime ?? TimeSpan.Zero;
-        var interruption = DescribePanicInterruption(player);
+        // 挂起/打断守卫已提取为共享类 CombatInputGuards（战斗自动化复用同一口径），
+        // 本类不再保留私有副本；语义与返回值以共享类为准（行为零变化的重构）。
+        var interruption = CombatInputGuards.DescribePanicInterruption(player);
         rules.ObserveIdle(elapsed, interrupted: interruption is not null);
 
         if (!rules.IsActive)
@@ -277,62 +310,6 @@ internal sealed class SanityIdlePanicLoopService : IDisposable
             $"{LogPrefix} started (sanity={currentSanity:0.#}/{maximumSanity:0.#}).",
             LogLevel.Info
         );
-    }
-
-    /// <summary>
-    /// 惊恐循环专用的"操作中"判定。按用户口径只保留会改变角色动画状态的操作信号：
-    /// 移动、使用工具/弹弓、进食、传送与画面过渡、事件/小游戏、骑马、坐家具、游泳、
-    /// 引擎控制锁（freezePause/CanMove）。菜单开关、窗口失焦走"挂起"（见
-    /// IsGameInteractionSuspended），不在此打断；受击无敌与原始按键输入同样不算操作。
-    /// 基础动画/foreign single-animation 姿势不在判定内：原版 IsPlayingBasicAnimation 的
-    /// 静立判定要求呼吸帧，不能当空闲信号；循环是接管式表现，启动时自己 completelyStop
-    /// 精灵。
-    /// </summary>
-    /// <summary>
-    /// 挂起判定：存在可交互菜单（背包/设置/确认对话）、游戏暂停或窗口失焦时，惊恐循环整体
-    /// 冻结——相位与待机计时都不推进，解除后原地恢复。与打断不同：打断会取消循环并重置
-    /// 计时，挂起只冻结现场。
-    /// </summary>
-    private static bool IsGameInteractionSuspended()
-    {
-        return Game1.activeClickableMenu is not null
-            || Game1.paused
-            || (Game1.game1 is not null && !Game1.game1.IsActiveNoOverlay);
-    }
-
-    private static string? DescribePanicInterruption(Farmer player)
-    {
-        if (!Context.IsWorldReady)
-            return "world-not-ready";
-        if (Game1.eventUp || Game1.CurrentEvent is not null || Game1.farmEvent is not null)
-            return "event-active";
-        if (Game1.currentMinigame is not null)
-            return "minigame";
-        if (Game1.isWarping)
-            return "warping";
-        if (Game1.fadeToBlack)
-            return "fade-to-black";
-        if (Game1.killScreen)
-            return "kill-screen";
-        if (player.UsingTool)
-            return SanityIdlePanicInterruptionPolicy.UsingToolReason;
-        if (player.usingSlingshot)
-            return SanityIdlePanicInterruptionPolicy.UsingSlingshotReason;
-        if (player.isEating)
-            return SanityIdlePanicInterruptionPolicy.EatingReason;
-        if (player.freezePause > 0)
-            return $"freezePause={player.freezePause}";
-        if (!player.CanMove)
-            return "cannot-move";
-        if (player.isMoving() || player.movementDirections.Count > 0)
-            return "moving";
-        if (player.isRidingHorse())
-            return "riding-horse";
-        if (player.IsSitting())
-            return "sitting";
-        if (player.swimming.Value)
-            return "swimming";
-        return null;
     }
 
     private static void BeginFaint(Farmer player)

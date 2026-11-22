@@ -757,6 +757,15 @@ internal static class ActivityMusicActionBridge
         HoeObservation __state
     )
     {
+        // 农场/温室锄地维持"翻出新耕地"成功信号门，进耕种车道；其余地点（含姜岛农场）
+        // 锄头就是挖掘工具，按用户 2026-11-17 裁决"只要挖了就发声"：每次实际挥锄
+        // （DoFunction 被调用）都记工作，不要求翻出土、挖出斑点或粘土。
+        if (!ActivityMusicService.IsHoeFarmingLocation(location))
+        {
+            ActivityMusicService.RecordWork(who, location, "tool.hoe.swing");
+            return;
+        }
+
         foreach (var pair in location.terrainFeatures.Pairs)
         {
             if (pair.Value is HoeDirt && !__state.ExistingHoeDirtTiles.Contains(pair.Key))

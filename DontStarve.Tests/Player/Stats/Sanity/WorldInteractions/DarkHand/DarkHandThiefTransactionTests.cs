@@ -123,15 +123,13 @@ public sealed class DarkHandThiefTransactionTests
     }
 
     [Fact]
-    public void GmcmTooltipExplicitlyWarnsThatDeletionIsPermanentAndUnrecoverable()
+    public void GmcmTooltipUsesTheCurrentApprovedEnglishAndChineseCopy()
     {
         var english = ReadI18n(DefaultI18nPath)["config.dark-hand-mode.tooltip"];
         var chinese = ReadI18n(ChineseI18nPath)["config.dark-hand-mode.tooltip"];
 
-        Assert.Contains("permanently stop", english, StringComparison.Ordinal);
-        Assert.Contains("cannot be recovered", english, StringComparison.Ordinal);
-        Assert.Contains("永久停止", chinese, StringComparison.Ordinal);
-        Assert.Contains("无法恢复", chinese, StringComparison.Ordinal);
+        Assert.Equal("Affects how Dark Hands interact with the world.", english);
+        Assert.Equal("影响暗影之手与世界的交互方式", chinese);
     }
 
     [Fact]

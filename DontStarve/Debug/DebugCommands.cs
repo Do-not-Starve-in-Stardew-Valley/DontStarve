@@ -16,7 +16,7 @@ namespace DontStarve.Debug;
 /// DIAG-20260804: 测试辅助控制台命令。
 /// - ds_sanity set &lt;值&gt; / set &lt;百分比&gt;% / max / min / lock
 /// - ds_spawn &lt;名字&gt; / clear（鼠标指针处生成，支持真实影怪与幻觉）
-/// - ds_boxes on/off（碰撞箱高亮，默认开启；红=攻击框，绿=受击框，黄=PushBox）
+/// - ds_boxes on/off（碰撞箱高亮，默认关闭；红=攻击框，绿=受击框，黄=PushBox）
 /// - ds_attacklog on/off（攻击判定诊断日志，默认关闭；开启后采样 256 条）
 /// 仅用于测试阶段；不影响生产逻辑路径（Sanity 走 Administration 源，影怪走 DebugSpawnAt）。
 /// </summary>
@@ -34,8 +34,8 @@ internal sealed class DebugCommands
     private readonly SanitySystemLifecycleCoordinator sanityLifecycle;
     private readonly HungerDebugController hungerDebugController;
 
-    // DIAG-20260804: 测试用碰撞箱高亮开关，默认开启（用户要求测试阶段默认显示）。
-    private static bool boxesVisible = true;
+    // 调试绘制默认关闭；需要校准碰撞数据时再通过 ds_boxes on 显式开启。
+    private static bool boxesVisible = false;
 
     internal static bool AreBoxesVisible => boxesVisible;
 
@@ -77,7 +77,7 @@ internal sealed class DebugCommands
         );
         helper.ConsoleCommands.Add(
             BoxesCommand,
-            "测试：碰撞箱高亮开关。用法：ds_boxes on|off（默认 on；红=攻击框，绿=受击框，黄=PushBox）",
+            "测试：碰撞箱高亮开关。用法：ds_boxes on|off（默认 off；红=攻击框，绿=受击框，黄=PushBox）",
             OnBoxesCommand
         );
         helper.ConsoleCommands.Add(

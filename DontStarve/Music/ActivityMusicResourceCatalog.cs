@@ -113,12 +113,12 @@ internal static class ActivityMusicResourceCatalog
             Entry("combat.island.ginger_island_volcanic", "island", ActivityMusicKind.Combat, "ginger_island_volcanic", "sw_dry_fight.ogg"),
             Entry("combat.island.ginger_island_mild", "island", ActivityMusicKind.Combat, "ginger_island_mild", "sw_mild_fight.ogg"),
             Entry("combat.island.ginger_island_hurricane", "island", ActivityMusicKind.Combat, "ginger_island_hurricane", "sw_hurricane_fight.ogg"),
-            // Shipwrecked has no separate farming lane: the island farm reuses the same season's
-            // working theme, exactly like the shared `ds_farming_work.ogg` on the valley farm.
-            Entry("farming.island-farm.ginger_island_rain", "island-farm", ActivityMusicKind.Farming, "ginger_island_rain", "sw_monsoon_work.ogg"),
-            Entry("farming.island-farm.ginger_island_volcanic", "island-farm", ActivityMusicKind.Farming, "ginger_island_volcanic", "sw_dry_work.ogg"),
-            Entry("farming.island-farm.ginger_island_mild", "island-farm", ActivityMusicKind.Farming, "ginger_island_mild", "sw_mild_work.ogg"),
-            Entry("farming.island-farm.ginger_island_hurricane", "island-farm", ActivityMusicKind.Farming, "ginger_island_hurricane", "sw_hurricane_work.ogg"),
+            // 姜岛没有专用耕种曲（用户 2026-11-17 裁决）：姜岛农场（IslandWest）的耕种行为
+            // 与普通农场共用同一首季节无关的 DST busy 主题，四个姜岛季节键只是选键别名。
+            Entry("farming.farm.ginger_island_rain", "farm", ActivityMusicKind.Farming, "ginger_island_rain", "ds_farming_work.ogg"),
+            Entry("farming.farm.ginger_island_volcanic", "farm", ActivityMusicKind.Farming, "ginger_island_volcanic", "ds_farming_work.ogg"),
+            Entry("farming.farm.ginger_island_mild", "farm", ActivityMusicKind.Farming, "ginger_island_mild", "ds_farming_work.ogg"),
+            Entry("farming.farm.ginger_island_hurricane", "farm", ActivityMusicKind.Farming, "ginger_island_hurricane", "ds_farming_work.ogg"),
         };
 
     private static readonly IReadOnlyDictionary<string, string> greenhouseAliases =

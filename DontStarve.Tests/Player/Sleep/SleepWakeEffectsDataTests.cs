@@ -84,21 +84,21 @@ public sealed class SleepWakeEffectsDataTests
     }
 
     [Fact]
-    public void Hidden_hospital_markers_are_read_without_changing_legacy_hunger_markers()
+    public void Pending_darkness_markers_are_read_without_changing_legacy_hunger_markers()
     {
         var data = new SleepWakeEffectsData
         {
             HungerDeaths = new List<string> { "1" },
-            HiddenHospitalDeaths = new List<string> { "2" },
-            HiddenHospitalDeathDays = new Dictionary<string, int> { ["2"] = 100 },
+            PendingDarknessDeaths = new List<string> { "2" },
+            PendingDarknessDeathDays = new Dictionary<string, int> { ["2"] = 100 },
         };
 
         Assert.Equal(new[] { "1" }, data.Normalize(currentDay: 100).Keys);
-        Assert.Equal(new[] { "2" }, data.NormalizeHiddenHospital(currentDay: 100).Keys);
+        Assert.Equal(new[] { "2" }, data.NormalizePendingDarkness(currentDay: 100).Keys);
     }
 
     [Fact]
-    public void From_writes_hidden_hospital_markers_with_the_same_bounded_retention()
+    public void From_writes_pending_darkness_markers_with_the_same_bounded_retention()
     {
         var data = SleepWakeEffectsData.From(
             new Dictionary<string, int> { ["1"] = 100 },
@@ -107,7 +107,33 @@ public sealed class SleepWakeEffectsDataTests
         );
 
         Assert.Equal(new[] { "1" }, data.HungerDeaths);
-        Assert.Equal(new[] { "2" }, data.HiddenHospitalDeaths);
-        Assert.Equal(100, data.HiddenHospitalDeathDays["2"]);
+        Assert.Equal(new[] { "2" }, data.PendingDarknessDeaths);
+        Assert.Equal(100, data.PendingDarknessDeathDays["2"]);
+    }
+
+    [Fact]
+    public void Legacy_hidden_hospital_fields_are_ignored_and_never_replayed()
+    {
+        // HiddenHospital 机器废弃（2026-11-13）：旧档残留的 HiddenHospitalDeaths 键反序列化时
+        // 被安全忽略，不得映射进任何标记字典，也不得触发死亡重演。
+        var data = new SleepWakeEffectsData
+        {
+            HungerDeaths = new List<string> { "1" },
+            PendingDarknessDeaths = new List<string> { "2" },
+        };
+
+        Assert.Equal(new[] { "1" }, data.Normalize(100).Keys);
+        Assert.Equal(new[] { "2" }, data.NormalizePendingDarkness(100).Keys);
+        Assert.Equal(
+            new HashSet<string>
+            {
+                "SchemaVersion",
+                "HungerDeaths",
+                "HungerDeathDays",
+                "PendingDarknessDeaths",
+                "PendingDarknessDeathDays",
+            },
+            typeof(SleepWakeEffectsData).GetProperties().Select(property => property.Name).ToHashSet()
+        );
     }
 }

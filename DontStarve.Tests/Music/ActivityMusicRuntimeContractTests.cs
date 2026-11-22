@@ -211,6 +211,58 @@ public sealed class ActivityMusicRuntimeContractTests
     }
 
     [Fact]
+    public void Hoe_swing_routes_to_work_outside_farm_identity_and_gated_farming_on_farm()
+    {
+        // 锄地分流（用户 2026-11-17 两次裁决）：
+        // ① 农场/温室：维持"翻出新耕地"成功信号门 → 耕种车道。
+        // ② 其余地点（含姜岛农场）：锄头是挖掘工具，"只要挖了就发声"——每次实际挥锄
+        //    都记工作，不要求翻出土、挖出斑点或粘土。
+        // ③ 姜岛农场仅锄地算工作；种植/浇水/收获仍走耕种车道（IslandWest 已纳入
+        //    IsFarmingLocation，见 FarmingGateRequiresFarmIdentityGreenhouseOrIslandWest）。
+        var service = ReadContract("ActivityMusicService.cs");
+        Assert.Contains(
+            "internal static bool IsHoeFarmingLocation(GameLocation? location)",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "IsFarmingLocation(location) && location is not IslandWest",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain(
+            "internal static void RecordHoe(",
+            service,
+            StringComparison.Ordinal
+        );
+
+        var bridge = ReadContract("ActivityMusicActionBridge.cs");
+        var hoePostfixStart = bridge.IndexOf(
+            "private static void HoePostfix(",
+            StringComparison.Ordinal
+        );
+        var hoeDirtPrefixStart = bridge.IndexOf(
+            "private static void HoeDirtToolActionPrefix(",
+            hoePostfixStart < 0 ? 0 : hoePostfixStart,
+            StringComparison.Ordinal
+        );
+        Assert.True(hoePostfixStart >= 0);
+        Assert.True(hoeDirtPrefixStart > hoePostfixStart);
+        var hoePostfix = bridge[hoePostfixStart..hoeDirtPrefixStart];
+        Assert.Contains("IsHoeFarmingLocation(location)", hoePostfix, StringComparison.Ordinal);
+        Assert.Contains(
+            "RecordWork(who, location, \"tool.hoe.swing\")",
+            hoePostfix,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "RecordFarming(who, location, \"farming.hoe.success\")",
+            hoePostfix,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
     public void Dawn_and_dusk_phase_edges_add_a_shared_work_farming_protection_window()
     {
         var source = ReadContract("ActivityMusicService.cs");
@@ -313,6 +365,25 @@ public sealed class ActivityMusicRuntimeContractTests
     }
 
     [Fact]
+    public void VanillaMusicLease_uses_shared_background_ambient_exclusion_before_acquiring_fade_lease()
+    {
+        var source = ReadContract("ActivityMusicVanillaMusicLease.cs");
+
+        Assert.Contains(
+            "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.True(
+            source.IndexOf(
+                "VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve",
+                StringComparison.Ordinal
+            )
+            < source.IndexOf("pausedCue = cue", StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
     public void CompletedInstancesReplayOnlyWhileTheSameLogicalOwnerStateIsActive()
     {
         var source = ReadContract("ActivityMusicAudioService.cs");
@@ -357,6 +428,99 @@ public sealed class ActivityMusicRuntimeContractTests
         Assert.Contains("ActivityMusicActionBridge.ClearActiveFishing();", service, StringComparison.Ordinal);
         Assert.Contains("foreach (var ownerId in StateStore.Advance(1))", service, StringComparison.Ordinal);
         Assert.Contains("ActivityMusicAudioService.FadeOutOwner(ownerId)", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Disabled_farming_music_downgrades_farming_triggers_to_work_triggers()
+    {
+        // EnableFarmingMusic（用户 2026-11-21 裁决）：四季音乐总开关下的半独立子开关。
+        // 关闭时耕种触发在 RecordFarming 入口整体降级为工作触发——播当前地点的工作曲并
+        // 遵守工作车道天黑封印；关闭瞬间立即退役所有耕种逻辑态与耕耘曲实例，不留旧行为尾巴。
+        var source = ReadContract("ActivityMusicService.cs");
+        var farmingStart = source.IndexOf(
+            "internal static void RecordFarming",
+            StringComparison.Ordinal
+        );
+        var combatStart = source.IndexOf(
+            "internal static void RecordCombat",
+            farmingStart,
+            StringComparison.Ordinal
+        );
+        Assert.True(farmingStart >= 0);
+        Assert.True(combatStart > farmingStart);
+        var farming = source[farmingStart..combatStart];
+
+        Assert.Contains("if (!farmingMusicEnabled)", farming, StringComparison.Ordinal);
+        Assert.Contains("RecordWork(owner, location, reason)", farming, StringComparison.Ordinal);
+        Assert.Contains(
+            "internal static void SetFarmingMusicEnabled(bool value)",
+            farming,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("StateStore.RemoveFarmingAll()", farming, StringComparison.Ordinal);
+        Assert.Contains(
+            "ActivityMusicAudioService.StopFarmingPlayback()",
+            farming,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void Farming_music_toggle_off_reuses_the_fade_path_for_farming_playbacks()
+    {
+        // 关闭耕种音乐不得硬切正在播的耕耘曲：必须走既有 BeginFadeOut 淡出路径，
+        // 且只动 Farming 车道实例，Work/Combat/Boss 不受牵连。
+        var audio = ReadContract("ActivityMusicAudioService.cs");
+        var start = audio.IndexOf(
+            "internal static void StopFarmingPlayback",
+            StringComparison.Ordinal
+        );
+        var end = audio.IndexOf(
+            "internal static void FadeOutOwner",
+            start,
+            StringComparison.Ordinal
+        );
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        var method = audio[start..end];
+
+        Assert.Contains(
+            "playback.Kind != ActivityMusicKind.Farming",
+            method,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("BeginFadeOut(playback)", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("StopAndDispose", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Farming_music_toggle_off_only_removes_farming_states()
+    {
+        // 状态侧同样只清耕种态：RemoveFarmingAll 不得吞掉 Work/Combat/Boss 逻辑态。
+        var state = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "Contracts", "ActivityMusic", "ActivityMusicStateStore.cs")
+        );
+
+        Assert.Contains(
+            "internal void RemoveFarmingAll()",
+            state,
+            StringComparison.Ordinal
+        );
+        var start = state.IndexOf("internal void RemoveFarmingAll()", StringComparison.Ordinal);
+        var end = state.IndexOf(
+            "internal IReadOnlyList<long> Advance",
+            start,
+            StringComparison.Ordinal
+        );
+        Assert.True(start >= 0);
+        Assert.True(end > start);
+        var method = state[start..end];
+        Assert.Contains(
+            "pair.Value.Kind != ActivityMusicKind.Farming",
+            method,
+            StringComparison.Ordinal
+        );
+        Assert.DoesNotContain("states.Clear()", method, StringComparison.Ordinal);
     }
 
     private static string ReadContract(string fileName)

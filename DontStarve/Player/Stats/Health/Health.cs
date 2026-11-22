@@ -51,7 +51,9 @@ internal sealed class Health : IStat, ISurvivalStateTimeBehavior<Farmer>
     private readonly string modId;
     private readonly TypedConfigResolver? configResolver;
     private readonly Wearing wearing = new();
-    private readonly HashSet<int> loggedExternalDeltas = new();
+    // (delta, health) 二元组去重：只按 delta 去重会吞掉"同差额、不同绝对血量"的关键日志
+    // （黑暗链取证时它把医院复活前后的外部变化合并成一条）。
+    private readonly HashSet<(int Delta, int Health)> loggedExternalDeltas = new();
     private readonly HealthPersistenceStore persistenceStore = new();
 
     // 主机权威状态（决议 6）：所有玩家（含主机自己与所有农场工）的余数按
@@ -326,6 +328,84 @@ internal sealed class Health : IStat, ISurvivalStateTimeBehavior<Farmer>
         decimalModeActive = enabled;
     }
 
+    /// <summary>
+    /// 「饥荒风格生命值」小数账本门控（2026-11-13 决议）：供 ModEntry 装配黑暗袭击结算
+    /// 服务时以闭包读取。先 SyncDecimalMode 刷新再返回，保证与 SettleEvent 的分流同源——
+    /// 若两处各自读配置，开关翻转窗口内会出现"掷骰口径"与"落账口径"的分歧。
+    /// </summary>
+    internal bool ShouldUseDecimalLedger()
+    {
+        SyncDecimalMode();
+        return decimalModeActive;
+    }
+
+    /// <summary>
+    /// 黑暗袭击期望值零头交付（2026-11-13 决议）：主机在黑暗袭击结算后把 -0.05/次交给
+    /// SettleEvent 统一落账——它已带主机自己/农场工分流、小数/整数模式分流、判死与
+    /// LedgerSync 下达，这里不得重复实现。玩家不在线（取不到 Farmer）直接丢弃，代价
+    /// ≤ 0.05。整数模式下 Truncate(-0.05)=0 天然无操作，这是防门控分歧的 fail-safe：
+    /// darkness 门控与 Health 门控短暂不一致时不会产生整数血量抖动。
+    /// </summary>
+    internal void ApplyDecimalDamageFraction(long playerId, double fractionDelta)
+    {
+        SyncDecimalMode();
+        var farmer = Game1.GetPlayer(playerId, onlyOnline: true);
+        if (farmer is null)
+            return;
+        SettleEvent(farmer, fractionDelta, "黑暗袭击期望值零头");
+    }
+
+    internal (double Current, int Maximum) GetDebugSnapshot()
+    {
+        if (Game1.player is not { } player)
+            return (0d, 0);
+
+        SyncDecimalMode();
+        var remainder = Context.IsMainPlayer
+            ? GetAuthorityRemainder(KeyOf(player.UniqueMultiplayerID))
+            : clientRemainder;
+        return (player.health + remainder, player.maxHealth);
+    }
+
+    internal bool TrySetDebugValue(
+        double requestedValue,
+        out double currentValue,
+        out int maximumValue,
+        out bool isLethal
+    )
+    {
+        currentValue = 0d;
+        maximumValue = 0;
+        isLethal = false;
+        if (
+            !Context.IsWorldReady
+            || !Context.IsMainPlayer
+            || !sessionLoaded
+            || !double.IsFinite(requestedValue)
+            || Game1.player is not { } player
+        )
+        {
+            return false;
+        }
+
+        SyncDecimalMode();
+        var result = HealthLedgerRules.SetDebugValue(
+            requestedValue,
+            player.maxHealth,
+            decimalModeActive
+        );
+        player.health = result.NewHealth;
+        SetAuthorityRemainder(KeyOf(player.UniqueMultiplayerID), result.NewRemainder);
+        lastSeenHealth = result.NewHealth;
+        if (result.IsLethal)
+            LogDeath("控制台调试命令");
+
+        currentValue = result.NewHealth + result.NewRemainder;
+        maximumValue = player.maxHealth;
+        isLethal = result.IsLethal;
+        return true;
+    }
+
     private void Load(IModHelper helper)
     {
         if (!TryGetSaveIdentity(out var saveIdentity))
@@ -580,7 +660,7 @@ internal sealed class Health : IStat, ISurvivalStateTimeBehavior<Farmer>
             // 主机：外部改动零折叠——怪物伤害/睡觉回血/升级/其它 mod 都直接动 Farmer.health，
             // 真值不变量自动吸收；这里绝不把差额写进余数（会双计）。只按 delta 值去重打一条
             // Debug 日志（影怪兼容修复条款 6 的先例）；我方结算已同步 lastSeenHealth，不会走到这里。
-            if (decimalModeActive && loggedExternalDeltas.Add(delta))
+            if (decimalModeActive && loggedExternalDeltas.Add((delta, player.health)))
             {
                 monitor.Log(
                     $"外部血量变化 {delta:+0;-0} 已被真值不变量自动吸收（health={player.health}, 余数={GetAuthorityRemainder(KeyOf(player.UniqueMultiplayerID))}）。",

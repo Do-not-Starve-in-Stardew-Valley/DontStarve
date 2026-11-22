@@ -1,4 +1,4 @@
-﻿{
+{
     "24": 3,//蔬菜
     "188": 0,
     "192": -5,
@@ -25,7 +25,7 @@
     "259": 3,
     "DS_Asparagus": 0,
     "DS_Onion": -10,
-    "DS_Kelp_Fronds": 0,
+    "DS_Ripe_Stone_Fruit": 0,
     "DS_Mandrake": 0,
 
 //烤蔬菜（待填写）
@@ -444,7 +444,7 @@
     "DS_Ratatouille": 5,
     "DS_Salsa_Fresca": 33,
     "DS_Seafood_Gumbo": 20,
-    "DS_Soothing_Tea": "45",
+    "DS_Soothing_Tea": 15,
     "DS_Spicy_Chili": 0,
     "DS_Stuffed_Eggplant": 5,
     "DS_Stuffed_Fish_Heads": 0,

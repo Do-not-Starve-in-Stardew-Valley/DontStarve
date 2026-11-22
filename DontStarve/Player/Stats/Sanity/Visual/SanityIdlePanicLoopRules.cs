@@ -38,7 +38,8 @@ internal sealed class SanityIdlePanicLoopRules
     internal static readonly TimeSpan FaintPhaseDuration = CreateFaintPhaseDuration();
     internal static readonly TimeSpan StartledPhaseDuration = TimeSpan.FromMilliseconds(1800);
 
-    // 与 SanityVisualController 的低理智 idle 判定同一口径：严格小于 50% 才进入循环。
+    // 与 SanityVisualController 的低理智 idle 判定同一口径：小于等于 50% 才进入循环
+    // （卡线归更疯一侧，与 ShadowCreatures tier 的含边界进入保持一致）。
     internal const double SanityEligibleRatio = 0.5d;
 
     // 惊恐循环自己的待机阈值。刻意不复用 SanityIdleDetector：后者的中断契约包含
@@ -118,7 +119,7 @@ internal sealed class SanityIdlePanicLoopRules
 
     internal static bool IsSanityEligible(double current, double maximum)
     {
-        return maximum > 0d && current / maximum < SanityEligibleRatio;
+        return maximum > 0d && current / maximum <= SanityEligibleRatio;
     }
 
     private static TimeSpan CreateFaintPhaseDuration()

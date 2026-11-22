@@ -133,11 +133,11 @@ public sealed class SanitySystemLifecycleCoordinatorTests
         lifecycle.TierStateObserved += observed.Add;
         lifecycle.StateEventPublished += tierEvents.Add;
 
-        var result = service.Change(OwnerA, -1d, SanityChangeSource.Night);
+        var result = service.Change(OwnerA, -0.99d, SanityChangeSource.Night);
 
         Assert.Equal(SanityChangeStatus.Applied, result.Status);
         var snapshot = Assert.Single(observed);
-        Assert.Equal(120d, snapshot.Current);
+        Assert.Equal(120.01d, snapshot.Current);
         Assert.Equal(1, snapshot.Revision);
         Assert.Empty(tierEvents);
     }

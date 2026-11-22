@@ -14,6 +14,48 @@ using StardewValley.Locations;
 namespace DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 
 /// <summary>
+/// 一次 DrawLighting 的绘制上下文。两种模式共用同一插值出口：
+/// <list type="bullet">
+/// <item>Relative（黑暗路径，氛围关闭）：applied = Lerp(原生底色, 白, Progress)——进度受计划
+/// 上限钳制（矿井黄昏 0.30 / 全黑 1.0），逐字节同 2026-08-18 以来的旧行为。</item>
+/// <item>Absolute（氛围路径，2026-11-17）：applied = Target——服务端按计划时长推进的当前色
+/// （DST 环境光换算减色），跨计划连续，矿井色不再相对原生底色混合。</item>
+/// </list>
+/// </summary>
+internal readonly struct NaturalDarknessDrawContext
+{
+    private NaturalDarknessDrawContext(
+        bool hasPlan,
+        bool absolute,
+        float progress,
+        Color target
+    )
+    {
+        HasPlan = hasPlan;
+        Absolute = absolute;
+        Progress = progress;
+        Target = target;
+    }
+
+    public bool HasPlan { get; }
+
+    public bool Absolute { get; }
+
+    public float Progress { get; }
+
+    public Color Target { get; }
+
+    public static NaturalDarknessDrawContext None { get; } =
+        new(false, false, 0f, Color.White);
+
+    public static NaturalDarknessDrawContext Relative(float progress) =>
+        new(true, false, progress, Color.White);
+
+    public static NaturalDarknessDrawContext FromAbsolute(Color target) =>
+        new(true, true, 1f, target);
+}
+
+/// <summary>
 /// Applies a plan to Stardew's own native base-light inputs only while DrawLighting builds the
 /// lightmap. Outdoors read outdoorLight, ordinary interiors read ambientLight, and MineShaft
 /// supplies a per-level color; all three paths must be covered for the same natural-darkness rule
@@ -21,7 +63,7 @@ namespace DontStarve.Player.Stats.Sanity.Illusions.Lighting;
 /// </summary>
 internal static class NaturalDarknessLightmapPatch
 {
-    private static Func<int, double>? progressProvider;
+    private static Func<int, NaturalDarknessDrawContext>? contextProvider;
     private static IMonitor? monitor;
     private static bool providerFailureLogged;
     private static MethodInfo? mineLightingGetter;
@@ -36,7 +78,7 @@ internal static class NaturalDarknessLightmapPatch
     internal static bool TryInstall(
         Harmony harmony,
         IMonitor patchMonitor,
-        Func<int, double> provider
+        Func<int, NaturalDarknessDrawContext> provider
     )
     {
         if (harmony is null)
@@ -107,7 +149,7 @@ internal static class NaturalDarknessLightmapPatch
 
         try
         {
-            progressProvider = provider;
+            contextProvider = provider;
             monitor = patchMonitor;
             providerFailureLogged = false;
             mineLightingGetter = mineLightingTarget;
@@ -153,7 +195,7 @@ internal static class NaturalDarknessLightmapPatch
     internal static void Uninstall(
         Harmony harmony,
         IMonitor patchMonitor,
-        Func<int, double> provider
+        Func<int, NaturalDarknessDrawContext> provider
     )
     {
         ClearProvider(provider);
@@ -175,9 +217,38 @@ internal static class NaturalDarknessLightmapPatch
         );
     }
 
+    private static NaturalDarknessDrawContext GetContextOrDefault()
+    {
+        var provider = contextProvider;
+        if (provider is null)
+            return NaturalDarknessDrawContext.None;
+
+        try
+        {
+            return provider(Context.ScreenId);
+        }
+        catch (Exception exception)
+        {
+            if (!providerFailureLogged)
+            {
+                providerFailureLogged = true;
+                monitor?.Log(
+                    $"Natural darkness context provider failed closed ({exception.GetType().Name}: {exception.Message}).",
+                    LogLevel.Warn
+                );
+            }
+            return NaturalDarknessDrawContext.None;
+        }
+    }
+
     private static void DrawWorldPrefix()
     {
-        if (Game1.drawLighting || GetLightmapWhiteBlend() <= 0f)
+        if (Game1.drawLighting)
+            return;
+
+        var context = GetContextOrDefault();
+        // 相对模式进度 0 等价无暗化；绝对模式只要有计划就接管（Day 也会以极浅底色画光照）。
+        if (!context.HasPlan || (!context.Absolute && context.Progress <= 0f))
             return;
 
         // Game1 otherwise skips DrawLighting entirely for a naturally white interior. Leave the
@@ -190,27 +261,37 @@ internal static class NaturalDarknessLightmapPatch
     {
         var originalOutdoorLight = Game1.outdoorLight;
         var originalAmbientLight = Game1.ambientLight;
-        var blend = GetLightmapWhiteBlend();
-        if (blend <= 0f)
+        var context = GetContextOrDefault();
+        if (!context.HasPlan)
         {
             activeDrawContext = null;
             __state = default;
             return;
         }
 
-        var appliedOutdoorLight = Color.Lerp(
-            originalOutdoorLight,
-            Color.White,
-            blend
-        );
-        var appliedAmbientLight = Color.Lerp(
-            originalAmbientLight,
-            Color.White,
-            blend
-        );
+        Color appliedOutdoorLight;
+        Color appliedAmbientLight;
+        if (context.Absolute)
+        {
+            appliedOutdoorLight = context.Target;
+            appliedAmbientLight = context.Target;
+        }
+        else
+        {
+            appliedOutdoorLight = Color.Lerp(
+                originalOutdoorLight,
+                context.Target,
+                context.Progress
+            );
+            appliedAmbientLight = Color.Lerp(
+                originalAmbientLight,
+                context.Target,
+                context.Progress
+            );
+        }
         Game1.outdoorLight = appliedOutdoorLight;
         Game1.ambientLight = appliedAmbientLight;
-        activeDrawContext = new LightingDrawContext(blend);
+        activeDrawContext = new LightingDrawContext(context);
         __state = new LightingPatchState(
             originalOutdoorLight,
             appliedOutdoorLight,
@@ -278,11 +359,23 @@ internal static class NaturalDarknessLightmapPatch
     {
         var original = mine.getLightingColor(time);
         var context = activeDrawContext;
-        if (!context.HasValue || context.Value.WhiteBlend <= 0f)
+        if (
+            !context.HasValue
+            || !context.Value.Context.HasPlan
+            || (!context.Value.Context.Absolute && context.Value.Context.Progress <= 0f)
+        )
+        {
             return original;
+        }
 
-        var adjusted = Color.Lerp(original, Color.White, context.Value.WhiteBlend);
-        LogMineRenderDiagnostic(mine, original, adjusted, context.Value.WhiteBlend);
+        var adjusted = context.Value.Context.Absolute
+            ? context.Value.Context.Target
+            : Color.Lerp(
+                original,
+                context.Value.Context.Target,
+                context.Value.Context.Progress
+            );
+        LogMineRenderDiagnostic(mine, original, adjusted, context.Value.Context);
         return adjusted;
     }
 
@@ -290,14 +383,23 @@ internal static class NaturalDarknessLightmapPatch
         MineShaft mine,
         Color original,
         Color adjusted,
-        float whiteBlend
+        NaturalDarknessDrawContext context
     )
     {
-        var bucket = whiteBlend >= 0.995f
-            ? 1000
-            : whiteBlend is >= 0.295f and <= 0.305f
-                ? 300
-                : -1;
+        int bucket;
+        if (context.Absolute)
+        {
+            // 绝对色模式按目标相位记录，不再按白混合分桶。
+            bucket = 1000;
+        }
+        else
+        {
+            bucket = context.Progress >= 0.995f
+                ? 1000
+                : context.Progress is >= 0.295f and <= 0.305f
+                    ? 300
+                    : -1;
+        }
         if (bucket < 0)
             return;
 
@@ -313,7 +415,9 @@ internal static class NaturalDarknessLightmapPatch
         lastLoggedMineLocation = location;
         lastLoggedMineBlendBucket = bucket;
         monitor?.Log(
-            $"Natural darkness mine render diagnostic (bridge=draw-lighting-transpiler, location={location}, white-blend={whiteBlend:0.###}, original=({original.R},{original.G},{original.B}), applied=({adjusted.R},{adjusted.G},{adjusted.B})).",
+            $"Natural darkness mine render diagnostic (bridge=draw-lighting-transpiler, location={location}, "
+                + $"mode={(context.Absolute ? "absolute" : "relative")}, progress={context.Progress:0.###}, "
+                + $"original=({original.R},{original.G},{original.B}), applied=({adjusted.R},{adjusted.G},{adjusted.B})).",
             LogLevel.Debug
         );
     }
@@ -337,32 +441,6 @@ internal static class NaturalDarknessLightmapPatch
         }
 
         activeDrawContext = null;
-    }
-
-    private static float GetLightmapWhiteBlend()
-    {
-        var provider = progressProvider;
-        if (provider is null)
-            return 0f;
-
-        try
-        {
-            return NaturalDarknessTransitionPolicy.GetLightmapWhiteBlend(
-                provider(Context.ScreenId)
-            );
-        }
-        catch (Exception exception)
-        {
-            if (!providerFailureLogged)
-            {
-                providerFailureLogged = true;
-                monitor?.Log(
-                    $"Natural darkness progress provider failed closed ({exception.GetType().Name}: {exception.Message}).",
-                    LogLevel.Warn
-                );
-            }
-            return 0f;
-        }
     }
 
     private static void UnpatchTargets(
@@ -393,12 +471,12 @@ internal static class NaturalDarknessLightmapPatch
         }
     }
 
-    private static void ClearProvider(Func<int, double> provider)
+    private static void ClearProvider(Func<int, NaturalDarknessDrawContext> provider)
     {
-        if (!ReferenceEquals(progressProvider, provider))
+        if (!ReferenceEquals(contextProvider, provider))
             return;
 
-        progressProvider = null;
+        contextProvider = null;
         monitor = null;
         providerFailureLogged = false;
         mineLightingGetter = null;
@@ -409,7 +487,9 @@ internal static class NaturalDarknessLightmapPatch
         activeDrawContext = null;
     }
 
-    private readonly record struct LightingDrawContext(float WhiteBlend);
+    private readonly record struct LightingDrawContext(
+        NaturalDarknessDrawContext Context
+    );
 
     private readonly record struct LightingPatchState(
         Color OriginalOutdoorLight,

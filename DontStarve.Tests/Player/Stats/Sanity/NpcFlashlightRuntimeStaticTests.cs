@@ -65,7 +65,7 @@ public sealed class NpcFlashlightRuntimeStaticTests
             StringComparison.Ordinal
         );
         Assert.Contains(
-            "_npcFlashlights?.SetEnabled(enabled)",
+            "_npcFlashlights?.SetEnabled(IsNaturalDarknessRuntimeEnabled)",
             entry,
             StringComparison.Ordinal
         );

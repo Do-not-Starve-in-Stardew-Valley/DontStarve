@@ -23,12 +23,12 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
         };
 
     [Fact]
-    public void Exact_fifteen_and_ten_boundaries_publish_diagnostic_eligibility_without_consuming_rejected_budget()
+    public void Exact_fifteen_enters_danger_ten_stays_strict_and_rejected_species_never_consumes_budget()
     {
         var harness = new Harness();
 
         var fifteen = harness.Observe(OwnerA, current: 15d, revision: 1);
-        Assert.DoesNotContain(fifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
+        Assert.Contains(fifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
         Assert.DoesNotContain(
             fifteen.Events,
             stateEvent => IsEntered(stateEvent, SanityTierIds.Terrorbeak)
@@ -40,10 +40,9 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             occupancy: 0,
             SanityShadowSpecies.Terrorbeak
         );
-        Assert.Equal(SanityShadowBudgetEvaluationStatus.Inactive, rejected.Status);
-        Assert.Equal("budget.tier-inactive", rejected.Reason);
-        Assert.Equal(SanityShadowPoolTier.Inactive, rejected.PoolTier);
-        Assert.Equal(SanityShadowEligibleSpecies.None, rejected.EligibleSpecies);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.SpeciesIneligible, rejected.Status);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, rejected.PoolTier);
+        Assert.Equal(SanityShadowEligibleSpecies.CreeperFear, rejected.EligibleSpecies);
         Assert.True(harness.Governor.TryGetOwnerState(OwnerA, out var untouched));
         Assert.Equal(0, untouched!.Cap);
         Assert.Null(untouched.NextDueMinute);
@@ -54,12 +53,11 @@ public sealed class TerrorbeakOwnerBudgetAndTierTests
             occupancy: 0,
             SanityShadowSpecies.CreeperFear
         );
-        Assert.Equal(SanityShadowBudgetEvaluationStatus.Inactive, creeper.Status);
-        Assert.Equal(0, creeper.Cap);
-        Assert.Null(creeper.NextDueMinute);
+        Assert.Equal(SanityShadowBudgetEvaluationStatus.Waiting, creeper.Status);
+        Assert.Equal(SanityShadowPoolTier.Hostile15, creeper.PoolTier);
 
         var belowFifteen = harness.Observe(OwnerA, current: 14.9999d, revision: 2);
-        Assert.Contains(belowFifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
+        Assert.DoesNotContain(belowFifteen.Events, stateEvent => IsEntered(stateEvent, SanityTierIds.Danger));
         var belowFifteenCreeper = harness.Governor.EvaluateHostileSpawn(
             OwnerA,
             gameMinute: 1,

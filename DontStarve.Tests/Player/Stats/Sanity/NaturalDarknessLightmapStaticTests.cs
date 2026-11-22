@@ -121,20 +121,66 @@ public sealed class NaturalDarknessLightmapStaticTests
         Assert.Contains("environmentLightLocationRules", entry, StringComparison.Ordinal);
         Assert.Contains("darknessAttackLocationAuthorization", entry, StringComparison.Ordinal);
         Assert.Contains("ConfigKeys.EnableNaturalDarkness", entry, StringComparison.Ordinal);
+        Assert.Contains("ConfigKeys.EnableDontStarveLightAmbience", entry, StringComparison.Ordinal);
         Assert.Contains("IsNaturalDarknessRuntimeEnabled", entry, StringComparison.Ordinal);
+        Assert.Contains("IsLightmapRuntimeEnabled", entry, StringComparison.Ordinal);
         Assert.Contains(
             "private void ApplyNaturalDarknessRuntimeState()",
             entry,
             StringComparison.Ordinal
         );
         Assert.Contains(
-            "_naturalDarknessLightmap?.SetEnabled(enabled)",
+            "_naturalDarknessLightmap?.SetEnabled(IsLightmapRuntimeEnabled)",
             entry,
             StringComparison.Ordinal
         );
         Assert.Contains(
-            "_npcFlashlights?.SetEnabled(enabled)",
+            "_naturalDarknessLightmap?.SetDarknessEnabled(_naturalDarknessEnabled)",
             entry,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "_npcFlashlights?.SetEnabled(IsNaturalDarknessRuntimeEnabled)",
+            entry,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void LightmapServiceRoutesPlansByTheAmbienceAndDarknessSwitches()
+    {
+        var service = ReadContract("SmapiNaturalDarknessLightmapService.cs");
+
+        Assert.Contains(
+            "IsAmbienceActive",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "DontStarveLightAmbiencePolicy.Resolve(input, darknessEnabled)",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "NaturalDarknessLocationPolicy.Resolve(input)",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "NaturalDarknessDrawContext.FromAbsolute(",
+            service,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "_naturalDarknessLightmap?.SetDarknessEnabled",
+            File.ReadAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Contracts",
+                    "NaturalDarkness",
+                    "ModEntry.cs"
+                )
+            ),
             StringComparison.Ordinal
         );
     }

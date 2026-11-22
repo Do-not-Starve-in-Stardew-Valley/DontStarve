@@ -217,7 +217,7 @@ public sealed class EyesProjectionTests
     }
 
     [Fact]
-    public void BelowSixtyEntersAndOnlyAboveSixtyExits()
+    public void AtSixtyEntersAndOnlyAboveSixtyExits()
     {
         var machine = new SanityTierStateMachine();
         machine.Observe(Player(121d, 200d, 0), true);
@@ -227,13 +227,13 @@ public sealed class EyesProjectionTests
         var exactAfterEntry = machine.Observe(Player(120d, 200d, 3), true);
         var above = machine.Observe(Player(120.0001d, 200d, 4), true);
 
-        Assert.DoesNotContain(
-            exactBeforeEntry.Events,
-            stateEvent => stateEvent.TierId == SanityTierIds.Eyes
-        );
         Assert.Contains(
             SanityStateEventIds.TierEntered(SanityTierIds.Eyes),
-            below.Events.Select(stateEvent => stateEvent.EventId)
+            exactBeforeEntry.Events.Select(stateEvent => stateEvent.EventId)
+        );
+        Assert.DoesNotContain(
+            below.Events,
+            stateEvent => stateEvent.TierId == SanityTierIds.Eyes
         );
         Assert.DoesNotContain(
             exactAfterEntry.Events,

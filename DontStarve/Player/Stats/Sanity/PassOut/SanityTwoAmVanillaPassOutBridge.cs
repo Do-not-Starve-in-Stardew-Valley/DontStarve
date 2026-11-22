@@ -44,4 +44,26 @@ internal static class SanityTwoAmVanillaPassOutBridge
         request.OnWarp += Complete;
         Game1.warpFarmer(request, bedPoint.X, bedPoint.Y, 2);
     }
+
+    /// <summary>
+    /// Pending-darkness (Default death) outcome: no home warp — the farmer stays on the collapse
+    /// tile and hands the day change straight to the vanilla PassOutNewDay bridge. The wake
+    /// target (Hospital/revive tile) is written by the caller AFTER this returns, because
+    /// PassOutNewDay itself overwrites lastSleepLocation/lastSleepPoint with the current tile.
+    /// Single-player needs <c>passedOut</c> to pass Game1.NewDay's fade gate
+    /// (<c>isInBed || passedOut</c>, Game1.cs:10372) — the vanilla multiplayer branch of
+    /// PassOutNewDay sets the same flag itself, so this mirrors vanilla semantics without
+    /// inventing a third path.
+    /// </summary>
+    internal static void BeginNoFeeNewDayInPlace(Farmer farmer)
+    {
+        if (farmer is null || !farmer.IsLocalPlayer || Game1.currentLocation is null)
+            return;
+
+        farmer.CanMove = false;
+        farmer.FarmerSprite.setCurrentSingleFrame(5, 3000);
+        farmer.FarmerSprite.PauseForSingleAnimation = true;
+        farmer.passedOut = true;
+        Game1.PassOutNewDay();
+    }
 }

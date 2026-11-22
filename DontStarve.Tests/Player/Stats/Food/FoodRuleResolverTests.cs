@@ -288,12 +288,140 @@ public sealed class FoodRuleResolverTests
         );
     }
 
+    [Fact]
+    public void HealthDimensionUsesExcelFamilyFormulas()
+    {
+        // 2026-11-14 用户规则（Excel 生命值列）：腌菜+10、果汁5倍绝对值、果干5倍+50、
+        // 蘑菇干3倍、熏鱼+20；「原来数值」= 源食材在健康表里的生命值（与饥饿/理智机器同源）。
+        var resolver = Create(
+            hunger: new Dictionary<string, double>
+            {
+                ["24"] = 12.5,
+                ["282"] = 9.375,
+                ["698"] = 37.5,
+            },
+            sanity: new Dictionary<string, double>
+            {
+                ["24"] = 3,
+                ["282"] = 1,
+                ["698"] = 10,
+            },
+            health: new Dictionary<string, double>
+            {
+                ["24"] = -3,
+                ["282"] = 3,
+                ["698"] = 25,
+            }
+        );
+
+        Assert.Equal(
+            7,
+            Resolve(
+                resolver,
+                new FoodItemFacts("342", FoodRuleSourceKind.Pickle, "24"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            15,
+            Resolve(
+                resolver,
+                new FoodItemFacts("350", FoodRuleSourceKind.Juice, "24"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            65,
+            Resolve(
+                resolver,
+                new FoodItemFacts("DriedFruit", FoodRuleSourceKind.DriedFruit, "282"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            75,
+            Resolve(
+                resolver,
+                new FoodItemFacts("DriedMushrooms", FoodRuleSourceKind.DriedMushroom, "698"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            45,
+            Resolve(
+                resolver,
+                new FoodItemFacts("SmokedFish", FoodRuleSourceKind.SmokedFish, "698"),
+                FoodValueDimension.Health
+            )
+        );
+    }
+
+    [Fact]
+    public void HealthDimensionHasNoFormulaForUnruledFamiliesAndKeepsExplicitKeys()
+    {
+        // 酒/果冻/鱼籽/陈年鱼籽/蜂蜜无健康公式（统一值走显式基键回退）；显式复合键压过公式。
+        var resolver = Create(
+            hunger: new Dictionary<string, double> { ["282"] = 9.375 },
+            sanity: new Dictionary<string, double> { ["282"] = 1 },
+            health: new Dictionary<string, double>
+            {
+                ["348"] = 10,
+                ["344"] = 5,
+                ["447"] = 5,
+                ["812"] = 1,
+                ["DriedFruit/282"] = 7,
+            }
+        );
+
+        Assert.Equal(
+            10,
+            Resolve(
+                resolver,
+                new FoodItemFacts("348", FoodRuleSourceKind.Wine, "282"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            5,
+            Resolve(
+                resolver,
+                new FoodItemFacts("344", FoodRuleSourceKind.Jelly, "282"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            5,
+            Resolve(
+                resolver,
+                new FoodItemFacts("447", FoodRuleSourceKind.AgedRoe, "698"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            1,
+            Resolve(
+                resolver,
+                new FoodItemFacts("812", FoodRuleSourceKind.Roe, "698"),
+                FoodValueDimension.Health
+            )
+        );
+        Assert.Equal(
+            7,
+            Resolve(
+                resolver,
+                new FoodItemFacts("DriedFruit", FoodRuleSourceKind.DriedFruit, "282"),
+                FoodValueDimension.Health
+            )
+        );
+    }
+
     private static FoodRuleResolver Create(
         IReadOnlyDictionary<string, double> hunger,
-        IReadOnlyDictionary<string, double> sanity
+        IReadOnlyDictionary<string, double> sanity,
+        IReadOnlyDictionary<string, double>? health = null
     )
     {
-        return new FoodRuleResolver(hunger, sanity);
+        return new FoodRuleResolver(hunger, sanity, health);
     }
 
     private static double Resolve(

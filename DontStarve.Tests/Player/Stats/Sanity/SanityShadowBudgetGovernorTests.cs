@@ -278,9 +278,9 @@ public sealed class SanityShadowBudgetGovernorTests
 
     [Theory]
     [InlineData(0.6d, (int)SanityShadowPoolTier.Inactive)]
-    [InlineData(0.5d, (int)SanityShadowPoolTier.Inactive)]
-    [InlineData(0.15d, (int)SanityShadowPoolTier.Inactive)]
-    [InlineData(0.1d, (int)SanityShadowPoolTier.Inactive)]
+    [InlineData(0.5d, (int)SanityShadowPoolTier.Harmless50)]
+    [InlineData(0.15d, (int)SanityShadowPoolTier.Hostile15)]
+    [InlineData(0.1d, (int)SanityShadowPoolTier.Hostile15)]
     public void Observed_sanity_ratio_drives_the_mutually_exclusive_pool_phase(
         double ratio,
         int expected
@@ -309,7 +309,7 @@ public sealed class SanityShadowBudgetGovernorTests
     }
 
     [Fact]
-    public void Active_danger_tier_keeps_hostile15_pool_through_strict_exit_boundary()
+    public void Active_danger_tier_keeps_hostile15_pool_until_an_exit_receipt_arrives()
     {
         var governor = ReadyDefaultGovernor(OwnerA);
         Enter(governor, OwnerA, SanityTierIds.Danger);

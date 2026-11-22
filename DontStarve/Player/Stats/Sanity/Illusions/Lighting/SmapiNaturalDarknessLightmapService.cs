@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -31,12 +32,14 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
     private readonly EnvironmentLightLocationRuleCatalog locationRules;
     private readonly DarknessAttackLocationAuthorizationPolicy
         darknessAttackLocationAuthorization;
-    private readonly Func<int, double> progressProvider;
+    private readonly Func<int, NaturalDarknessDrawContext> drawContextProvider;
     private readonly Func<int, NaturalDarknessSceneState> sceneStateProvider;
     private readonly Dictionary<int, ScreenTransition> transitionsByScreen = new();
     private readonly Dictionary<int, ScreenScene> scenesByScreen = new();
+    private readonly Dictionary<int, ScreenAmbienceColor> ambienceColorsByScreen = new();
     private readonly HashSet<string> loggedReasons = new(StringComparer.Ordinal);
     private bool enabled;
+    private bool darknessEnabled;
     private bool patchInstalled;
     private bool wallSconcePatchInstalled;
     private bool disposed;
@@ -46,6 +49,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         IMonitor monitor,
         string modId,
         bool enabled,
+        bool darknessEnabled,
         EnvironmentLightLocationRuleCatalog locationRules,
         DarknessAttackLocationAuthorizationPolicy darknessAttackLocationAuthorization
     )
@@ -60,13 +64,14 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             throw new ArgumentException("A Harmony owner id is required.", nameof(modId));
 
         this.enabled = enabled;
+        this.darknessEnabled = darknessEnabled;
         harmony = new Harmony(string.Concat(modId, ".Sanity4.NaturalDarkness"));
-        progressProvider = GetProgressForScreen;
+        drawContextProvider = GetDrawContextForScreen;
         sceneStateProvider = GetSceneStateForScreen;
         patchInstalled = NaturalDarknessLightmapPatch.TryInstall(
             harmony,
             monitor,
-            progressProvider
+            drawContextProvider
         );
         if (patchInstalled)
         {
@@ -92,6 +97,21 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         enabled = value;
         transitionsByScreen.Clear();
         scenesByScreen.Clear();
+        ambienceColorsByScreen.Clear();
+    }
+
+    /// <summary>
+    /// 黑暗开关独立切换（氛围可单独开启）。模式切换时清空绝对色状态，避免旧模式的
+    /// 混合值被当作新模式的起点。
+    /// </summary>
+    internal void SetDarknessEnabled(bool value)
+    {
+        if (disposed || darknessEnabled == value)
+            return;
+
+        darknessEnabled = value;
+        transitionsByScreen.Clear();
+        ambienceColorsByScreen.Clear();
     }
 
     public void Dispose()
@@ -121,7 +141,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             NaturalDarknessLightmapPatch.Uninstall(
                 harmony,
                 monitor,
-                progressProvider
+                drawContextProvider
             );
             patchInstalled = false;
         }
@@ -145,11 +165,16 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             // Warped can arrive while Stardew still reports isWarping. Keep a completed
             // destination state until native warping ends, but never draw it during the warp.
             if (!Game1.isWarping)
+            {
                 transitionsByScreen.Remove(screenId);
+                ambienceColorsByScreen.Remove(screenId);
+            }
         }
         else
         {
             SynchronizeScreenTransition(screenId, plan, Stopwatch.GetTimestamp());
+            if (IsAmbienceActive)
+                AdvanceAmbienceColor(screenId, plan, Stopwatch.GetTimestamp());
         }
 
         if (e.IsMultipleOf(CleanupCadenceTicks))
@@ -193,6 +218,13 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             progress,
             timestamp
         );
+        if (IsAmbienceActive)
+        {
+            ambienceColorsByScreen[screenId] = new ScreenAmbienceColor(
+                ToXnaColor(plan.TargetColor),
+                timestamp
+            );
+        }
     }
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
@@ -201,6 +233,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         _ = e;
         transitionsByScreen.Clear();
         scenesByScreen.Clear();
+        ambienceColorsByScreen.Clear();
     }
 
     private void OnDayEnding(object? sender, DayEndingEventArgs e)
@@ -209,6 +242,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         _ = e;
         transitionsByScreen.Clear();
         scenesByScreen.Clear();
+        ambienceColorsByScreen.Clear();
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -217,6 +251,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         _ = e;
         transitionsByScreen.Clear();
         scenesByScreen.Clear();
+        ambienceColorsByScreen.Clear();
     }
 
     private void SynchronizeScreenTransition(
@@ -239,8 +274,8 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             return;
 
         var currentProgress = GetTransitionProgress(previous, timestamp);
-        var startingProgress = plan.TargetWhiteBlend <= currentProgress
-            ? plan.TargetWhiteBlend
+        var startingProgress = plan.ProgressCeiling <= currentProgress
+            ? plan.ProgressCeiling
             : currentProgress;
         transitionsByScreen[screenId] = new ScreenTransition(
             plan,
@@ -298,7 +333,10 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
                     + $"difficulty={difficulty}, event={eventActive}, festival={festivalActive}, "
                     + $"minigame={Game1.currentMinigame is not null}, enabled={enabled}, "
                     + $"patch-installed={patchInstalled}, plan={plan.Phase}, "
-                    + $"target={plan.TargetWhiteBlend.ToString("0.###", CultureInfo.InvariantCulture)}, "
+                    + $"target=({plan.TargetColor.R.ToString("0.###", CultureInfo.InvariantCulture)},"
+                    + $"{plan.TargetColor.G.ToString("0.###", CultureInfo.InvariantCulture)},"
+                    + $"{plan.TargetColor.B.ToString("0.###", CultureInfo.InvariantCulture)}), "
+                    + $"ceiling={plan.ProgressCeiling.ToString("0.###", CultureInfo.InvariantCulture)}, "
                     + $"duration-seconds={plan.TransitionDurationSeconds.ToString("0.###", CultureInfo.InvariantCulture)}).",
                 LogLevel.Debug
             );
@@ -313,17 +351,12 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         }
     }
 
-    private double GetProgressForScreen(int screenId)
+    private bool TryGetActiveScreenTransition(
+        int screenId,
+        out ScreenTransition transition
+    )
     {
-        var sceneState = GetSceneStateForScreen(screenId);
-        if (!sceneState.IsActive)
-            return 0d;
-
-        return sceneState.LightmapWhiteBlend;
-    }
-
-    internal NaturalDarknessSceneState GetSceneStateForScreen(int screenId)
-    {
+        transition = default;
         if (
             disposed
             || !patchInstalled
@@ -335,10 +368,44 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             || Game1.eventUp
             || Game1.CurrentEvent is not null
             || Game1.currentMinigame is not null
-            || !transitionsByScreen.TryGetValue(screenId, out var transition)
+            || !transitionsByScreen.TryGetValue(screenId, out transition)
             || !scenesByScreen.TryGetValue(screenId, out var scene)
             || !ReferenceEquals(scene.Location, Game1.currentLocation)
         )
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 光照图绘制上下文。氛围激活时走绝对色（服务端已推进的当前色），否则保持旧相对模型
+    /// （Lerp 原生底色向白，进度受计划上限钳制）逐字节同旧行为。
+    /// </summary>
+    private NaturalDarknessDrawContext GetDrawContextForScreen(int screenId)
+    {
+        if (!TryGetActiveScreenTransition(screenId, out var transition))
+            return NaturalDarknessDrawContext.None;
+
+        var timestamp = Stopwatch.GetTimestamp();
+        if (IsAmbienceActive)
+        {
+            var color = ambienceColorsByScreen.TryGetValue(screenId, out var state)
+                ? state.Current
+                : ToXnaColor(transition.Plan.TargetColor);
+            return NaturalDarknessDrawContext.FromAbsolute(color);
+        }
+
+        var progress = NaturalDarknessTransitionPolicy.GetLightmapWhiteBlend(
+            GetTransitionProgress(transition, timestamp)
+        );
+        return NaturalDarknessDrawContext.Relative(progress);
+    }
+
+    internal NaturalDarknessSceneState GetSceneStateForScreen(int screenId)
+    {
+        if (!TryGetActiveScreenTransition(screenId, out var transition))
         {
             return NaturalDarknessSceneState.None;
         }
@@ -351,6 +418,52 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
             NaturalDarknessTransitionPolicy.GetLightmapWhiteBlend(
                 transitionProgress
             )
+        );
+    }
+
+    private bool IsAmbienceActive => enabled && !darknessEnabled;
+
+    private void AdvanceAmbienceColor(
+        int screenId,
+        NaturalDarknessScenePlan plan,
+        long timestamp
+    )
+    {
+        var target = ToXnaColor(plan.TargetColor);
+        if (!ambienceColorsByScreen.TryGetValue(screenId, out var state))
+        {
+            // 首个绝对色计划：时长 0 直达目标；否则从「无暗」出发按计划时长淡入，
+            // 等价旧模型从原生亮场渐暗的观感起点。
+            var initial = plan.TransitionDurationSeconds <= 0d
+                ? target
+                : Color.Black;
+            ambienceColorsByScreen[screenId] = new ScreenAmbienceColor(
+                initial,
+                timestamp
+            );
+            return;
+        }
+
+        var elapsed = GetElapsedSeconds(state.Timestamp, timestamp);
+        var fraction = plan.TransitionDurationSeconds > 0d
+            ? (float)Math.Clamp(
+                elapsed / plan.TransitionDurationSeconds,
+                0d,
+                1d
+            )
+            : 1f;
+        ambienceColorsByScreen[screenId] = new ScreenAmbienceColor(
+            Color.Lerp(state.Current, target, fraction),
+            timestamp
+        );
+    }
+
+    private static Color ToXnaColor(NaturalDarknessTargetColor target)
+    {
+        return new Color(
+            (byte)Math.Clamp((int)Math.Round(target.R * 255d), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(target.G * 255d), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(target.B * 255d), 0, 255)
         );
     }
 
@@ -464,23 +577,27 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
                 isSkullCavern && mine.GetAdditionalDifficulty() > 0;
         }
 
-        return NaturalDarknessLocationPolicy.Resolve(
-            new NaturalDarknessLocationInput(
-                locationRule.Status == EnvironmentLightLocationRuleStatus.Matched,
-                locationRule.NaturalDarknessProfile,
-                location.IsOutdoors,
-                darknessAttackLocationAuthorization.IsJunimoBlessingProtecting(
-                    locationRule
-                ),
-                isMineShaft,
-                mineLevel,
-                isSkullCavern,
-                isDangerousSkullCavern,
-                Game1.timeOfDay,
-                Game1.getStartingToGetDarkTime(location),
-                Game1.getTrulyDarkTime(location)
-            )
+        var input = new NaturalDarknessLocationInput(
+            locationRule.Status == EnvironmentLightLocationRuleStatus.Matched,
+            locationRule.NaturalDarknessProfile,
+            location.IsOutdoors,
+            darknessAttackLocationAuthorization.IsJunimoBlessingProtecting(
+                locationRule
+            ),
+            isMineShaft,
+            location is VolcanoDungeon,
+            Game1.season == Season.Spring,
+            mineLevel,
+            isSkullCavern,
+            isDangerousSkullCavern,
+            Game1.timeOfDay,
+            Game1.getStartingToGetDarkTime(location),
+            Game1.getTrulyDarkTime(location)
         );
+        // 氛围开=新矩阵（含黑暗耦合）；氛围关=旧黑暗矩阵逐字节不变。
+        return IsAmbienceActive
+            ? DontStarveLightAmbiencePolicy.Resolve(input, darknessEnabled)
+            : NaturalDarknessLocationPolicy.Resolve(input);
     }
 
     private void CleanupInvalidScreens()
@@ -525,7 +642,7 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
     {
         return NaturalDarknessTransitionPolicy.Advance(
             transition.StartingProgress,
-            transition.Plan.TargetWhiteBlend,
+            transition.Plan.ProgressCeiling,
             GetElapsedSeconds(transition.StartTimestamp, timestamp),
             transition.Plan.TransitionDurationSeconds
         );
@@ -555,4 +672,6 @@ internal sealed class SmapiNaturalDarknessLightmapService : IDisposable
         double StartingProgress,
         long StartTimestamp
     );
+
+    private readonly record struct ScreenAmbienceColor(Color Current, long Timestamp);
 }

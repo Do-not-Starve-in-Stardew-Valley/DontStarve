@@ -379,7 +379,7 @@ internal sealed class SanityTwoAmSpecialDeathClientReceipts
             or SanityTwoAmSpecialDeathActionKind.PlayDeathSound
             or SanityTwoAmSpecialDeathActionKind.ShowPromptResolved
             or SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay
-            or SanityTwoAmSpecialDeathActionKind.BeginHiddenHospitalPassOut
+            or SanityTwoAmSpecialDeathActionKind.BeginPendingDarknessDeath
             or SanityTwoAmSpecialDeathActionKind.BeginNonLethalPassOut;
 
     private static SanityTwoAmSpecialDeathProtocolResult Accepted(string reason) =>
@@ -442,7 +442,7 @@ internal static class SanityTwoAmSpecialDeathClientProjection
             {
                 SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay,
                 kind == SanityTwoAmSpecialDeathFlowKind.DefaultDeath
-                    ? SanityTwoAmSpecialDeathActionKind.BeginHiddenHospitalPassOut
+                    ? SanityTwoAmSpecialDeathActionKind.BeginPendingDarknessDeath
                     : SanityTwoAmSpecialDeathActionKind.BeginNonLethalPassOut,
             },
             _ => Array.Empty<SanityTwoAmSpecialDeathActionKind>(),

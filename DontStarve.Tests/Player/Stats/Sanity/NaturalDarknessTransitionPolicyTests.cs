@@ -72,11 +72,13 @@ public sealed class NaturalDarknessTransitionPolicyTests
     {
         var dusk = new NaturalDarknessScenePlan(
             NaturalDarknessPhase.MineDusk,
+            NaturalDarknessTargetColor.White,
             NaturalDarknessTransitionPolicy.MineDuskWhiteBlend,
             NaturalDarknessTransitionPolicy.MineDuskTransitionDurationSeconds
         );
         var night = new NaturalDarknessScenePlan(
             NaturalDarknessPhase.NightThreeSeconds,
+            NaturalDarknessTargetColor.White,
             1d,
             NaturalDarknessTransitionPolicy.NightTransitionDurationSeconds
         );

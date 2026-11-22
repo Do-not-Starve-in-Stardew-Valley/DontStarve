@@ -83,7 +83,7 @@ public sealed class SanityEventConditionClassifierTests
     }
 
     [Fact]
-    public void Gate_uses_true_base_ratio_and_allows_exactly_fifty_percent()
+    public void Gate_uses_true_base_ratio_and_blocks_exactly_fifty_percent()
     {
         var below = SanityFriendshipEventGate.Evaluate(
             SanityEventClassification.Friendship,
@@ -102,7 +102,7 @@ public sealed class SanityEventConditionClassifierTests
         );
 
         Assert.Equal(SanityFriendshipEventGateDecision.Block, below.Decision);
-        Assert.Equal(SanityFriendshipEventGateDecision.Allow, exact.Decision);
+        Assert.Equal(SanityFriendshipEventGateDecision.Block, exact.Decision);
         Assert.Equal(SanityFriendshipEventGateDecision.Allow, above.Decision);
     }
 

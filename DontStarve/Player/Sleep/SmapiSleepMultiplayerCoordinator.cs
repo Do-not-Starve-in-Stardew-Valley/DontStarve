@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -14,6 +15,10 @@ internal sealed class SmapiSleepMultiplayerCoordinator : IDisposable
     internal const string CancelRequestMessageType = "Sleep.CancelRequest.v1";
     internal const string SnapshotMessageType = "Sleep.Snapshot.v2";
     internal const string SnapshotRequestMessageType = "Sleep.SnapshotRequest.v1";
+    // Pending-darkness 死亡标记同步（防逃课决议③）：SMAPI ReadSaveData 只在主机电脑可用，
+    // 远程农场工读不到存档里的标记，必须由主机下发；客户端在读档完成后主动请求。
+    internal const string PendingDarknessWakeMessageType = "Sleep.PendingDarknessWake.v1";
+    internal const string PendingDarknessWakeRequestMessageType = "Sleep.PendingDarknessWakeRequest.v1";
 
     private readonly IModHelper helper;
     private readonly string modId;
@@ -132,6 +137,35 @@ internal sealed class SmapiSleepMultiplayerCoordinator : IDisposable
         );
     }
 
+    internal void RequestPendingDarknessWake()
+    {
+        var host = Game1.MasterPlayer;
+        if (adapter.Role != SleepAuthorityRole.Client || host is null)
+            return;
+        helper.Multiplayer.SendMessage(
+            new SleepPendingDarknessWakeRequest { SessionId = adapter.SessionId },
+            PendingDarknessWakeRequestMessageType,
+            new[] { modId },
+            new[] { host.UniqueMultiplayerID }
+        );
+    }
+
+    internal void SendPendingDarknessWake(long playerId, IReadOnlyDictionary<string, int> markers)
+    {
+        if (adapter.Role != SleepAuthorityRole.Host || !Context.IsMainPlayer)
+            return;
+        helper.Multiplayer.SendMessage(
+            new SleepPendingDarknessWakeMessage
+            {
+                SessionId = adapter.SessionId,
+                Markers = new Dictionary<string, int>(markers),
+            },
+            PendingDarknessWakeMessageType,
+            new[] { modId },
+            new[] { playerId }
+        );
+    }
+
     public void Dispose()
     {
         if (disposed)
@@ -178,6 +212,14 @@ internal sealed class SmapiSleepMultiplayerCoordinator : IDisposable
                 case BeginDecisionMessageType when adapter.Role == SleepAuthorityRole.Client:
                     if (Game1.MasterPlayer is Farmer decisionHost && e.FromPlayerID == decisionHost.UniqueMultiplayerID)
                         adapter.HandleBeginDecision(e.ReadAs<SleepBeginDecision>());
+                    break;
+                case PendingDarknessWakeRequestMessageType when adapter.Role == SleepAuthorityRole.Host:
+                    adapter.SendPendingDarknessWakeSnapshot(e.FromPlayerID);
+                    break;
+                case PendingDarknessWakeMessageType when adapter.Role != SleepAuthorityRole.Host:
+                    var wakeSyncHost = Game1.MasterPlayer;
+                    if (wakeSyncHost is not null && e.FromPlayerID == wakeSyncHost.UniqueMultiplayerID)
+                        adapter.ApplyPendingDarknessWakeSync(e.ReadAs<SleepPendingDarknessWakeMessage>()?.Markers ?? new Dictionary<string, int>());
                     break;
             }
         }

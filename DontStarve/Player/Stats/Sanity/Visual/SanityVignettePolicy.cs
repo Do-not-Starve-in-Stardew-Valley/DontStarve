@@ -37,9 +37,11 @@ internal static class SanityVignettePolicy
             return SanityVignetteMode.Hidden;
         }
 
-        // Do not recompute Danger's exit line here. The tier state machine owns the strict
-        // <15% entry / >17.5% exit hysteresis; this policy only consumes its active receipt.
-        if (lowSanityFilterEnabled && (dangerTierActive || sanityRatio < InsaneThreshold))
+        // Do not recompute Danger's exit line here. The tier state machine owns the
+        // ≤15% entry / ≥17.5% exit hysteresis; this policy only consumes its active receipt.
+        // The ratio fallback is inclusive at 15% so the exact boundary behaves like DST's
+        // insane flag even without a tier receipt.
+        if (lowSanityFilterEnabled && (dangerTierActive || sanityRatio <= InsaneThreshold))
             return SanityVignetteMode.Insane;
 
         return vignetteEnabled

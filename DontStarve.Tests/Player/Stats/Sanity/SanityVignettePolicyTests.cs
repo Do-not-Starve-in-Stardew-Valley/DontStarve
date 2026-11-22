@@ -9,7 +9,7 @@ public sealed class SanityVignettePolicyTests
     [Theory]
     [InlineData(true, true, 0.16d, "Basic")]
     [InlineData(false, true, 0.16d, "Basic")]
-    [InlineData(true, true, 0.15d, "Basic")]
+    [InlineData(true, true, 0.15d, "Insane")]
     [InlineData(true, false, 0.14d, "Insane")]
     [InlineData(false, true, 0.14d, "Basic")]
     [InlineData(false, false, 0.14d, "Hidden")]
@@ -49,13 +49,13 @@ public sealed class SanityVignettePolicyTests
     }
 
     [Theory]
-    [InlineData(0.15d, false, false, "Hidden")]
+    [InlineData(0.15d, false, false, "Insane")]
     [InlineData(0.149d, false, false, "Insane")]
     [InlineData(0.16d, true, false, "Insane")]
     [InlineData(0.175d, true, false, "Insane")]
     [InlineData(0.175001d, false, false, "Hidden")]
     [InlineData(0.16d, false, true, "Basic")]
-    public void Danger_active_receipt_preserves_the_insane_vignette_until_strict_exit(
+    public void Danger_active_receipt_preserves_the_insane_vignette_until_the_receipt_clears(
         double sanityRatio,
         bool dangerTierActive,
         bool vignetteEnabled,
@@ -82,7 +82,7 @@ public sealed class SanityVignettePolicyTests
         {
             SanityVignetteMode.Insane,
             SanityVignetteMode.Insane,
-            SanityVignetteMode.Insane,
+            SanityVignetteMode.Basic,
             SanityVignetteMode.Basic,
         };
 

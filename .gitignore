@@ -14,6 +14,15 @@
 
 # Build results
 [Dd]ebug/
+# These are source/test folders despite sharing Visual Studio's build-output name.
+!DontStarve/Debug/
+DontStarve/Debug/*
+!DontStarve/Debug/DebugCommandValueParser.cs
+!DontStarve/Debug/PlayerResourceDebugCommands.cs
+!DontStarve.Tests/Debug/
+DontStarve.Tests/Debug/*
+!DontStarve.Tests/Debug/DebugCommandValueParserTests.cs
+!DontStarve.Tests/Debug/DebugCommandsStaticContractTests.cs
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/

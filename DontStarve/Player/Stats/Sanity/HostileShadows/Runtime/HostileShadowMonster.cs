@@ -1130,7 +1130,7 @@ internal sealed class HostileShadowMonsterRenderer
             layerDepth
         );
         // DIAG-20260804: 测试碰撞箱高亮。红=攻击框（仅攻击态按朝向旋转），绿=受击框。
-        // 开关由 ds_boxes 命令控制，默认开启；仅本机绘制，不影响任何逻辑。
+        // 开关由 ds_boxes 命令控制，默认关闭；仅本机绘制，不影响任何逻辑。
         DrawDebugCollisionBoxes(
             spriteBatch,
             monster,
@@ -1209,7 +1209,7 @@ internal sealed class HostileShadowMonsterRenderer
         );
 
         // DIAG-20260807: 怪物中心标记点（受击框几何中心 = 贴图 ActorOrigin 处）。
-        // 放在受击框块内（任何状态都绘制），与碰撞箱同开关（ds_boxes，默认开）；
+        // 放在受击框块内（任何状态都绘制），与碰撞箱同开关（ds_boxes，默认关）；
         // 在碰撞箱之后绘制（最上层），不被贴图遮挡。亮黄色十字。
         var fill = Game1.staminaRect;
         if (fill is not null)

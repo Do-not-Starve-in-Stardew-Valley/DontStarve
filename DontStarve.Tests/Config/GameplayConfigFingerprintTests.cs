@@ -48,13 +48,14 @@ public sealed class GameplayConfigFingerprintTests
         Assert.Equal(left.FullHash[..12], left.PublicIdentifier);
         Assert.Equal(64, left.FullHash.Length);
         Assert.Equal(
-            "D2F784D6775A74182996870089CACCB0E69DF65068E49C219F66C7A13EF4C6A5",
+            "C22149A017AE659E86B1FC1B5DB0846B1D7972DA5066944DC40C4B08C8A46C1A",
             left.FullHash
         );
         Assert.Equal(
             "SchemaVersion=1\n"
                 + "DarkHandMode=FireThief\n"
                 + "DarknessDamageMode=Default\n"
+                + "EnableDontStarveLightAmbience=true\n"
                 + "EnableHungerSystem=false\n"
                 + "EnableJunimoBlessing=false\n"
                 + "EnableNaturalDarkness=true\n"
@@ -63,6 +64,7 @@ public sealed class GameplayConfigFingerprintTests
                 + "HungerDamageMode=Default\n"
                 + "MonsterDifficultyProfile=Compatible\n"
                 + "SanityMonsterIntensity=Default\n"
+                + "SanityNaturalDrainRule=ByLight\n"
                 + "SleepRecoveryBalance=true\n",
             left.CanonicalText
         );

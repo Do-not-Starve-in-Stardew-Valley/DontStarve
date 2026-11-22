@@ -24,6 +24,10 @@ internal static class ActivityMusicService
     private static bool externalMusicWasActive;
     private static int previousTimeOfDay;
 
+    // EnableFarmingMusic 子开关（默认开）。只在活动音乐总开关内部生效：总开关关闭时整个
+    // 服务已经静音，本开关无从发挥作用。关闭时耕种触发在入口整体降级为工作触发。
+    private static bool farmingMusicEnabled = true;
+
     internal static ActivityMusicStateStore StateStore { get; } = new();
 
     private static ActivityMusicSuppressionStateStore SuppressionStates { get; } = new();
@@ -120,12 +124,49 @@ internal static class ActivityMusicService
         if (SuppressionStates.IsFarmingBlocked(owner.UniqueMultiplayerID))
             return;
 
+        if (!farmingMusicEnabled)
+        {
+            // EnableFarmingMusic=false：耕种触发整体降级为工作触发——播当前地点的工作曲，
+            // 并遵守工作车道的天黑封印（用户 2026-11-21 裁决，"完全被 work 音乐替代"）。
+            RecordWork(owner, location, reason);
+            return;
+        }
+
         Record(owner, ActivityMusicKind.Farming, location, reason);
+    }
+
+    /// <summary>
+    /// EnableFarmingMusic 子开关（半独立）：总开关（EnableActivityMusic）关闭时整个服务静音，
+    /// 本开关自然失效。关闭瞬间要让新规则立即生效：清掉所有 owner 的耕种逻辑态并把正在播的
+    /// 耕耘曲走既有淡出路径退役，避免最长 15 秒的旧行为尾巴（对齐黄昏切换的处理先例）。
+    /// </summary>
+    internal static void SetFarmingMusicEnabled(bool value)
+    {
+        if (farmingMusicEnabled == value)
+            return;
+
+        farmingMusicEnabled = value;
+        if (value)
+            return;
+
+        StateStore.RemoveFarmingAll();
+        ActivityMusicAudioService.StopFarmingPlayback();
     }
 
     internal static void RecordCombat(Farmer? owner, string reason)
     {
         Record(owner, ActivityMusicKind.Combat, owner?.currentLocation, reason);
+    }
+
+    /// <summary>
+    /// 锄地车道判据（与耕种车道判据刻意不同）：
+    /// 农场本体与温室锄地算农活；姜岛农场的锄地按用户 2026-11-17 裁决算工作——锄头在岛上
+    /// 同样承担挖艺术斑点、种子斑点、翻地出粘土的挖掘职能——但其种植/浇水/收获等其余农活
+    /// 仍走 <see cref="IsFarmingLocation"/> 耕种车道。
+    /// </summary>
+    internal static bool IsHoeFarmingLocation(GameLocation? location)
+    {
+        return IsFarmingLocation(location) && location is not IslandWest;
     }
 
     internal static bool IsLocalCombatOrBossActive()
@@ -388,9 +429,10 @@ internal static class ActivityMusicService
 
     private static bool IsFarmingLocation(GameLocation? location)
     {
-        // IslandWest can contain plantable tiles, but it is not a Farm identity. Only Farm
-        // (including a Farm-identity mod map) and the explicit greenhouse dimension qualify.
-        return location is Farm || location?.IsGreenhouse == true;
+        // 姜岛农场（IslandWest）按用户 2026-11-17 裁决纳入耕种车道：岛上没有专用耕种音乐，
+        // 种植/浇水/收获使用普通农场的 farming 曲目。IslandWest 是独立地点身份，不是 Farm 类型。
+        // 锄地走 IsHoeFarmingLocation 的独立判据，姜岛农场锄地算工作不算耕种。
+        return location is Farm || location?.IsGreenhouse == true || location is IslandWest;
     }
 
     private static bool HasValidLocalOwner()

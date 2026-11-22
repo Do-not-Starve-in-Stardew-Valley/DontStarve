@@ -1345,7 +1345,7 @@ internal sealed class SmapiHostileShadowHost
     }
 
     /// <summary>DIAG-20260812: 指定玩家当前是否处于 ShadowCreatures 档。
-    /// 该 tier 低于 50% 才进入，高于 50% 才退出；精确阈值由状态机的严格退出规则保持当前状态。
+    /// 该 tier ≤50% 即进入（含边界），高于 50% 才退出；边界口径对齐 DST"卡线归更疯一侧"。
     /// 未激活 = 高理智（>50%），转化后的绑定投影应进入高理智淡出消失链条。</summary>
     private bool IsShadowCreaturesActiveFor(string playerKey)
     {

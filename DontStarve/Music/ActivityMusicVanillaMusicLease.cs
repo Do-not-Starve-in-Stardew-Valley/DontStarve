@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using DontStarve.Audio.Vanilla;
 using StardewModdingAPI;
 using StardewValley;
 
@@ -47,6 +48,17 @@ internal sealed class ActivityMusicVanillaMusicLease
         var cue = Game1.currentSong;
         if (cue is null || !cue.IsPlaying || cue.IsPaused || cue.IsStopped)
             return true;
+
+        if (
+            VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve(
+                cue.Name,
+                Game1.IsPlayingOutdoorsAmbience,
+                Game1.IsPlayingNightAmbience
+            )
+        )
+        {
+            return true;
+        }
 
         try
         {

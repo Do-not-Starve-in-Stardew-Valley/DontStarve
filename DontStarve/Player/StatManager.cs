@@ -9,6 +9,8 @@ using DontStarve.Display;
 using DontStarve.Interface;
 using DontStarve.Player.Death;
 using DontStarve.Player.Stats;
+using DontStarve.Player.Stats.Sanity.Illusions.Lighting;
+using DontStarve.Player.Stats.Food.Category;
 using DontStarve.Player.Stats.Health;
 using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Stats.Sanity;
@@ -20,12 +22,14 @@ namespace DontStarve.Player;
 
 /// <summary>
 /// Initialize 的组合结果。ModEntry 需要 Sanity/Hunger 实例仅为订阅状态反馈音效的
-/// 结算/回放事件；除此之外的玩法接线不得借道本结果。
+/// 结算/回放事件；Health 实例仅为装配黑暗袭击结算服务的「饥荒风格生命值」零头链路
+/// （门控读取 + 零头交付，2026-11-13 决议）；除此之外的玩法接线不得借道本结果。
 /// </summary>
 internal sealed record StatManagerInitializeResult(
     SanitySystemLifecycleCoordinator Lifecycle,
     Sanity Sanity,
-    Hunger Hunger
+    Hunger Hunger,
+    Health Health
 );
 
 internal static class StatManager
@@ -43,9 +47,16 @@ internal static class StatManager
         out HungerDebugController hungerDebugController,
         out SurvivalStateTimeOwner<Farmer> survivalTime,
         ISanityStatusFeedbackSink? sanityStatusFeedbackSink = null,
-        IHungerStatusFeedbackSink? hungerStatusFeedbackSink = null
+        IHungerStatusFeedbackSink? hungerStatusFeedbackSink = null,
+        Func<EnvironmentLightService?>? sanityLightServiceProvider = null,
+        Func<int>? sanityScreenIdProvider = null
     )
     {
+        // 食物分类层（20261113 设计稿阶段1）：foodtype + 度两张只读表，启动时加载一次。
+        // 与 FoodRuleResolver 数值层（三张老 food.json）平行，互不覆盖；当前还没有消费点，
+        // 后续烹饪/腐败/喂食轮直接查 CategoryTableLoader.IngredientTable / FoodTable。
+        CategoryTableLoader.Load(helper, monitor);
+
         // 进食恢复弹窗提交器：Hunger/Sanity 共用同一个实例（无内部状态），在装配点
         // 统一创建，保持 TaggedHudMessageService 的注入模式一致。
         var foodRestoreHud = new FoodRestoreHudMessenger(helper, hudMessages);
@@ -55,7 +66,9 @@ internal static class StatManager
             configResolver,
             passOutReasonLedger,
             sanityStatusFeedbackSink,
-            foodRestoreHud
+            foodRestoreHud,
+            sanityLightServiceProvider,
+            sanityScreenIdProvider
         );
         var hunger = new Hunger(
             monitor,
@@ -86,6 +99,6 @@ internal static class StatManager
         foreach (var s in stats)
             s.Init(helper, survivalTime);
 
-        return new StatManagerInitializeResult(sanity.Lifecycle, sanity, hunger);
+        return new StatManagerInitializeResult(sanity.Lifecycle, sanity, hunger, health);
     }
 }

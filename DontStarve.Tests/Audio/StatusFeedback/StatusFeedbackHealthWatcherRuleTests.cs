@@ -195,6 +195,44 @@ public sealed class StatusFeedbackHealthWatcherRuleTests
     }
 
     [Fact]
+    public void WakeReplayHealthWritebackIsSilentWithoutDeathStateAndRealDamageStillPlays()
+    {
+        // 黑暗死亡"医院直醒"重演（2026-11-14 修复回归锁）：mod 直置 killScreen 的清晨重演
+        // 路径里玩家从未处于 ≤0 死亡态（血量基线保持正值，读档重演旧档时可能是 100），
+        // 原版 checkForEvents killScreen 块平写 health=10 前，重演序列按既有 overtime 口径
+        // 发放抑制令牌——这次系统重置差分静音，且只吞一次，其后的真实伤害照常播 down。
+        var state = NewState();
+        state.Observe(100);
+        state.SuppressNextIfHealthChanges(100, 10);
+
+        var revive = state.Observe(10);
+        Assert.Equal(StatusFeedbackHealthWatchAction.Suppressed, revive.Action);
+        Assert.Equal(StatusFeedbackDirection.Down, revive.Direction);
+        Assert.Equal(0, state.PendingSuppressions);
+
+        Assert.Equal(StatusFeedbackHealthWatchAction.None, state.Observe(10).Action);
+        var realHit = state.Observe(4);
+        Assert.Equal(StatusFeedbackHealthWatchAction.Play, realHit.Action);
+        Assert.Equal(StatusFeedbackDirection.Down, realHit.Direction);
+    }
+
+    [Fact]
+    public void IdempotentWakeReplayIssuesNoTokenAndKeepsRealChangeAudible()
+    {
+        // 幂等重演（新档血量已是 10）：不发令牌、无差分、无声音；随后的真实变化不受
+        // 残留令牌影响照常播音。
+        var state = NewState();
+        state.Observe(10);
+        state.SuppressNextIfHealthChanges(10, 10);
+        Assert.Equal(0, state.PendingSuppressions);
+
+        Assert.Equal(StatusFeedbackHealthWatchAction.None, state.Observe(10).Action);
+        var heal = state.Observe(60);
+        Assert.Equal(StatusFeedbackHealthWatchAction.Play, heal.Action);
+        Assert.Equal(StatusFeedbackDirection.Up, heal.Direction);
+    }
+
+    [Fact]
     public void NonFiniteObservationDoesNotBecomeBaseline()
     {
         var state = NewState();

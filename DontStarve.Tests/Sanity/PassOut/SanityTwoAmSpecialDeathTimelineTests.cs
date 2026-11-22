@@ -67,7 +67,7 @@ public sealed class SanityTwoAmSpecialDeathTimelineTests
             new[]
             {
                 SanityTwoAmSpecialDeathActionKind.EndSpecialOverlay,
-                SanityTwoAmSpecialDeathActionKind.BeginHiddenHospitalPassOut,
+                SanityTwoAmSpecialDeathActionKind.BeginPendingDarknessDeath,
             },
             outcome.Actions.Select(action => action.Kind)
         );

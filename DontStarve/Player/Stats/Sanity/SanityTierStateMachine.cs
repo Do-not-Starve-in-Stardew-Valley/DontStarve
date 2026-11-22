@@ -448,12 +448,13 @@ internal sealed class SanityTierStateMachine
         for (var index = 0; index < SanityTierCatalog.Rules.Count; index++)
         {
             var rule = SanityTierCatalog.Rules[index];
-            // Tier entry and exit are strict: enter only below the entry line, and leave only
-            // above the exit line. Equality therefore keeps an active hysteresis state but never
-            // activates an inactive tier.
+            // 边界口径对齐 DST 本体：卡线归更疯一侧。默认 tier 进入含边界（恰好等于进入线
+            // 即激活）、退出严格大于（恰好等于阈值保持活跃，活跃带 [0, exit]）；danger 滞回
+            // 的恢复线含边界（≥17.5% 即退出，与 DST sane 标志和音频边沿完全同口径）；
+            // terrorbeak 是唯一严格进入的例外（DST 恐怖喙概率严格 <10%）。
             next[index] = owner.ActiveTiers[index]
-                ? !(ratio > rule.ExitRatio)
-                : ratio < rule.EnterRatio;
+                ? !(rule.ExitInclusive ? ratio >= rule.ExitRatio : ratio > rule.ExitRatio)
+                : (rule.EnterInclusive ? ratio <= rule.EnterRatio : ratio < rule.EnterRatio);
         }
 
         // 嵌套 tier 上升退出时按低阈值到高阈值发布，避免消费者先收到外层退出。

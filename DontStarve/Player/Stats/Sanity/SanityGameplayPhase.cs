@@ -12,7 +12,6 @@ internal enum SanityGameplayPhase
     Harmless50,
     Hostile15,
     Hostile10,
-    ThresholdBoundary,
 }
 
 internal static class SanityGameplayPhaseCatalog
@@ -32,14 +31,16 @@ internal static class SanityGameplayPhaseCatalog
             return false;
         }
 
-        // 合同只使用严格不等式；正好落在 50%、15% 或 10% 时不进入任一低 Sanity 阶段。
+        // 边界口径对齐 DST 影怪种群（shadowcreaturespawner）：>50% 清场；>10% 一只档；
+        // 其余两只档——恰好落在 50%、15% 或 10% 时一律归入更低（更疯）档。
+        // 恰好 10% 归 Hostile15 而非 Hostile10：恐怖喙概率在 DST 本体是严格 <10%，
+        // 恰好 10% 只出爬行怪，与 Terrorbeak tier 的严格进入保持同构。
         phase = sanityRatio switch
         {
             > 0.5d => SanityGameplayPhase.Above50,
-            > 0.15d and < 0.5d => SanityGameplayPhase.Harmless50,
-            > 0.1d and < 0.15d => SanityGameplayPhase.Hostile15,
-            < 0.1d => SanityGameplayPhase.Hostile10,
-            _ => SanityGameplayPhase.ThresholdBoundary,
+            > 0.15d => SanityGameplayPhase.Harmless50,
+            >= 0.1d => SanityGameplayPhase.Hostile15,
+            _ => SanityGameplayPhase.Hostile10,
         };
         return true;
     }
@@ -54,7 +55,6 @@ internal static class SanityGameplayPhaseCatalog
             SanityGameplayPhase.Harmless50 => SanityShadowPoolTier.Harmless50,
             SanityGameplayPhase.Hostile15 => SanityShadowPoolTier.Hostile15,
             SanityGameplayPhase.Hostile10 => SanityShadowPoolTier.Hostile10,
-            SanityGameplayPhase.ThresholdBoundary => SanityShadowPoolTier.Inactive,
             _ => SanityShadowPoolTier.Inactive,
         };
     }

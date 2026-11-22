@@ -37,7 +37,7 @@ public sealed class ActivityMusicFoundationContractTests
     }
 
     [Fact]
-    public void TrackKeysKeepSurfaceFarmCaveRuinsAndIslandFarmFamiliesDistinct()
+    public void TrackKeysKeepSurfaceFarmCaveRuinsAndIslandFamiliesDistinct()
     {
         var source = ReadContract("ActivityMusicContracts.cs");
 
@@ -46,7 +46,8 @@ public sealed class ActivityMusicFoundationContractTests
         Assert.Contains("ActivityMusicLocationFamily.Mine => \"cave\"", source, StringComparison.Ordinal);
         Assert.Contains("ActivityMusicLocationFamily.QuarryMine => \"cave\"", source, StringComparison.Ordinal);
         Assert.Contains("ActivityMusicLocationFamily.SkullCavern => \"ruins\"", source, StringComparison.Ordinal);
-        Assert.Contains("? \"island-farm\" : \"island\"", source, StringComparison.Ordinal);
+        // 姜岛耕种与普通农场共用 farm 区（岛上没有专用耕种曲）；island 区只留给 work/combat。
+        Assert.Contains("? \"farm\" : \"island\"", source, StringComparison.Ordinal);
         Assert.Contains("return $\"{stateToken}.{regionToken}\"", source, StringComparison.Ordinal);
     }
 
@@ -85,12 +86,23 @@ public sealed class ActivityMusicFoundationContractTests
     }
 
     [Fact]
-    public void FarmingGateRequiresFarmIdentityOrExplicitGreenhouse()
+    public void FarmingGateRequiresFarmIdentityGreenhouseOrIslandWest()
     {
         var service = ReadContract("ActivityMusicService.cs");
 
-        Assert.Contains("return location is Farm || location?.IsGreenhouse == true", service, StringComparison.Ordinal);
-        Assert.DoesNotContain("location is IslandWest", service, StringComparison.Ordinal);
+        // 姜岛农场（IslandWest）按用户 2026-11-17 裁决纳入耕种车道：岛上没有专用耕种音乐，
+        // 种植/浇水/收获使用普通农场的 farming 曲目。
+        Assert.Contains(
+            "return location is Farm || location?.IsGreenhouse == true || location is IslandWest",
+            service,
+            StringComparison.Ordinal
+        );
+        // 锄地车道与耕种车道刻意分流：姜岛农场锄地算工作（挖掘职能），其余农活算耕种。
+        Assert.Contains(
+            "IsFarmingLocation(location) && location is not IslandWest",
+            service,
+            StringComparison.Ordinal
+        );
     }
 
     private static string ReadContract(string fileName)

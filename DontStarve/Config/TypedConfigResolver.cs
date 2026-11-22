@@ -29,6 +29,13 @@ internal readonly record struct EnumConfigResolution(
     string Reason
 );
 
+internal readonly record struct IntConfigResolution(
+    bool HasValue,
+    int Value,
+    ConfigValueStatus Status,
+    string Reason
+);
+
 internal sealed class ResolvedConfigEntry
 {
     internal ResolvedConfigEntry(
@@ -110,6 +117,56 @@ internal sealed class TypedConfigResolver
             !entry.HasValue
             || entry.Value is null
             || entry.Value.Type != ConfigOptionType.Enum
+            || entry.Value.EnumValue is null
+        )
+        {
+            return new EnumConfigResolution(false, string.Empty, entry.Status, entry.Reason);
+        }
+
+        return new EnumConfigResolution(
+            true,
+            entry.Value.EnumValue,
+            entry.Status,
+            entry.Reason
+        );
+    }
+
+    /// <summary>
+    /// Number 通道读取（如弹弓力度滑轮的整数百分比）。值域校验在解析期已完成，
+    /// 这里的失败只可能是键不存在、类型不符或原始值非法（fail-closed 由消费点回落默认）。
+    /// </summary>
+    internal IntConfigResolution GetInt(string key)
+    {
+        var entry = Resolve(key, ConfigOptionType.Number);
+        if (
+            !entry.HasValue
+            || entry.Value is null
+            || entry.Value.Type != ConfigOptionType.Number
+        )
+        {
+            return new IntConfigResolution(false, 0, entry.Status, entry.Reason);
+        }
+
+        return new IntConfigResolution(
+            true,
+            entry.Value.IntegerValue,
+            entry.Status,
+            entry.Reason
+        );
+    }
+
+    /// <summary>
+    /// Keybind 与 Enum 共用 string 存储通道，因此复用 EnumConfigResolution 承载
+    /// 字符串解析结果；值本身是 SButton 枚举名（"None" = 未绑定），SButton 转换只在
+    /// SMAPI 侧（ModConfigMenuRegistrar）完成。
+    /// </summary>
+    internal EnumConfigResolution GetKeybind(string key)
+    {
+        var entry = Resolve(key, ConfigOptionType.Keybind);
+        if (
+            !entry.HasValue
+            || entry.Value is null
+            || entry.Value.Type != ConfigOptionType.Keybind
             || entry.Value.EnumValue is null
         )
         {
@@ -263,12 +320,41 @@ internal sealed class TypedConfigResolver
                 return true;
             }
 
+            if (option.Type == ConfigOptionType.Number)
+            {
+                // 只接受 JSON 整数字面量；小数（27.5）与字符串（"50"）一律 fail-closed。
+                if (
+                    element.ValueKind != JsonValueKind.Number
+                    || !element.TryGetInt32(out var numberValue)
+                )
+                {
+                    return false;
+                }
+
+                var numberConfigValue = ConfigValue.Number(numberValue);
+                if (!option.Accepts(numberConfigValue))
+                    return false;
+
+                value = numberConfigValue;
+                return true;
+            }
+
             if (element.ValueKind != JsonValueKind.String)
                 return false;
 
             var text = element.GetString();
             if (string.IsNullOrWhiteSpace(text))
                 return false;
+
+            // Keybind 与 Enum 同为 string 通道，但值域校验不同：按钮名形状 vs 封闭 allowedValues 表。
+            if (option.Type == ConfigOptionType.Keybind)
+            {
+                if (!ConfigKeybind.IsValidButtonName(text))
+                    return false;
+
+                value = ConfigValue.Keybind(text);
+                return true;
+            }
 
             var enumValue = ConfigValue.Enum(text);
             if (!option.Accepts(enumValue))

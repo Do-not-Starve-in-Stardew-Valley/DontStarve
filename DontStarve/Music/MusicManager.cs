@@ -17,7 +17,8 @@ internal static class MusicManager
         IMonitor monitor,
         string manifestId,
         bool dawnDuskEnabled,
-        bool activityMusicEnabled
+        bool activityMusicEnabled,
+        bool farmingMusicEnabled
     )
     {
         _helper = helper;
@@ -28,9 +29,10 @@ internal static class MusicManager
 
         _switchboard = new MusicFeatureSwitchboard(
             ApplyDawnDuskEnabled,
-            ApplyActivityMusicEnabled
+            ApplyActivityMusicEnabled,
+            ApplyFarmingMusicEnabled
         );
-        _switchboard.Initialize(dawnDuskEnabled, activityMusicEnabled);
+        _switchboard.Initialize(dawnDuskEnabled, activityMusicEnabled, farmingMusicEnabled);
     }
 
     internal static void SetDawnDuskEnabled(bool enabled)
@@ -41,6 +43,11 @@ internal static class MusicManager
     internal static void SetActivityMusicEnabled(bool enabled)
     {
         _switchboard?.SetActivityMusicEnabled(enabled);
+    }
+
+    internal static void SetFarmingMusicEnabled(bool enabled)
+    {
+        _switchboard?.SetFarmingMusicEnabled(enabled);
     }
 
     internal static void NotifySanityInsaneEntered(string playerKey)
@@ -86,6 +93,14 @@ internal static class MusicManager
         }
 
         ActivityMusicService.Disable();
+    }
+
+    private static void ApplyFarmingMusicEnabled(bool enabled)
+    {
+        if (!_initialized)
+            return;
+
+        ActivityMusicService.SetFarmingMusicEnabled(enabled);
     }
 
     /// <summary>

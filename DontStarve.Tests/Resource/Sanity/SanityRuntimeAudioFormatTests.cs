@@ -80,6 +80,64 @@ public sealed class SanityRuntimeAudioFormatTests
     }
 
     [Fact]
+    public void RuntimeCacheDoesNotExposeAudioFactoryExceptionMessages()
+    {
+        const string path = "Asset/Sanity/Audio/Creatures/test.ogg";
+        const string privatePath = @"C:\Users\player\Mods\DontStarveCS\Asset\secret.ogg";
+        var files = new MemoryFiles();
+        var factory = new FakeFactory { SoundCreationFailureMessage = privatePath };
+        var diagnostics = new List<SanityRuntimeResourceDiagnostic>();
+        var cache = new SanityRuntimePhysicalResourceCache(
+            files.Root,
+            files,
+            factory,
+            diagnostics.Add
+        );
+        var bytes = BuildOgg(48000);
+        files.Add(path, bytes);
+
+        var result = cache.Load(
+            "sanity.cue.test",
+            path,
+            SanityPhysicalResourceKind.SoundEffect,
+            Convert.ToHexString(SHA256.HashData(bytes)),
+            required: true,
+            isPlaceholder: false,
+            expectedFormatId: SanityOggFormatCatalog.VorbisStereo48000V1
+        );
+
+        Assert.False(result.Success);
+        Assert.Equal(path, result.Diagnostic.Path);
+        Assert.Equal("resource.factory.threw", result.Diagnostic.Code);
+        Assert.Contains("InvalidDataException", result.Diagnostic.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain(privatePath, result.Diagnostic.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain(privatePath, Assert.Single(diagnostics).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void XnaSoundDecodeFailureDoesNotUseTheRawExceptionMessage()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Contracts",
+                "AudioVisualFact",
+                "SanitySmapiResourceService.cs"
+            )
+        );
+        var start = source.IndexOf(
+            "public SanityPhysicalResourceCreationResult CreateSoundEffect(",
+            StringComparison.Ordinal
+        );
+        var end = source.IndexOf("internal sealed class XnaSanitySoundResource", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var soundFactory = source[start..end];
+
+        Assert.Contains("exception.GetType().Name", soundFactory, StringComparison.Ordinal);
+        Assert.DoesNotContain("exception.Message", soundFactory, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RuntimeCacheRejectsAConflictingFormatForAnAlreadyCachedSoundPath()
     {
         var files = new MemoryFiles();
@@ -274,6 +332,8 @@ public sealed class SanityRuntimeAudioFormatTests
     {
         internal int SoundCreates { get; private set; }
 
+        internal string? SoundCreationFailureMessage { get; init; }
+
         public SanityPhysicalResourceCreationResult CreateTexture(string path, byte[] bytes)
         {
             return SanityPhysicalResourceCreationResult.Failed(
@@ -285,6 +345,8 @@ public sealed class SanityRuntimeAudioFormatTests
         public SanityPhysicalResourceCreationResult CreateSoundEffect(string path, byte[] bytes)
         {
             SoundCreates++;
+            if (SoundCreationFailureMessage is not null)
+                throw new InvalidDataException(SoundCreationFailureMessage);
             return SanityPhysicalResourceCreationResult.Created(new FakeResource(path));
         }
     }

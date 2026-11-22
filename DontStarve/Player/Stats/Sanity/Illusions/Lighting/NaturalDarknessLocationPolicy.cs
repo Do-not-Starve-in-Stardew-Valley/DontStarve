@@ -13,16 +13,35 @@ internal enum NaturalDarknessPhase
     FullDark,
     MineDusk,
     MineNight,
+
+    /// <summary>【2026-11-17 氛围】矿井/火山白天的漏光柱等效底光（0.85×黄绿）。</summary>
+    MineDay,
+
+    /// <summary>【2026-11-17 氛围】地表/室内白天的 DST 环境光（默认季 (255,230,158) 暖色）。</summary>
+    AmbientDay,
+
+    /// <summary>
+    /// 【2026-11-17 氛围】地表/室内黄昏及「黑暗关闭时的整夜保持」：目标即 DST 黄昏灰
+    /// (150,150,150)。黑暗开关关闭时黄昏计划在真黑时刻不再改变，自然整夜保持。
+    /// </summary>
+    AmbientDusk,
 }
 
+/// <summary>
+/// 场景计划。黑暗路径（氛围关闭）保持旧模型逐字节不变：目标色=白、进度上限=旧
+/// TargetWhiteBlend（矿井黄昏 0.30 / 全黑 1.0），applied = Lerp(原色, 目标色, progress)。
+/// 氛围路径（2026-11-17）目标色为 DST 换算减色、进度上限恒 1。两个模型共用同一插值公式。
+/// </summary>
 internal readonly record struct NaturalDarknessScenePlan(
     NaturalDarknessPhase Phase,
-    double TargetWhiteBlend,
+    NaturalDarknessTargetColor TargetColor,
+    double ProgressCeiling,
     double TransitionDurationSeconds
 )
 {
     internal static NaturalDarknessScenePlan None => new(
         NaturalDarknessPhase.None,
+        NaturalDarknessTargetColor.White,
         0d,
         0d
     );
@@ -58,6 +77,8 @@ internal readonly record struct NaturalDarknessLocationInput(
     bool IsOutdoors,
     bool IsJunimoBlessingProtected,
     bool IsMineShaft,
+    bool IsVolcanoDungeon,
+    bool IsSpringSeason,
     int MineLevel,
     bool IsSkullCavern,
     bool IsDangerousSkullCavern,
@@ -101,6 +122,7 @@ internal static class NaturalDarknessLocationPolicy
         return IsAtOrAfter(input.TimeOfDay, input.TrulyDarkTime)
             ? new NaturalDarknessScenePlan(
                 NaturalDarknessPhase.NightThreeSeconds,
+                NaturalDarknessTargetColor.White,
                 1d,
                 NaturalDarknessTransitionPolicy.NightTransitionDurationSeconds
             )
@@ -128,6 +150,7 @@ internal static class NaturalDarknessLocationPolicy
         {
             return new NaturalDarknessScenePlan(
                 NaturalDarknessPhase.MineNight,
+                NaturalDarknessTargetColor.White,
                 1d,
                 NaturalDarknessTransitionPolicy.MineNightTransitionDurationSeconds
             );
@@ -137,6 +160,7 @@ internal static class NaturalDarknessLocationPolicy
         {
             return new NaturalDarknessScenePlan(
                 NaturalDarknessPhase.MineDusk,
+                NaturalDarknessTargetColor.White,
                 NaturalDarknessTransitionPolicy.MineDuskWhiteBlend,
                 NaturalDarknessTransitionPolicy.MineDuskTransitionDurationSeconds
             );
@@ -149,6 +173,7 @@ internal static class NaturalDarknessLocationPolicy
     {
         return new NaturalDarknessScenePlan(
             NaturalDarknessPhase.FullDark,
+            NaturalDarknessTargetColor.White,
             1d,
             0d
         );

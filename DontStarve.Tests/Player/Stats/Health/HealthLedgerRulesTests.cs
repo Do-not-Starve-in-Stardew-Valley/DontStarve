@@ -6,6 +6,31 @@ namespace DontStarve.Tests.Player.Stats.Health;
 
 public sealed class HealthLedgerRulesTests
 {
+    [Theory]
+    [InlineData(42.75d, 100, true, 42, 0.75d, false)]
+    [InlineData(125.5d, 100, true, 100, 0d, false)]
+    [InlineData(42.75d, 100, false, 42, 0d, false)]
+    [InlineData(0d, 100, true, 0, 0d, true)]
+    public void Debug_value_sets_health_and_remainder_without_bypassing_the_ledger(
+        double requestedValue,
+        int maximum,
+        bool decimalLedgerEnabled,
+        int expectedHealth,
+        double expectedRemainder,
+        bool expectedLethal
+    )
+    {
+        var result = HealthLedgerRules.SetDebugValue(
+            requestedValue,
+            maximum,
+            decimalLedgerEnabled
+        );
+
+        Assert.Equal(expectedHealth, result.NewHealth);
+        Assert.Equal(expectedRemainder, result.NewRemainder, precision: 10);
+        Assert.Equal(expectedLethal, result.IsLethal);
+    }
+
     [Fact]
     public void Fractional_damage_lands_integer_part_and_keeps_remainder()
     {

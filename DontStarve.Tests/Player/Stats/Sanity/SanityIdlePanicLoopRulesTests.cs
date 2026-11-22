@@ -78,10 +78,10 @@ public sealed class SanityIdlePanicLoopRulesTests
     }
 
     [Fact]
-    public void Sanity_eligibility_is_strictly_below_half_with_positive_maximum()
+    public void Sanity_eligibility_is_at_or_below_half_with_positive_maximum()
     {
         Assert.True(SanityIdlePanicLoopRules.IsSanityEligible(49.9d, 100d));
-        Assert.False(SanityIdlePanicLoopRules.IsSanityEligible(50d, 100d));
+        Assert.True(SanityIdlePanicLoopRules.IsSanityEligible(50d, 100d));
         Assert.False(SanityIdlePanicLoopRules.IsSanityEligible(50.1d, 100d));
         Assert.False(SanityIdlePanicLoopRules.IsSanityEligible(0d, 0d));
         Assert.False(SanityIdlePanicLoopRules.IsSanityEligible(10d, -5d));

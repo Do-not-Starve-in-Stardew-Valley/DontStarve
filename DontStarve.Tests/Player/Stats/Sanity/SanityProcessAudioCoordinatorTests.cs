@@ -292,6 +292,68 @@ public sealed class SanityProcessAudioCoordinatorTests
     }
 
     [Fact]
+    public void Special_event_allowance_exempts_the_dialogue_warning_pause_gate()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+        coordinator.SubmitDarknessWarningClaim(
+            new SanityDarknessWarningClaim("1", 0, SessionId, "special", 2)
+        );
+        Assert.True(output.DarknessWarningPhysical);
+
+        // 修复1：事件弹窗会置 Game1.dialogueUp=true（service 把 (paused||dialogueUp) 合并进
+        // SetDarknessWarningProcessPaused）。特殊事件放行期间，dialogue 门不得静默警告音。
+        coordinator.SetSpecialEventAudioAllowed(true);
+        coordinator.SetDarknessWarningProcessPaused(true);
+        Assert.False(output.DarknessWarningPaused);
+        Assert.True(output.DarknessWarningPhysical);
+
+        // 事件结束（allowance 撤销）后，同一 dialogue 门立即恢复静默警告音。
+        coordinator.SetSpecialEventAudioAllowed(false);
+        Assert.True(output.DarknessWarningPaused);
+        Assert.True(output.DarknessWarningPhysical);
+    }
+
+    [Fact]
+    public void Dialogue_warning_pause_gate_still_applies_without_special_allowance()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+        coordinator.SubmitDarknessWarningClaim(
+            new SanityDarknessWarningClaim("1", 0, SessionId, "warning", 2)
+        );
+
+        // 平时游戏中（非特殊事件），对话/暂停期间警告音照旧静默——口径不得回归。
+        coordinator.SetDarknessWarningProcessPaused(true);
+        Assert.True(output.DarknessWarningPaused);
+        coordinator.SetDarknessWarningProcessPaused(false);
+        Assert.False(output.DarknessWarningPaused);
+    }
+
+    [Fact]
+    public void Special_event_allowance_does_not_exempt_window_focus_or_local_claim_pause()
+    {
+        var output = new FakeProcessOutput();
+        using var coordinator = new SanityProcessAudioCoordinator(output);
+        coordinator.SubmitDarknessWarningClaim(
+            new SanityDarknessWarningClaim("1", 0, SessionId, "special", 2)
+        );
+        coordinator.SetSpecialEventAudioAllowed(true);
+
+        // 窗口失焦（SetProcessPaused）与逐 claim 本地暂停（小游戏）不在豁免口径内，
+        // 特殊事件期间仍按既有行为暂停警告音。
+        coordinator.SetProcessPaused(true);
+        Assert.True(output.DarknessWarningPaused);
+        coordinator.SetProcessPaused(false);
+        Assert.False(output.DarknessWarningPaused);
+
+        coordinator.SetDarknessWarningClaimPlaybackPaused("1", 0, true);
+        Assert.True(output.DarknessWarningPaused);
+        coordinator.SetDarknessWarningClaimPlaybackPaused("1", 0, false);
+        Assert.False(output.DarknessWarningPaused);
+    }
+
+    [Fact]
     public void Darkness_warning_claim_selects_clip_and_pauses_resumes_same_physical_warning()
     {
         var output = new FakeProcessOutput();

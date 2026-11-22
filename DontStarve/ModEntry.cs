@@ -9,9 +9,11 @@ using DontStarve.Display;
 using DontStarve.Display.UIElements;
 using DontStarve.Music;
 using DontStarve.Player;
+using DontStarve.Player.Combat.CombatAutomation;
 using DontStarve.Player.Death;
 using DontStarve.Player.Stats;
 using DontStarve.Player.Stats.Food;
+using DontStarve.Player.Stats.Health;
 using DontStarve.Player.Stats.Hunger;
 using DontStarve.Player.Sleep;
 using DontStarve.Player.Stats.Sanity;
@@ -75,11 +77,17 @@ internal class ModEntry : Mod, IDisposable
         _environmentLightMultiplayer;
     private SmapiDarknessAttackService _darknessAttack;
     private SmapiDarknessAttackResolutionService _darknessAttackResolution;
+    // 「饥荒风格生命值」零头链路（2026-11-13 决议）：门控/交付闭包在 InitializeCoreServices
+    // 内回填（StatManager.Initialize 先于下方 darkness 结算服务构造），null = 骰子模式照旧 /
+    // 不交付的 fail-safe。只在装配点赋值一次，之后只读。
+    private Func<bool>? _decimalHealthLedgerGate;
+    private Action<long, double>? _decimalFractionSink;
     private PlayerDeathCauseLedger _playerDeathCauseLedger;
     private PassOutReasonLedger _passOutReasonLedger;
     private SpecialPassOutSanitySettlement _specialPassOutSanitySettlement;
     private SmapiPassOutReasonService _passOutReasonService;
     private SmapiSleepLifecycleAdapter _sleepLifecycle;
+    private SmapiSanityTwoAmDarknessWaitService _sanityTwoAmDarknessWait;
     private SmapiSanityTwoAmSpecialDeathService _sanityTwoAmPassOut;
     private SmapiEnvironmentLightDebugOverlay _environmentLightDebugOverlay;
     private SeedEdibilityInteractionService _seedEdibilityInteraction;
@@ -89,6 +97,10 @@ internal class ModEntry : Mod, IDisposable
     private HungerDamageMode _hungerDamageMode = HungerDamageMode.Default;
     private bool _sleepRecoveryBalanceEnabled = true;
     private bool _activityMusicEnabled = true;
+
+    // 耕种音乐是活动音乐总开关下的半独立子开关：总开关关闭时整体静音，本开关只在总开关
+    // 开启时决定耕种触发播耕耘曲还是回落为当前地点的工作曲。
+    private bool _farmingMusicEnabled = true;
     private bool _seedEdibilityEnabled = true;
     private bool _sanitySystemEnabled = true;
     private bool _sanityVisualEffectsEnabled = true;
@@ -98,9 +110,22 @@ internal class ModEntry : Mod, IDisposable
     private bool _dangerMinigameBlockingEnabled = true;
     private bool _statusFeedbackSoundsEnabled = true;
     private StatusFeedbackCoordinator? _statusFeedback;
+    // 战斗自动化总装配（长按挥舞/弹弓档位；后续自动特技/鼠标转身/索敌共用）。
+    // config 整体 fail-closed 时不构建，功能整体静默关闭；装配细节全部在 Coordinator 内。
+    private CombatAutomationCoordinator? _combatAutomation;
+
+    // 「饥荒的光照氛围」（2026-11-17）：默认开；只与理智总开关联动，黑暗开关独立。
+    private bool _lightAmbienceEnabled = true;
 
     private bool IsNaturalDarknessRuntimeEnabled =>
         _sanitySystemEnabled && _naturalDarknessEnabled;
+
+    /// <summary>
+    /// 光照图服务运行门：氛围或黑暗任一开启即运行（氛围开+黑暗关时黄昏/白天计划仍需服务）。
+    /// NPC 手电与矿井墙灯仍只随黑暗开关（IsNaturalDarknessRuntimeEnabled）。
+    /// </summary>
+    private bool IsLightmapRuntimeEnabled =>
+        _sanitySystemEnabled && (_naturalDarknessEnabled || _lightAmbienceEnabled);
 
     // schema 或配置根读坏时保持 fail-closed：允许本次用安全默认值运行，但不覆盖原文件。
     private bool _canWriteConfig;
@@ -111,7 +136,8 @@ internal class ModEntry : Mod, IDisposable
     public override void Entry(IModHelper helper)
     {
         _config = ReadModConfig(helper);
-        var hungerDebugController = InitializeCoreServices(helper);
+        var coreServices = InitializeCoreServices(helper);
+        var hungerDebugController = coreServices.HungerDebugController;
         HungerExtensions.SetEnabled(_hungerSystemEnabled);
         DisplayManager.Initialize(helper, _timeApi, _sanityLifecycle);
         // EatFood/Wearing have already loaded their unique data tables through StatManager.
@@ -135,6 +161,16 @@ internal class ModEntry : Mod, IDisposable
         // （+Angry 气泡）与原版受惊动作（+Surprised 气泡），任意输入立刻打断。它是玩家
         // 行为表现而非屏幕滤镜，因此只跟随 Sanity 系统总开关，不受视觉开关影响。
         _idlePanicLoop = new SanityIdlePanicLoopService(helper, Monitor, _sanityLifecycle);
+        // 战斗自动化：与惊恐循环同属玩家输入响应层。resolver 不可用（config fail-closed）
+        // 时不构建，postfix/驱动都不存在，游戏行为与未安装本功能一致。
+        _combatAutomation = _canWriteConfig
+            ? new CombatAutomationCoordinator(
+                helper,
+                Monitor,
+                _configurationRuntime.Resolver,
+                ModManifest.UniqueID
+            )
+            : null;
         // 任务族 03 阶段 06 只建立 manifest-driven 资源与诊断预览；具体玩法仍由下方
         // owner-local projection species 显式注册，资源 facade 本身不创建实体。
         _sanityResources = new SanitySmapiResourceService(
@@ -212,7 +248,8 @@ internal class ModEntry : Mod, IDisposable
             helper,
             Monitor,
             ModManifest.UniqueID,
-            IsNaturalDarknessRuntimeEnabled,
+            IsLightmapRuntimeEnabled,
+            _naturalDarknessEnabled,
             environmentLightLocationRules,
             darknessAttackLocationAuthorization
         );
@@ -287,7 +324,9 @@ internal class ModEntry : Mod, IDisposable
             _darknessAttack,
             darknessDamageModeResolver,
             _sanityResources,
-            _playerDeathCauseLedger.MarkDarkness
+            _playerDeathCauseLedger.MarkDarkness,
+            _decimalHealthLedgerGate,
+            _decimalFractionSink
         );
         // Ordinary committed sleep and confirmed kill-screen recovery have their own narrow
         // engine adapters. They only capture a reason or settle 50% of the current Sanity max;
@@ -316,6 +355,15 @@ internal class ModEntry : Mod, IDisposable
         // The 2:00 adapter consumes the same typed mode, location result, lifecycle authority,
         // event overlay, audio coordinator, death-cause ledger and sleep-settlement seam. It owns
         // no duplicate config, location, Sanity, session or physical-audio authority.
+        // 等待服务（修复4）先于特殊死亡服务构造：它只消费主机状态机派生的流数量事实与本机
+        // 演出活跃标志，不自持任何 flow/session 权威；演出来源回调允许晚于构造完成赋值。
+        _sanityTwoAmDarknessWait = new SmapiSanityTwoAmDarknessWaitService(
+            helper,
+            Monitor,
+            ModManifest.UniqueID,
+            _sanityLifecycle,
+            () => _sanityTwoAmPassOut is not null && _sanityTwoAmPassOut.IsLocalPresentationActive
+        );
         _sanityTwoAmPassOut = new SmapiSanityTwoAmSpecialDeathService(
             helper,
             Monitor,
@@ -328,11 +376,17 @@ internal class ModEntry : Mod, IDisposable
             environmentLightLocationRules,
             _sanityEvents,
             _sanityAudio,
+            _sanityTwoAmDarknessWait,
             _playerDeathCauseLedger,
             _specialPassOutSanitySettlement,
-            _sleepLifecycle.RegisterHiddenHospitalDeath
+            _sleepLifecycle.RegisterPendingDarknessDeath
         );
-        _sleepLifecycle.HiddenHospitalWakeReady += _sanityTwoAmPassOut.BeginHiddenHospitalHandoff;
+        // 医院直醒：睡眠适配器在世界稳定后（或血 0 边界提前委托时）触发一次 pending-darkness
+        // 死亡序列（读档重演同路径），服务负责 killScreen→PlayerKilled 与 fail-open；
+        // 修复1（2026-11-14）：结果回报适配器——完成才从落盘排除、fail-open 保留标记（读档必重演）。
+        _sleepLifecycle.PendingDarknessWakeReady += _sanityTwoAmPassOut.BeginPendingDarknessWakeDeath;
+        _sanityTwoAmPassOut.PendingDarknessWakeCompleted += _sleepLifecycle.OnPendingDarknessWakeCompleted;
+        _sanityTwoAmPassOut.PendingDarknessWakeFailed += _sleepLifecycle.OnPendingDarknessWakeFailed;
         // 共享敌对态先注册为 owner-local 转换的唯一主机 sink。真实 Monster 只有在
         // NetCollection roundtrip、同版本 peer、共享视觉与 location 落点均成立时才生成。
         _hostileShadowHost = new SmapiHostileShadowHost(
@@ -466,14 +520,7 @@ internal class ModEntry : Mod, IDisposable
         // 不是失败。不注册即不生成投影、不挂载行为；暗影之手的点火源/机器世界交互由投影行为
         // 驱动（相关服务无独立事件订阅入口），随之一并封住。恢复时从清单删除对应物种 ID 并
         // 按 文档/当前在做计划/san值系统当前缺少的内容.md 条目 c) 复核 JSON 行开关。
-        if (OwnerLocalProjectionDisableList.IsDisabled(MrSkittsProjectionContract.SpeciesId))
-        {
-            Monitor.Log(
-                $"Mr.Skitts owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
-                LogLevel.Info
-            );
-        }
-        else
+        if (!OwnerLocalProjectionDisableList.IsDisabled(MrSkittsProjectionContract.SpeciesId))
         {
             var mrSkittsBehavior = new MrSkittsProjectionBehavior();
             if (
@@ -492,16 +539,9 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
         }
-        if (OwnerLocalProjectionDisableList.IsDisabled(DarkHandProjectionContract.SpeciesId))
-        {
-            // DarkHand 停用时 lease coordinator 等世界交互服务保持闲置（无事件订阅、被动调用），
-            // 不额外拆除，便于素材定稿后恢复注册即可重新驱动。
-            Monitor.Log(
-                $"DarkHand owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
-                LogLevel.Info
-            );
-        }
-        else
+        // DarkHand 停用时 lease coordinator 等世界交互服务保持闲置（无事件订阅、被动调用），
+        // 不额外拆除，便于素材定稿后恢复注册即可重新驱动。
+        if (!OwnerLocalProjectionDisableList.IsDisabled(DarkHandProjectionContract.SpeciesId))
         {
             var darkHandBehavior = new DarkHandProjectionBehavior(
                 darkHandModeResolver,
@@ -524,14 +564,7 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
         }
-        if (OwnerLocalProjectionDisableList.IsDisabled(DarkWatcherProjectionContract.SpeciesId))
-        {
-            Monitor.Log(
-                $"DarkWatcher owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
-                LogLevel.Info
-            );
-        }
-        else
+        if (!OwnerLocalProjectionDisableList.IsDisabled(DarkWatcherProjectionContract.SpeciesId))
         {
             var darkWatcherBehavior = new DarkWatcherProjectionBehavior(
                 new SmapiDarkWatcherEnvironmentLightProbe(
@@ -555,14 +588,7 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
         }
-        if (OwnerLocalProjectionDisableList.IsDisabled(EyesProjectionContract.SpeciesId))
-        {
-            Monitor.Log(
-                $"Eyes owner-local projection registration skipped ({OwnerLocalProjectionDisableList.DisabledReason}); see 文档/当前在做计划/san值系统当前缺少的内容.md.",
-                LogLevel.Info
-            );
-        }
-        else
+        if (!OwnerLocalProjectionDisableList.IsDisabled(EyesProjectionContract.SpeciesId))
         {
             var eyesBehavior = new EyesProjectionBehavior(
                 new SmapiEyesEnvironmentLightProbe(
@@ -617,6 +643,7 @@ internal class ModEntry : Mod, IDisposable
             _sanityLifecycle,
             hungerDebugController
         ).Register(helper);
+        new PlayerResourceDebugCommands(Monitor, coreServices.Health).Register(helper);
         // DIAG-20260807: LookupAnything 显示欺骗——影怪攻击力显示跟随配置档位
         // （Lookup 读 DamageToFarmer 实例字段；该字段本体置 0 禁接触伤害）。
         DontStarve.Debug.LookupAnythingDisplayFake.TryPatch(Monitor);
@@ -653,7 +680,9 @@ internal class ModEntry : Mod, IDisposable
         );
     }
 
-    private HungerDebugController InitializeCoreServices(IModHelper helper)
+    private (HungerDebugController HungerDebugController, Health Health) InitializeCoreServices(
+        IModHelper helper
+    )
     {
         SeedEdibilityRuntime.TryInstall(ModManifest.UniqueID, Monitor);
         SeedEdibilityRuntime.SetEnabled(_seedEdibilityEnabled);
@@ -671,7 +700,8 @@ internal class ModEntry : Mod, IDisposable
             Monitor,
             ModManifest.UniqueID,
             _config.EnableDawnDuskMusic,
-            _activityMusicEnabled
+            _activityMusicEnabled,
+            _farmingMusicEnabled
         );
         // SMAPI 只允许在所有 mod 初始化完成后获取其它 mod API，GMCM 注册必须延后到 GameLaunched。
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
@@ -698,13 +728,23 @@ internal class ModEntry : Mod, IDisposable
             out var hungerDebugController,
             out _survivalStateTime,
             _statusFeedback,
-            _statusFeedback
+            _statusFeedback,
+            () => _environmentLightService,
+            () => Context.ScreenId
         );
         _sanityLifecycle = statManagerResult.Lifecycle;
         _statusFeedback.AttachStatServices(
             statManagerResult.Sanity.ChangeService,
             statManagerResult.Hunger.ChangeService
         );
+        // 【2026-11-13 黑暗袭击期望值零头】装配顺序契约：StatManager.Initialize（本方法，
+        // Entry 的第一个步骤）先于 Entry 主体后段的 _darknessAttackResolution 构造，因此在
+        // 这里回填门控/交付闭包字段，后续构造直接取用；若未来顺序被打乱，darkness 侧拿到
+        // null 会按"永远骰子模式 / 不交付"fail-safe 退回改动前行为，不会 NRE。闭包只捕获
+        // Health 实例，开关值在每次袭击结算时实时读取，GMCM 翻转即时生效。
+        _decimalHealthLedgerGate = () => statManagerResult.Health.ShouldUseDecimalLedger();
+        _decimalFractionSink = (playerId, fraction) =>
+            statManagerResult.Health.ApplyDecimalDamageFraction(playerId, fraction);
         // 启动即预解码六个实例（音乐服务同款挂载时机）；开关关闭则只保持 seam、不加载。
         _statusFeedback.SetEnabled(_statusFeedbackSoundsEnabled);
         _trashCanSanity = new SmapiTrashCanSanityService(
@@ -717,7 +757,7 @@ internal class ModEntry : Mod, IDisposable
             ModManifest.UniqueID,
             _sanityLifecycle
         );
-        return hungerDebugController;
+        return (hungerDebugController, statManagerResult.Health);
     }
 
     internal static ShadowCreatureSmapiSfxService? ActiveShadowCreatureSfx { get; private set; }
@@ -739,6 +779,8 @@ internal class ModEntry : Mod, IDisposable
         _shadowCreatureSfx = null;
         _statusFeedback?.Dispose();
         _statusFeedback = null;
+        _combatAutomation?.Dispose();
+        _combatAutomation = null;
         _taggedHudMessages?.Dispose();
         _taggedHudMessages = null;
         _seedEdibilityInteraction?.Dispose();
@@ -748,7 +790,13 @@ internal class ModEntry : Mod, IDisposable
         _flowerCollectionSanity?.Dispose();
         _flowerCollectionSanity = null;
         if (_sleepLifecycle is not null && _sanityTwoAmPassOut is not null)
-            _sleepLifecycle.HiddenHospitalWakeReady -= _sanityTwoAmPassOut.BeginHiddenHospitalHandoff;
+        {
+            _sleepLifecycle.PendingDarknessWakeReady -= _sanityTwoAmPassOut.BeginPendingDarknessWakeDeath;
+            _sanityTwoAmPassOut.PendingDarknessWakeCompleted -= _sleepLifecycle.OnPendingDarknessWakeCompleted;
+            _sanityTwoAmPassOut.PendingDarknessWakeFailed -= _sleepLifecycle.OnPendingDarknessWakeFailed;
+        }
+        _sanityTwoAmDarknessWait?.Dispose();
+        _sanityTwoAmDarknessWait = null;
         _sleepLifecycle?.Dispose();
         _sleepLifecycle = null;
         _survivalStateTime?.Dispose();
@@ -837,6 +885,21 @@ internal class ModEntry : Mod, IDisposable
             {
                 Monitor.Log(
                     $"EnableActivityMusic is unavailable ({activityMusic.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
+            var farmingMusic = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableFarmingMusic
+            );
+            if (farmingMusic.HasValue)
+            {
+                _farmingMusicEnabled = farmingMusic.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableFarmingMusic is unavailable ({farmingMusic.Reason}); using its safe runtime default without overwriting the raw value.",
                     LogLevel.Warn
                 );
             }
@@ -982,6 +1045,21 @@ internal class ModEntry : Mod, IDisposable
                 );
             }
 
+            var lightAmbience = _configurationRuntime.Resolver.GetBoolean(
+                ConfigKeys.EnableDontStarveLightAmbience
+            );
+            if (lightAmbience.HasValue)
+            {
+                _lightAmbienceEnabled = lightAmbience.Value;
+            }
+            else
+            {
+                Monitor.Log(
+                    $"EnableDontStarveLightAmbience is unavailable ({lightAmbience.Reason}); using its safe runtime default without overwriting the raw value.",
+                    LogLevel.Warn
+                );
+            }
+
             var dangerMinigameBlocking = _configurationRuntime.Resolver.GetBoolean(
                 ConfigKeys.EnableDangerMinigameBlocking
             );
@@ -1123,6 +1201,22 @@ internal class ModEntry : Mod, IDisposable
             );
         }
 
+        var savedFarmingMusic = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableFarmingMusic
+        );
+        if (savedFarmingMusic.HasValue)
+        {
+            _farmingMusicEnabled = savedFarmingMusic.Value;
+            MusicManager.SetFarmingMusicEnabled(savedFarmingMusic.Value);
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableFarmingMusic remains unavailable after GMCM save ({savedFarmingMusic.Reason}); the active farming-music state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
+
         var savedHungerSystem = _configurationRuntime.Resolver.GetBoolean(
             ConfigKeys.EnableHungerSystem
         );
@@ -1231,6 +1325,21 @@ internal class ModEntry : Mod, IDisposable
                 LogLevel.Warn
             );
         }
+
+        var savedLightAmbience = _configurationRuntime.Resolver.GetBoolean(
+            ConfigKeys.EnableDontStarveLightAmbience
+        );
+        if (savedLightAmbience.HasValue)
+        {
+            _lightAmbienceEnabled = savedLightAmbience.Value;
+        }
+        else
+        {
+            Monitor.Log(
+                $"EnableDontStarveLightAmbience remains unavailable after GMCM save ({savedLightAmbience.Reason}); the active light ambience state was left unchanged.",
+                LogLevel.Warn
+            );
+        }
         ApplyNaturalDarknessRuntimeState();
 
         var savedSanityVisualEffects = _configurationRuntime.Resolver.GetBoolean(
@@ -1316,13 +1425,18 @@ internal class ModEntry : Mod, IDisposable
                 LogLevel.Warn
             );
         }
+
+        // 战斗自动化 9 个 key 的即时应用：读取/回落/订阅决策全部封装在 Coordinator，
+        // 不在此展开内联逻辑。
+        _combatAutomation?.ApplyConfiguration();
     }
 
     private void ApplyNaturalDarknessRuntimeState()
     {
-        var enabled = IsNaturalDarknessRuntimeEnabled;
-        _naturalDarknessLightmap?.SetEnabled(enabled);
-        _npcFlashlights?.SetEnabled(enabled);
+        _naturalDarknessLightmap?.SetEnabled(IsLightmapRuntimeEnabled);
+        _naturalDarknessLightmap?.SetDarknessEnabled(_naturalDarknessEnabled);
+        // NPC 手电与矿井墙灯仍只随黑暗开关（氛围单独开启时不产生手电/信号灯语义）。
+        _npcFlashlights?.SetEnabled(IsNaturalDarknessRuntimeEnabled);
     }
 
     private void LogFingerprint()

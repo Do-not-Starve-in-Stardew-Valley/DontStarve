@@ -24,13 +24,16 @@ internal static class StatusFeedbackTriggerPolicy
     /// Monster=NearMonster 每分钟邻近恐惧；Night=每分钟黑暗侵蚀；Mine=矿洞每分钟影响；
     /// Sleep=普通睡眠结算（DST 睡觉=overtime 语义）；Buff=Buff 周期脉冲；
     /// VoluntarySleep=自愿睡眠结算；BathHouse=澡堂每分钟恢复；
+    /// AmbientLight=「按光照程度」自然流失，每游戏分钟持续来源（2026-11-18 补接：
+    /// 新来源接入时漏进静音清单导致黄昏/夜晚按光照掉 san 被误播 sanity_down 的回归）；
     /// Migration=存档迁移批量写入；Administration=调试/管理命令；
     /// HealthDeath=真死亡复活重置（PassOutReasonPolicy.ResolveHealthDeathRecovery 把
     /// 理智 Set 为上限 50%，是系统重置而非离散增减；2AM 特殊死亡 DefaultDeath
     /// 分支共享同一复活边界）。
     /// 其余（Food/Garbage/FlowerCollection/DarknessAttack/HostileShadowKill/
     /// TimeLimitPassOut/ExhaustionPassOut/SanityDarknessSpecialDeath 及未来新增）
-    /// 均为一次性事件 → Discrete。
+    /// 均为一次性事件 → Discrete。枚举全集与两份期望表的逐值归属由
+    /// StatusFeedbackTriggerPolicyTests 的强断言锁死：新增来源不显式归类即测试期爆红。
     /// </summary>
     internal static StatusFeedbackTriggerKind Classify(SanityChangeSource source)
     {
@@ -47,6 +50,10 @@ internal static class StatusFeedbackTriggerPolicy
                 or SanityChangeSource.Buff
                 or SanityChangeSource.VoluntarySleep
                 or SanityChangeSource.BathHouse
+
+                // 按光照自然流失=每游戏分钟持续来源，静音（2026-11-18 补接，与 Night/Mine 同组）。
+                or SanityChangeSource.AmbientLight
+
                 or SanityChangeSource.Migration
                 or SanityChangeSource.Administration
 

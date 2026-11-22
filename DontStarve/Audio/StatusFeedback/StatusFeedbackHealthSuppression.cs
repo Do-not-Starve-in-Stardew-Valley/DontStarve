@@ -27,8 +27,10 @@ internal static class StatusFeedbackHealthSuppression
 
     /// <summary>
     /// 持续健康写入方在写值前调用：计划值与当前值确实不同时，抑制下一次该玩家的
-    /// 健康差分播音。仅用于 overtime 语义的写入（睡眠结算、饥饿空腹伤害等）；
-    /// 一次性伤害（暗影袭击、黑暗地板等）不得调用。
+    /// 健康差分播音。仅用于 overtime/系统重置语义的写入（睡眠结算、饥饿空腹伤害、
+    /// 黑暗死亡清晨重演的原版复活血量写回等）；一次性伤害（暗影袭击、黑暗地板等）
+    /// 不得调用。新增写回点必须接入本入口，否则差分 watcher 会按离散变化播音
+    /// （2026-11-14 复活重演漏接教训）。
     /// </summary>
     internal static void SuppressNextHealthSound(
         long playerId,

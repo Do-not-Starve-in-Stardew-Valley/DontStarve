@@ -261,19 +261,16 @@ public sealed class SanityVisualRuntimeStaticTests
         );
 
         // 挂起三信号齐全：菜单/暂停/失焦冻结循环而非取消（用户口径：暂停后恢复）。
+        // 2026-11-13 守卫提取：两个判定方法原样移入共享类 CombatInputGuards（战斗自动化
+        // 复用同一口径），信号级契约改由 CombatInputGuardsStaticContractTests 锁定；
+        // 这里只锁"服务只引用共享类、不留私有副本"。
         Assert.Contains(
-            "IsGameInteractionSuspended",
+            "CombatInputGuards.IsGameInteractionSuspended()",
             source,
             StringComparison.Ordinal
         );
-        Assert.Contains(
-            "Game1.activeClickableMenu is not null",
-            source,
-            StringComparison.Ordinal
-        );
-        Assert.Contains("Game1.paused", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "!Game1.game1.IsActiveNoOverlay",
+        Assert.DoesNotContain(
+            "private static bool IsGameInteractionSuspended()",
             source,
             StringComparison.Ordinal
         );
@@ -289,12 +286,56 @@ public sealed class SanityVisualRuntimeStaticTests
         );
 
         // 事件覆盖：eventUp 之外还需识别 CurrentEvent 与 farmEvent，避免任何事件形态中触发。
+        // 打断清单整体在共享守卫 DescribePanicInterruption 内（契约同样在守卫契约测试）。
         Assert.Contains(
-            "Game1.CurrentEvent is not null",
+            "CombatInputGuards.DescribePanicInterruption(player)",
             source,
             StringComparison.Ordinal
         );
-        Assert.Contains("Game1.farmEvent is not null", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "private static string? DescribePanicInterruption(Farmer player)",
+            source,
+            StringComparison.Ordinal
+        );
+
+        // 受惊表情自我锁豁免：原版 performPlayerEmote 的 noMovementPause 会令 CanMove=false
+        // 200ms，若当作打断则受惊段活不过一帧、跳跃永远不可见。（豁免判定随守卫提取移入
+        // CombatInputGuards，由其契约测试锁定。）
+    }
+
+    [Fact]
+    public void Panic_loop_refires_vanilla_passout_instead_of_freezing_for_seven_seconds()
+    {
+        var source = ReadWorkspaceSource(
+            Path.Combine(
+                "DontStarve",
+                "Player",
+                "Stats",
+                "Sanity",
+                "Visual",
+                "SanityIdlePanicLoopService.cs"
+            )
+        );
+
+        // 2 点/力竭判定必须与原版一致，且只在循环活跃时介入。
+        Assert.Contains(
+            "Game1.timeOfDay >= 2600 || player.stamina <= -15f",
+            source,
+            StringComparison.Ordinal
+        );
+        // 帧五吞触发的补救：清帧五后必须替原版重发 startToPassOut（否则 freezePause=7000
+        // 造成约 7 秒冻结）；重发前必须确认精灵不在昏睡态，293 已接管时绝不清理。
+        Assert.Contains("player.startToPassOut()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "!player.FarmerSprite.isPassingOut()",
+            source,
+            StringComparison.Ordinal
+        );
+        Assert.Contains(
+            "player.FarmerSprite.currentSingleAnimation == VanillaPassOutAnimationToken",
+            source,
+            StringComparison.Ordinal
+        );
     }
 
     [Fact]

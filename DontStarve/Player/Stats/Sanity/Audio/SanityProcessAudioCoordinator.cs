@@ -41,7 +41,9 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     private int aggregateDangerClaimCount;
     private bool dangerArmed = true;
     private bool processPaused;
-    private bool darknessWarningProcessPaused;
+    // Game1.paused/Game1.dialogueUp 的进程级警告音暂停门（与窗口失焦的 processPaused 分开记账，
+    // 因为两条来源的豁免口径不同：特殊事件豁免只作用于 dialogue 门，见 ApplyDarknessWarningPause）。
+    private bool dialogueWarningPaused;
     private bool eventSuspended;
     private bool specialEventAudioAllowed;
     private bool disposed;
@@ -417,7 +419,6 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
             return;
 
         processPaused = paused;
-        darknessWarningProcessPaused = paused;
         generation++;
         // Focus pause is intentionally narrower than the legacy all-lane SetPaused seam: the
         // low-Sanity ambience/whispers and darkness-warning clips pause in place, while threshold
@@ -437,10 +438,10 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
     /// </summary>
     internal void SetDarknessWarningProcessPaused(bool paused)
     {
-        if (disposed || darknessWarningProcessPaused == paused)
+        if (disposed || dialogueWarningPaused == paused)
             return;
 
-        darknessWarningProcessPaused = paused;
+        dialogueWarningPaused = paused;
         generation++;
         ApplyDarknessWarningPause();
     }
@@ -479,11 +480,17 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
 
         specialEventAudioAllowed = allowed;
         generation++;
+        // 允许口径变化时立即重算 dialogue 门暂停（事件开启时 dialogueUp 可能已经为 true，
+        // 若不重算，警告音会一直等到下一轮 tick 才被豁免）。
+        ApplyDarknessWarningPause();
         SafeOutput(
             () => output.SetSpecialEventAudioAllowed(allowed),
             "audio.output.special-event-audio-failed"
         );
     }
+
+    /// <summary>当前是否处于"特殊事件音频放行"状态（仅 2 点黑暗特殊事件期间为 true）。</summary>
+    internal bool SpecialEventAudioAllowed => specialEventAudioAllowed;
 
     internal void InvalidateResources()
     {
@@ -523,7 +530,7 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
         locallyPausedDarknessWarnings.Clear();
         dangerArmed = true;
         processPaused = false;
-        darknessWarningProcessPaused = false;
+        dialogueWarningPaused = false;
         eventSuspended = false;
         specialEventAudioAllowed = false;
         if (hadState)
@@ -780,7 +787,13 @@ internal sealed class SanityProcessAudioCoordinator : IDisposable
 
     private void ApplyDarknessWarningPause()
     {
-        var shouldPause = darknessWarningProcessPaused;
+        // dialogue 门（Game1.paused/Game1.dialogueUp）在特殊事件期间按 specialEventAudioAllowed
+        // 豁免：2 点黑暗事件的窄窗弹窗会置 dialogueUp=true，若不豁免，事件自己的三拍警告音
+        // 会在演出中被本门静默。豁免口径与 suspended 分支（output.SetSuspended 检查
+        // specialEventAudioAllowed）一致。窗口失焦（processPaused）与逐 claim 小游戏暂停
+        // 不受豁免影响，保持既有行为。
+        var shouldPause = processPaused
+            || (dialogueWarningPaused && !specialEventAudioAllowed);
         if (!shouldPause && darknessWarningClaims.Count > 0)
         {
             shouldPause = true;

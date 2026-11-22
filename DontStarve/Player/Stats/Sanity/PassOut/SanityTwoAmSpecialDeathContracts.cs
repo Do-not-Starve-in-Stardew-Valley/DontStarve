@@ -36,7 +36,7 @@ internal enum SanityTwoAmSpecialDeathActionKind
     PlayDeathSound,
     ShowPromptResolved,
     EndSpecialOverlay,
-    BeginHiddenHospitalPassOut,
+    BeginPendingDarknessDeath,
     BeginNonLethalPassOut,
 }
 
@@ -252,6 +252,16 @@ internal sealed class SanityTwoAmSpecialDeathStepMessage
     public string Step { get; set; } = string.Empty;
 }
 
+internal sealed class SanityTwoAmDarknessWaitMessage
+{
+    public int ProtocolVersion { get; set; } = SanityTwoAmSpecialDeathContract.ProtocolVersion;
+
+    public string SessionId { get; set; } = string.Empty;
+
+    /// <summary>主机侧当前活跃的黑暗特殊流数量；大于 0 表示所有非演出端必须黑屏等待。</summary>
+    public int ActiveFlowCount { get; set; }
+}
+
 internal static class SanityTwoAmSpecialDeathContract
 {
     internal const int ProtocolVersion = 2;
@@ -265,4 +275,5 @@ internal static class SanityTwoAmSpecialDeathContract
     internal const string SnapshotMessageType = "SanityTwoAmPassOutSnapshot.v2";
     internal const string ActionMessageType = "SanityTwoAmPassOutAction.v2";
     internal const string StepMessageType = "SanityTwoAmPassOutStep.v2";
+    internal const string DarknessWaitMessageType = "SanityTwoAmDarknessWait.v2";
 }

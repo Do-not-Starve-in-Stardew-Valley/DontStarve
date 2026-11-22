@@ -12,7 +12,7 @@ public sealed class NaturalDarknessLocationPolicyTests
             Input(profile: NaturalDarknessProfile.FullDark)
         );
         Assert.Equal(NaturalDarknessPhase.FullDark, fullDark.Phase);
-        Assert.Equal(1d, fullDark.TargetWhiteBlend);
+        Assert.Equal(1d, fullDark.ProgressCeiling);
         Assert.Equal(0d, fullDark.TransitionDurationSeconds);
 
         var protectedPlan = NaturalDarknessLocationPolicy.Resolve(
@@ -40,7 +40,7 @@ public sealed class NaturalDarknessLocationPolicyTests
         Assert.Equal(expected, plan.Phase);
         if (expected == NaturalDarknessPhase.NightThreeSeconds)
         {
-            Assert.Equal(1d, plan.TargetWhiteBlend);
+            Assert.Equal(1d, plan.ProgressCeiling);
             Assert.Equal(
                 NaturalDarknessTransitionPolicy.NightTransitionDurationSeconds,
                 plan.TransitionDurationSeconds
@@ -83,7 +83,7 @@ public sealed class NaturalDarknessLocationPolicyTests
             )
         );
         Assert.Equal(NaturalDarknessPhase.MineDusk, dusk.Phase);
-        Assert.Equal(0.30d, dusk.TargetWhiteBlend, precision: 10);
+        Assert.Equal(0.30d, dusk.ProgressCeiling, precision: 10);
         Assert.Equal(2d, dusk.TransitionDurationSeconds);
 
         var night = NaturalDarknessLocationPolicy.Resolve(
@@ -94,7 +94,7 @@ public sealed class NaturalDarknessLocationPolicyTests
             )
         );
         Assert.Equal(NaturalDarknessPhase.MineNight, night.Phase);
-        Assert.Equal(1d, night.TargetWhiteBlend);
+        Assert.Equal(1d, night.ProgressCeiling);
         Assert.Equal(1d, night.TransitionDurationSeconds);
     }
 
@@ -170,6 +170,8 @@ public sealed class NaturalDarknessLocationPolicyTests
             outdoors,
             junimoProtected,
             mineShaft,
+            IsVolcanoDungeon: false,
+            IsSpringSeason: false,
             mineLevel,
             skullCavern,
             dangerousSkullCavern,

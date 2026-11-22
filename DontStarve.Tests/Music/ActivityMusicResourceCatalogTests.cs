@@ -39,10 +39,12 @@ public sealed class ActivityMusicResourceCatalogTests
             ["combat.island.ginger_island_volcanic"] = "sw_dry_fight.ogg",
             ["combat.island.ginger_island_mild"] = "sw_mild_fight.ogg",
             ["combat.island.ginger_island_hurricane"] = "sw_hurricane_fight.ogg",
-            ["farming.island-farm.ginger_island_rain"] = "sw_monsoon_work.ogg",
-            ["farming.island-farm.ginger_island_volcanic"] = "sw_dry_work.ogg",
-            ["farming.island-farm.ginger_island_mild"] = "sw_mild_work.ogg",
-            ["farming.island-farm.ginger_island_hurricane"] = "sw_hurricane_work.ogg",
+            // 姜岛没有专用耕种曲（用户 2026-11-17 裁决）：姜岛农场耕种与普通农场共用
+            // `ds_farming_work.ogg`，四个姜岛季节键只是选键别名。
+            ["farming.farm.ginger_island_rain"] = "ds_farming_work.ogg",
+            ["farming.farm.ginger_island_volcanic"] = "ds_farming_work.ogg",
+            ["farming.farm.ginger_island_mild"] = "ds_farming_work.ogg",
+            ["farming.farm.ginger_island_hurricane"] = "ds_farming_work.ogg",
         };
 
     [Fact]
@@ -121,8 +123,8 @@ public sealed class ActivityMusicResourceCatalogTests
             );
         }
 
-        // 21 distinct files cover the 28 logical keys: the 4 valley farm seasons share
-        // `ds_farming_work.ogg`, and the 4 island-farm seasons reuse the 4 island working themes.
+        // 21 distinct files cover the 28 logical keys: all 8 farming keys (4 valley seasons and
+        // 4 ginger island aliases) share the one season-independent `ds_farming_work.ogg`.
         Assert.Equal(21, registeredNames.Distinct(StringComparer.Ordinal).Count());
 
         // Every shipped activity file is a `ds_`/`sw_` OGG with a work/fight role. The four
@@ -183,8 +185,10 @@ public sealed class ActivityMusicResourceCatalogTests
     [Fact]
     public void GingerIslandPhysicalKeysConsumeStableGingerIslandSeasonIdentifiers()
     {
+        // 姜岛季节键跨三个选键区：work/combat 在 island 区，耕种别名在 farm 区
+        // （岛上没有专用耕种曲，共用普通农场 farming 曲目）。
         var islandEntries = ActivityMusicResourceCatalog.PhysicalEntries
-            .Where(entry => entry.LocationFamily is "island" or "island-farm")
+            .Where(entry => entry.SeasonToken.StartsWith("ginger_island_", StringComparison.Ordinal))
             .ToArray();
 
         Assert.Equal(12, islandEntries.Length);

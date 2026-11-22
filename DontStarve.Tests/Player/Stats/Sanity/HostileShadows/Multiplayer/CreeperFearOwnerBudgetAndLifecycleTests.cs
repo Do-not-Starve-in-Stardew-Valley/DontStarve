@@ -183,7 +183,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
     }
 
     [Fact]
-    public void Danger_hysteresis_preserves_shared_entity_above_seventeen_point_five_until_retreat()
+    public void Danger_hysteresis_preserves_shared_entity_through_the_inclusive_seventeen_point_five_exit()
     {
         var harness = new Harness(SanityMonsterIntensityIds.More);
         harness.Observe(OwnerA, 49.9999d, revision: 1, gameMinute: 0);
@@ -197,7 +197,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             revision: 3,
             gameMinute: 20
         );
-        Assert.DoesNotContain(exactExit.Events, IsDangerExit);
+        Assert.Contains(exactExit.Events, IsDangerExit);
         Assert.Equal(1, harness.Authority.Count);
 
         var aboveExit = harness.Observe(
@@ -206,7 +206,7 @@ public sealed class CreeperFearOwnerBudgetAndLifecycleTests
             revision: 4,
             gameMinute: 21
         );
-        Assert.Contains(aboveExit.Events, IsDangerExit);
+        Assert.DoesNotContain(aboveExit.Events, IsDangerExit);
         Assert.Equal(1, harness.Authority.Count);
         var locked = harness.Coordinator.UpdateOwner(
             harness.GetOwnerContext(OwnerA),

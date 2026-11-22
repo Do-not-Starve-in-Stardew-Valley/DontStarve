@@ -1,4 +1,5 @@
 using System;
+using DontStarve.Audio.Vanilla;
 using Microsoft.Xna.Framework.Audio;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -123,7 +124,8 @@ internal static class DuskMusicService
             // it does not keep a tick-level suppression lease and does not run Dawn's native
             // restore path; vanilla may naturally select a later cue (such as
             // a night-market track).
-            Game1.currentSong?.Stop(AudioStopOptions.Immediate);
+            if (!ShouldPreserveVanillaBackgroundAmbient())
+                Game1.currentSong?.Stop(AudioStopOptions.Immediate);
 
             if (targetSound.State == SoundState.Playing)
                 targetSound.Stop();
@@ -152,5 +154,16 @@ internal static class DuskMusicService
     {
         return Game1.currentLocation is IslandLocation
             || Game1.currentLocation?.Name == "IslandFarmHouse";
+    }
+
+    private static bool ShouldPreserveVanillaBackgroundAmbient()
+    {
+        var current = Game1.currentSong;
+        return current is not null
+            && VanillaBackgroundAmbientMusicExclusionPolicy.ShouldPreserve(
+                current.Name,
+                Game1.IsPlayingOutdoorsAmbience,
+                Game1.IsPlayingNightAmbience
+            );
     }
 }

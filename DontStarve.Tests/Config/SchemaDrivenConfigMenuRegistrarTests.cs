@@ -46,6 +46,8 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 "dontstarve.config.config.detail-adjustments.page",
                 "dontstarve.config.config.balance-compatibility.page",
                 "dontstarve.config.config.vanilla-balance.page",
+                "dontstarve.config.config.operations-settings.page",
+                "dontstarve.config.config.combat-settings.page",
                 "dontstarve.config.config.visuals-audio.page",
                 "dontstarve.config.config.screen-filter.page",
                 "dontstarve.config.config.audio-effects.page",
@@ -57,6 +59,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             {
                 "dontstarve.config.config.game-mechanics.page",
                 "dontstarve.config.config.balance-compatibility.page",
+                "dontstarve.config.config.operations-settings.page",
                 "dontstarve.config.config.visuals-audio.page",
                 "dontstarve.config.config.hunger.page",
                 "dontstarve.config.config.sanity.page",
@@ -64,6 +67,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 "dontstarve.config.config.darkness.page",
                 "dontstarve.config.config.detail-adjustments.page",
                 "dontstarve.config.config.vanilla-balance.page",
+                "dontstarve.config.config.combat-settings.page",
                 "dontstarve.config.config.screen-filter.page",
                 "dontstarve.config.config.audio-effects.page",
             },
@@ -73,8 +77,10 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             registry.Options.Select(option => option.Key),
             menu.FieldOrder
         );
-        Assert.Equal(15, menu.BooleanFields.Count);
-        Assert.Equal(5, menu.EnumFields.Count);
+        Assert.Equal(23, menu.BooleanFields.Count);
+        Assert.Equal(7, menu.EnumFields.Count);
+        Assert.Empty(menu.KeybindFields);
+        Assert.Single(menu.NumberFields);
         Assert.True(
             menu.BooleanFields[ConfigKeys.EnableHungerSystem].GetValue()
         );
@@ -87,10 +93,16 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
         Assert.True(menu.BooleanFields[ConfigKeys.EnableActivityMusic].GetValue());
         Assert.True(
+            menu.BooleanFields[ConfigKeys.EnableFarmingMusic].GetValue()
+        );
+        Assert.True(
             menu.BooleanFields[ConfigKeys.EnableSanityVignette].GetValue()
         );
         Assert.True(
             menu.BooleanFields[ConfigKeys.EnableLowSanityScreenDistortion].GetValue()
+        );
+        Assert.True(
+            menu.BooleanFields[ConfigKeys.SlingshotAutoRelease].GetValue()
         );
 
         var profile = menu.EnumFields[ConfigKeys.MonsterDifficultyProfile];
@@ -98,12 +110,27 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             new[] { "Stardew", "Compatible", "DontStarve", "Fusion" },
             profile.AllowedValues
         );
-        Assert.Equal("Don't Starve (Beta)", profile.FormatAllowedValue("DontStarve"));
+        Assert.Equal("Don't Starve", profile.FormatAllowedValue("DontStarve"));
         Assert.Equal("Unknown", profile.FormatAllowedValue("Unknown"));
         Assert.Equal(
             new[] { "Default", "NonLethal", "Disabled" },
             menu.EnumFields[ConfigKeys.HungerDamageMode].AllowedValues
         );
+        Assert.Equal(
+            new[] { "all", "clubAndDagger", "swordOnly", "off" },
+            menu.EnumFields[ConfigKeys.AutoSpecialMode].AllowedValues
+        );
+        Assert.Equal("On", menu.EnumFields[ConfigKeys.AutoSpecialMode].FormatAllowedValue("all"));
+
+        // 弹弓力度滑轮（Number 通道）：滑轮边界/步长/默认值（用户拍板默认最高 100%）/百分比显示格式。
+        var slingshotPower = menu.NumberFields[ConfigKeys.SlingshotPower];
+        Assert.Equal(25, slingshotPower.Min);
+        Assert.Equal(100, slingshotPower.Max);
+        Assert.Equal(5, slingshotPower.Interval);
+        Assert.Equal(100, slingshotPower.GetValue());
+        Assert.Equal("100%", slingshotPower.FormatValue(100));
+        Assert.Equal("50%", slingshotPower.FormatValue(50));
+        Assert.Equal("25%", slingshotPower.FormatValue(25));
         Assert.Empty(diagnostics);
 
         foreach (var field in menu.BooleanFields.Values)
@@ -114,11 +141,18 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             foreach (var allowed in field.AllowedValues)
                 _ = field.FormatAllowedValue(allowed);
         }
+        foreach (var field in menu.KeybindFields.Values)
+            _ = field.GetValue();
+        foreach (var field in menu.NumberFields.Values)
+        {
+            _ = field.GetValue();
+            _ = field.FormatValue(field.GetValue());
+        }
         menu.BooleanFields[ConfigKeys.EnableSanitySystem].SetValue(false);
+        menu.NumberFields[ConfigKeys.SlingshotPower].SetValue(75);
         profile.SetValue("Fusion");
         Assert.NotNull(menu.ResetAction);
         menu.ResetAction!();
-
         Assert.Equal(1, file.ReadCount);
         Assert.Equal(0, file.WriteCount);
 
@@ -131,6 +165,182 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 resolver.Refresh();
             return saved;
         }
+    }
+
+    [Fact]
+    public void KeybindChannelRoundTripsCanonicalButtonNameThroughStoreAndResolver()
+    {
+        // 真实 shipped schema 已无 keybind 选项（智能索敌/自动战斗 2026-11-15 移除）；
+        // 本测试用样例 schema 覆盖键位通道（ConfigTestData.KeybindOption）。
+        var parse = ConfigSchemaLoader.Parse(
+            ConfigTestData.Schema(
+                ConfigTestData.KeybindOption("TestKeybindChannel", "None", 1),
+                ConfigTestData.KeybindOption("TestKeybindChannelAlt", "None", 2)
+            )
+        );
+        Assert.True(
+            parse.Status == ConfigSchemaStatus.Available,
+            $"schema status={parse.Status} reason={parse.Reason} diagnostics=[{string.Join(", ", parse.Diagnostics)}]"
+        );
+        var registry = Assert.IsType<ConfigRegistry>(parse.Registry);
+        var file = new MemoryFlatConfigFileAccess("{}");
+        var store = Assert.IsType<FlatConfigValueStore>(
+            FlatConfigValueStore.Load(registry, file).Store
+        );
+        var resolver = new TypedConfigResolver(registry, store);
+        var menu = new RecordingConfigMenuApi();
+        var completed = new List<FlatConfigSaveResult>();
+
+        var result = SchemaDrivenConfigMenuRegistrar.Register(
+            registry,
+            resolver,
+            SaveAndRefresh,
+            menu,
+            JsonTranslationProvider.Default,
+            _ => { },
+            completed.Add
+        );
+
+        Assert.True(
+            result.Status == ConfigMenuRegistrationStatus.Available,
+            $"status={result.Status} reason={result.Reason}"
+        );
+        var smartTarget = menu.KeybindFields["TestKeybindChannel"];
+        var autoCombat = menu.KeybindFields["TestKeybindChannelAlt"];
+
+        // 缺省值：未绑定恒为 "None"。
+        Assert.Equal("None", smartTarget.GetValue());
+        Assert.Equal("None", autoCombat.GetValue());
+
+        // 绑定后保存：raw 值是规范枚举名字符串（JSON string），resolver 读回同一字符串。
+        smartTarget.SetValue("OemSemicolon");
+        Assert.NotNull(menu.SaveAction);
+        menu.SaveAction!();
+
+        Assert.True(Assert.Single(completed).Success);
+        using (var document = JsonDocument.Parse(Assert.IsType<string>(file.LastWritten)))
+        {
+            Assert.Equal(
+                "OemSemicolon",
+                document.RootElement.GetProperty("TestKeybindChannel").GetString()
+            );
+            Assert.Equal(
+                "None",
+                document.RootElement.GetProperty("TestKeybindChannelAlt").GetString()
+            );
+        }
+
+        Assert.Equal(
+            "OemSemicolon",
+            resolver.GetKeybind("TestKeybindChannel").Value
+        );
+        Assert.Equal("None", resolver.GetKeybind("TestKeybindChannelAlt").Value);
+
+        // 反向 round-trip：写回 "None" 保存后仍是未绑定语义。
+        autoCombat.SetValue("None");
+        smartTarget.SetValue("None");
+        menu.SaveAction!();
+
+        Assert.Equal(2, completed.Count);
+        Assert.True(completed[1].Success);
+        using (var document = JsonDocument.Parse(Assert.IsType<string>(file.LastWritten)))
+        {
+            Assert.Equal(
+                "None",
+                document.RootElement.GetProperty("TestKeybindChannel").GetString()
+            );
+        }
+        Assert.Equal("None", resolver.GetKeybind("TestKeybindChannel").Value);
+
+        // 非法编辑：编辑会话 fail-closed 拒绝，当前值保持不变，不抛异常。
+        smartTarget.SetValue("not a button!");
+        Assert.Equal("None", smartTarget.GetValue());
+
+        FlatConfigSaveResult SaveAndRefresh(
+            IReadOnlyDictionary<string, ConfigValue> updates
+        )
+        {
+            var saved = store.TrySave(updates);
+            if (saved.Success)
+                resolver.Refresh();
+            return saved;
+        }
+    }
+
+    [Fact]
+    public void InvalidKeybindRawValueIsUnavailableAndEditSessionFallsBackToDefault()
+    {
+        var parse = ConfigSchemaLoader.Parse(
+            ConfigTestData.Schema(
+                ConfigTestData.KeybindOption("TestKeybindChannel", "None", 1)
+            )
+        );
+        Assert.True(
+            parse.Status == ConfigSchemaStatus.Available,
+            $"schema status={parse.Status} reason={parse.Reason} diagnostics=[{string.Join(", ", parse.Diagnostics)}]"
+        );
+        var registry = Assert.IsType<ConfigRegistry>(parse.Registry);
+        var file = new MemoryFlatConfigFileAccess(
+            "{\"TestKeybindChannel\":\"not a button!\"}"
+        );
+        var store = Assert.IsType<FlatConfigValueStore>(
+            FlatConfigValueStore.Load(registry, file).Store
+        );
+        var resolver = new TypedConfigResolver(registry, store);
+        var menu = new RecordingConfigMenuApi();
+        var diagnostics = new List<string>();
+
+        var result = SchemaDrivenConfigMenuRegistrar.Register(
+            registry,
+            resolver,
+            store.TrySave,
+            menu,
+            JsonTranslationProvider.Default,
+            diagnostics.Add,
+            _ => { }
+        );
+
+        // 垃圾 raw 值被 resolver 判为不可用，不会进入保存通道，也不会让注册退化。
+        var raw = resolver.GetKeybind("TestKeybindChannel");
+        Assert.False(raw.HasValue);
+        Assert.Equal(ConfigValueStatus.UnavailableForKey, raw.Status);
+        Assert.True(
+            result.Status == ConfigMenuRegistrationStatus.Available,
+            $"status={result.Status} reason={result.Reason}"
+        );
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            "None",
+            menu.KeybindFields["TestKeybindChannel"].GetValue()
+        );
+        Assert.Equal(0, file.WriteCount);
+    }
+
+    [Fact]
+    public void KeybindNameContractRejectsGarbageAndAcceptsButtonNames()
+    {
+        // 纯逻辑层用标识符形状校验（测试工程不引用 Stardew）锁定与 SButton.ToString()
+        // 相同的合法形状；SMAPI 侧的 Enum.TryParse + IsDefined 在此契约上做精确名单过滤。
+        Assert.True(ConfigKeybind.IsValidButtonName("None"));
+        Assert.True(ConfigKeybind.IsValidButtonName("OemSemicolon"));
+        Assert.True(ConfigKeybind.IsValidButtonName("LeftControl"));
+        Assert.True(ConfigKeybind.IsValidButtonName("D0"));
+        Assert.False(ConfigKeybind.IsValidButtonName(""));
+        Assert.False(ConfigKeybind.IsValidButtonName(" "));
+        Assert.False(ConfigKeybind.IsValidButtonName("not a button!"));
+        Assert.False(ConfigKeybind.IsValidButtonName("42"));
+        Assert.False(ConfigKeybind.IsValidButtonName(null));
+
+        Assert.Equal("None", ConfigKeybind.Unbound);
+        Assert.Equal(
+            ConfigOptionType.Keybind,
+            ConfigValue.Keybind("OemSemicolon").Type
+        );
+        Assert.Equal(
+            "OemSemicolon",
+            ConfigValue.Keybind("OemSemicolon").CanonicalText
+        );
+        Assert.Throws<ArgumentException>(() => ConfigValue.Keybind("not a button!"));
     }
 
     [Fact]
@@ -228,7 +438,10 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             _ => { }
         );
 
-        Assert.Equal(ConfigMenuRegistrationStatus.Available, result.Status);
+        Assert.True(
+            result.Status == ConfigMenuRegistrationStatus.Available,
+            $"status={result.Status} reason={result.Reason}"
+        );
         var sanity = menu.BooleanFields[ConfigKeys.EnableSanitySystem];
         var hunger = menu.BooleanFields[ConfigKeys.EnableHungerSystem];
         var seedEdibility = menu.BooleanFields[ConfigKeys.EnableSeedEdibility];
@@ -237,31 +450,33 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             "Hunger",
             menu.PageTitleGetters["dontstarve.config.config.hunger.page"]()
         );
-        Assert.Equal("Enable hunger system (Beta)", hunger.GetName());
+        Assert.Equal("Hunger", hunger.GetName());
+        Assert.Equal("Enable the Hunger system.", hunger.GetTooltip());
         Assert.Equal("Enable seed edibility", seedEdibility.GetName());
         Assert.Equal(
             "Sanity",
             menu.PageTitleGetters["dontstarve.config.config.sanity.page"]()
         );
-        Assert.Equal("Enable Sanity system", sanity.GetName());
+        Assert.Equal("Sanity", sanity.GetName());
+        Assert.Equal("Enable the Sanity system.", sanity.GetTooltip());
         Assert.Equal("Fire Thief", darkHand.FormatAllowedValue("FireThief"));
 
         translations.SetValues(JsonTranslationProvider.Zh.Values);
 
         Assert.Equal(
-            "理智值",
+            "理智",
             menu.PageTitleGetters["dontstarve.config.config.sanity.page"]()
         );
-        Assert.Equal("启用理智系统", sanity.GetName());
-        Assert.Equal("启用理智系统及其玩法效果。", sanity.GetTooltip());
+        Assert.Equal("理智", sanity.GetName());
+        Assert.Equal("启用理智系统", sanity.GetTooltip());
         Assert.Equal(
-            "饥饿值",
+            "饥饿",
             menu.PageTitleGetters["dontstarve.config.config.hunger.page"]()
         );
-        Assert.Equal("启用饥饿值系统（Beta）", hunger.GetName());
-        Assert.Equal("启用饥饿值系统及其玩法效果。此功能目前处于 Beta 阶段。", hunger.GetTooltip());
+        Assert.Equal("饥饿", hunger.GetName());
+        Assert.Equal("启用饥饿系统", hunger.GetTooltip());
         Assert.Equal("种子可食用", seedEdibility.GetName());
-        Assert.Equal("允许符合条件的作物种子被食用。此设置由种子食用功能使用。", seedEdibility.GetTooltip());
+        Assert.Equal("允许玩家通过右键物品栏强制食用种子", seedEdibility.GetTooltip());
         Assert.Equal("偷火", darkHand.FormatAllowedValue("FireThief"));
     }
 
@@ -327,7 +542,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
                 );
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 Assert.True(document.RootElement.GetProperty("UnknownLegacy").GetBoolean());
-                Assert.Equal(20, document.RootElement.EnumerateObject().Count(property =>
+                Assert.Equal(31, document.RootElement.EnumerateObject().Count(property =>
                     ConfigKeys.IsFrozen(property.Name)
                 ));
             }
@@ -436,7 +651,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
         );
 
         Assert.Equal(ConfigMenuRegistrationStatus.Degraded, partial.Status);
-        Assert.Equal(19, partial.RegisteredKeys.Count);
+        Assert.Equal(30, partial.RegisteredKeys.Count);
         Assert.DoesNotContain(ConfigKeys.DarkHandMode, partial.RegisteredKeys);
         Assert.Equal(
             new[] { $"gmcm.option-registration-failed:{ConfigKeys.DarkHandMode}" },
@@ -562,7 +777,7 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
     }
 
     [Fact]
-    public void DefaultAndChineseI18nKeysAlignWithSchemaAndRiskCopy()
+    public void DefaultAndChineseI18nKeysAlignWithSchemaAndCurrentApprovedCopy()
     {
         var registry = ConfigTestData.LoadShippedRegistry();
         var defaultValues = JsonTranslationProvider.Default.Values;
@@ -589,25 +804,21 @@ public sealed class SchemaDrivenConfigMenuRegistrarTests
             }
         }
 
-        Assert.Contains(
-            "may currently use identical numeric values",
-            defaultValues["config.monster-difficulty-profile.tooltip"],
-            StringComparison.OrdinalIgnoreCase
+        Assert.Equal(
+            "Affects monster stat values.",
+            defaultValues["config.monster-difficulty-profile.tooltip"]
         );
-        Assert.Contains(
-            "目前可能使用相同的数值",
-            zhValues["config.monster-difficulty-profile.tooltip"],
-            StringComparison.Ordinal
+        Assert.Equal(
+            "影响怪物的数值强度",
+            zhValues["config.monster-difficulty-profile.tooltip"]
         );
-        Assert.Contains(
-            "permanently delete",
-            defaultValues["config.dark-hand-mode.tooltip"],
-            StringComparison.OrdinalIgnoreCase
+        Assert.Equal(
+            "Affects how Dark Hands interact with the world.",
+            defaultValues["config.dark-hand-mode.tooltip"]
         );
-        Assert.Contains(
-            "永久删除",
-            zhValues["config.dark-hand-mode.tooltip"],
-            StringComparison.Ordinal
+        Assert.Equal(
+            "影响暗影之手与世界的交互方式",
+            zhValues["config.dark-hand-mode.tooltip"]
         );
 
         void AssertTranslation(string key)
@@ -667,6 +878,12 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
         new(StringComparer.Ordinal);
 
     internal Dictionary<string, RecordedEnumField> EnumFields { get; } =
+        new(StringComparer.Ordinal);
+
+    internal Dictionary<string, RecordedKeybindField> KeybindFields { get; } =
+        new(StringComparer.Ordinal);
+
+    internal Dictionary<string, RecordedNumberField> NumberFields { get; } =
         new(StringComparer.Ordinal);
 
     public void Register(Action reset, Action save)
@@ -735,6 +952,51 @@ internal sealed class RecordingConfigMenuApi : IConfigMenuRegistrationApi
         );
     }
 
+    public void AddKeybind(
+        string fieldId,
+        Func<string> getValue,
+        Action<string> setValue,
+        Func<string> getName,
+        Func<string> getTooltip
+    )
+    {
+        ThrowIfRequested(fieldId);
+        FieldOrder.Add(fieldId);
+        KeybindFields.Add(
+            fieldId,
+            new RecordedKeybindField(getValue, setValue, getName, getTooltip)
+        );
+    }
+
+    public void AddNumber(
+        string fieldId,
+        Func<int> getValue,
+        Action<int> setValue,
+        Func<string> getName,
+        Func<string> getTooltip,
+        int min,
+        int max,
+        int interval,
+        Func<int, string> formatValue
+    )
+    {
+        ThrowIfRequested(fieldId);
+        FieldOrder.Add(fieldId);
+        NumberFields.Add(
+            fieldId,
+            new RecordedNumberField(
+                getValue,
+                setValue,
+                getName,
+                getTooltip,
+                min,
+                max,
+                interval,
+                formatValue
+            )
+        );
+    }
+
     private void ThrowIfRequested(string fieldId)
     {
         if (string.Equals(ThrowOnFieldId, fieldId, StringComparison.Ordinal))
@@ -756,6 +1018,24 @@ internal sealed record RecordedEnumField(
     Func<string> GetTooltip,
     string[] AllowedValues,
     Func<string, string> FormatAllowedValue
+);
+
+internal sealed record RecordedKeybindField(
+    Func<string> GetValue,
+    Action<string> SetValue,
+    Func<string> GetName,
+    Func<string> GetTooltip
+);
+
+internal sealed record RecordedNumberField(
+    Func<int> GetValue,
+    Action<int> SetValue,
+    Func<string> GetName,
+    Func<string> GetTooltip,
+    int Min,
+    int Max,
+    int Interval,
+    Func<int, string> FormatValue
 );
 
 internal sealed class JsonTranslationProvider : IConfigMenuTranslationProvider
